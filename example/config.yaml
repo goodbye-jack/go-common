@@ -1,0 +1,5 @@
+server_name: go-common
+addr: ":8080"
+
+#middleware
+redis_addr: "0.0.0.0:6379"
