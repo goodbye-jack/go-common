@@ -10,5 +10,9 @@ const (
 	UserAnonymous     = "anonymous"
 	UserAdministrator = "administrator"
 
-	TenantAnonymous   = ""
+	TenantAnonymous = ""
+
+	LLDapLoginURL        = "/auth/simple/login"
+	LLDapRefreshTokenURL = "/auth/refresh"
+	LLDapGraphURL        = "/api/graphql"
 )
