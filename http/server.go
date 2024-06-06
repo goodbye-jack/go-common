@@ -62,9 +62,11 @@ func (s *HTTPServer) prepare() {
 
 	loginRequiredMiddleware := LoginRequiredMiddleware(s.routes)
 	rbacMiddleware := RbacMiddleware()
+	tenantMiddleware := TenantMiddleware()
 
 	s.router.Use(loginRequiredMiddleware)
 	s.router.Use(rbacMiddleware)
+	s.router.Use(tenantMiddleware)
 }
 
 func (s *HTTPServer) Run(addr string) {

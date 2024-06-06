@@ -2,6 +2,7 @@ package http
 
 import (
 	"fmt"
+	"context"
 	"net/http"
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/rbac"
@@ -54,6 +55,21 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 			return
 		}
 
+		c.Next()
+	}
+}
+
+func TenantMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tenant := c.Request.Header.Get(utils.TenantHeaderName)
+
+		ctx := context.WithValue(
+			c.Request.Context(),
+			utils.TenantContextName,
+			tenant,
+		)
+
+		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}
 }

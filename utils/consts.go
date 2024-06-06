@@ -15,4 +15,7 @@ const (
 	LLDapLoginURL        = "/auth/simple/login"
 	LLDapRefreshTokenURL = "/auth/refresh"
 	LLDapGraphURL        = "/api/graphql"
+
+	TenantContextName = "ContextTenant"
+	TenantHeaderName  = "X-Tenant"
 )

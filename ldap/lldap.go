@@ -35,8 +35,7 @@ func NewLLDap(service_name, admin, admin_password string) Ldap {
 		log.Panic("%+v accessToken error, %v", lldap, err)
 	}
 
-	log.Info("the new lldap, %+v", lldap)
-	return lldap
+	return &lldap
 }
 
 func (lldap *LLDap) accessToken() error {
@@ -60,11 +59,12 @@ func (lldap *LLDap) accessToken() error {
 
 	lldap.access_token = respToken.Token
 	lldap.refresh_token = respToken.RefreshToken
+	log.Info("accessToken success, %+v", lldap)
 
 	return nil
 }
 
-func (lldap LLDap) refreshToken(ctx context.Context) error {
+func (lldap *LLDap) refreshToken(ctx context.Context) error {
 	body := []byte{}
 	headers := map[string]string{
 		"Cookie": fmt.Sprintf("refresh_token=%s", lldap.refresh_token),
@@ -72,6 +72,7 @@ func (lldap LLDap) refreshToken(ctx context.Context) error {
 
 	resp, err := lldap.client.Get(ctx, utils.LLDapRefreshTokenURL, body, headers)
 	if err != nil {
+		log.Info("refresh_token=%s", lldap.refresh_token)
 		log.Error("refreshToken/Get(%s) error, %v", utils.LLDapRefreshTokenURL, err)
 		return err
 	}
@@ -88,6 +89,10 @@ func (lldap LLDap) refreshToken(ctx context.Context) error {
 	lldap.access_token = token.Token
 
 	return nil
+}
+
+func (lldap LLDap) getTenant(ctx context.Context) string {
+	return ctx.Value(utils.TenantContextName).(string)
 }
 
 func (lldap LLDap) doGraphQL(ctx context.Context, query string, variables interface{}) ([]byte, error) {
@@ -166,6 +171,9 @@ func (lldap LLDap) AddUser(ctx context.Context, u *User) error {
 		return err
 	}
 	log.Info("AddUser resp data = %+v", data)
+
+	tenant := lldap.getTenant(ctx)
+	log.Info("AddUser tenant=%s", tenant)
 
 	return nil
 }
