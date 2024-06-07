@@ -86,9 +86,9 @@ func NewRbacClient() *RbacClient {
 
 	redisAddr := config.GetConfigString("redis_addr")
 	if redisAddr == "" {
-		log.Fatalf("config.yaml no redis_addr configuration")
+		log.Fatal("config.yaml no redis_addr configuration")
 	}
-	log.Infof("rbac redis address is %v", redisAddr)
+	log.Info("rbac redis address is %v", redisAddr)
 
 	m, err := model.NewModelFromString(text)
 	if err != nil {
@@ -140,7 +140,7 @@ func NewActionPolicy(dom, sub, obj, act string) Policy {
 }
 
 func (p ActionPolicy) ToArr() []string {
-	return []string{"p", p.sub, p.sub, p.act}
+	return []string{"p", p.dom, p.sub, p.obj, p.act}
 }
 
 func NewTenantPolicy(ten, dom string) Policy {
@@ -166,7 +166,7 @@ func (p *RolePolicy) ToArr() []string {
 }
 
 func NewReq(ten, dom, sub, obj, act string) *Req {
-	return &Req {
+	return &Req{
 		ten,
 		dom,
 		sub,
@@ -177,28 +177,29 @@ func NewReq(ten, dom, sub, obj, act string) *Req {
 
 func (c *RbacClient) AddPolicies(policies []Policy) error {
 	_policies := [][]string{}
-	for _, policy := range policies {
-		_policies = append(_policies, policy.ToArr())
+	for _, p := range policies {
+		_policy := p.ToArr()
+		_policies = append(_policies, _policy)
 	}
 	log.Infof("rabc AddPolicies, %+v", _policies)
 
-	ok, err := c.e.AddPolicies(_policies)
+	ok, err := c.e.AddPoliciesEx(_policies)
 	if err != nil {
-		log.Errorf("AddPolicies, %v", err)
+		log.Error("AddPolicies, %+v, %v", _policies, err)
 		return err
 	}
 	if !ok {
-		log.Errorf("casbin Enforcer.AddPolices not ok")
-		return errors.New("AddPolicesFailed")
+		log.Errorf("AddPolicies, casbin Enforcer.AddPolices not ok")
+		return errors.New("AddPolices Failed")
 	}
 	if err := c.e.SavePolicy(); err != nil {
-		log.Errorf("SavePolicy, %v", err)
+		log.Errorf("AddPolicies/SavePolicy, %v", err)
 		return err
 	}
 	if err := c.w.Update(); err != nil {
-		log.Errorf("watcher Update, %v", err)
+		log.Errorf("AddPolicies/Update, %v", err)
 	}
-	log.Info("AddPolicies success")
+	log.Info("AddPolicies %+v success", policies)
 	return nil
 }
 
