@@ -1,3 +1,5 @@
+<font color="red">the project is under development</font>
+
 # go-common
 
 go-common is a library for some common functions such as logging, configuration, orm, http client, http server, http routes, http rbac middleware etc.
@@ -9,14 +11,18 @@ go-common is a library for some common functions such as logging, configuration,
 go get github.com/goodbye-jack/go-common
 
 
-## config.yml
+## configuration
+
+$cat  /opt/config.yml
 
 ```
 server_name: go-common
 addr: ":8080"
 ```
 
-## main.go
+## Code
+
+$cat main.go
 
 ```
 package main
@@ -34,4 +40,4 @@ func main() {
 }
 ```
 
-## go run main.go
+$go run main.go
