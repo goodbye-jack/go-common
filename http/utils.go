@@ -20,3 +20,19 @@ func GetTenant(c *gin.Context) string {
 	}
 	return tenant
 }
+
+func JsonResponse(c *gin.Context, data interface{}, err error) {
+	statusCode := 200
+	message := ""
+
+	if err != nil {
+		data = nil
+		message = err.Error()
+		statusCode = 500
+	}
+
+	c.JSON(statusCode, gin.H{
+		"data": data,
+		"message": message,
+	})
+}
