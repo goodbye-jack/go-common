@@ -5,10 +5,15 @@ import (
 	"fmt"
 )
 
-type LdapInternalError struct{}
+type LdapDuplicateError struct{}
+type LdapIntervalError struct{}
 
-func (e LdapInternalError) Error() string {
+func (e LdapIntervalError) Error() string {
 	return fmt.Sprintf("Ldap internal error, %s", "")
+}
+
+func (e LdapDuplicateError) Error() string {
+	return fmt.Sprintf("Ldap duplicate error, %s", "")
 }
 
 type LdapParamsError struct {
@@ -48,22 +53,27 @@ type User struct {
 }
 
 type Group struct {
-	ID          int     `json:"id"`
+	ID          int  `json:"id"`
 	UUID        string  `json:"uuid"`
 	DisplayName string  `json:"displayName"`
 	Users      []User `json:"users,omitempty"`
 }
 
 type Ldap interface {
+	GetUser(ctx context.Context, id string) (*User, error)
 	AddUser(ctx context.Context, u *User) error
 	UpdateUser(ctx context.Context, u *User) error
 	DeleteUser(ctx context.Context, u *User) error
 
 	ListUser(ctx context.Context) ([]*User, error)
 
+	GetGroup(ctx context.Context, id string) (*Group, error)
 	AddGroup(ctx context.Context, g *Group) error
 	UpdateGroup(ctx context.Context, g *Group) error
 	DeleteGroup(ctx context.Context, g *Group) error
 
 	ListGroup(ctx context.Context) ([]*Group, error)
+
+	JoinGroup(ctx context.Context, u *User, g *Group) error
+	QuitGroup(ctx context.Context, u *User, g *Group) error
 }

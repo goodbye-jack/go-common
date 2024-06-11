@@ -30,7 +30,18 @@ func TestNewLLDap(t *testing.T) {
 
 	lldap.UpdateUser(ctx, u)
 
-	lldap.DeleteUser(ctx, u)
+	g := &Group {
+		DisplayName: "League",
+	}
+	if err := lldap.AddGroup(ctx, g); err == nil {
+		lldap.JoinGroup(ctx, u, g)
+		lldap.QuitGroup(ctx, u, g)
+
+		g.DisplayName = "newLeague"
+		lldap.UpdateGroup(ctx, g)
+		lldap.DeleteGroup(ctx, g)
+	}
+
 	lldap.DeleteUser(ctx, u)
 
 	users, err := lldap.ListUser(ctx)
@@ -38,16 +49,6 @@ func TestNewLLDap(t *testing.T) {
 		fmt.Printf("ListUser, error, %v", err)
 	}
 	fmt.Printf("%+v", users)
-
-	g := Group {
-		DisplayName: "xxxLeague",
-	}
-
-	if err := lldap.AddGroup(ctx, &g); err != nil {
-		g.DisplayName = "newLeague"
-		lldap.UpdateGroup(ctx, &g)
-		lldap.DeleteGroup(ctx, &g)
-	}
 
 	groups, err := lldap.ListGroup(ctx)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"github.com/goodbye-jack/go-common/http"
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/utils"
@@ -135,7 +136,7 @@ func (lldap LLDap) respGraphQL(ctx context.Context, resp []byte, data interface{
 	}
 
 	if obj.Data == nil {
-		return LdapInternalError {}
+		return LdapIntervalError {}
 	}
 
 	if err := json.Unmarshal(obj.Data, data); err != nil {
@@ -147,6 +148,30 @@ func (lldap LLDap) respGraphQL(ctx context.Context, resp []byte, data interface{
 		return errors.New(obj.Errors[0].Message)
 	}
 	return nil
+}
+
+func (lldap LLDap) GetUser(ctx context.Context, id string) (*User, error) {
+	query := `{user($id: String!){id email displayName firstName lastName avatar}}`
+	variables := struct {
+		ID string `json:"id"`
+	} {
+		ID: id,
+	}
+
+	resp, err := lldap.doGraphQL(ctx, query, variables)
+	if err != nil {
+		log.Error("GetUser/doGraphQL(%s, %s) error, %v", query, variables, err)
+		return nil, err
+	}
+
+	data := struct {
+		User *User `json:"user"`
+	}{}
+	if err := lldap.respGraphQL(ctx, resp, &data); err != nil {
+		log.Error("GetUser/respGraphQL error, %v", err)
+		return nil, err
+	}
+	return data.User, nil
 }
 
 func (lldap LLDap) AddUser(ctx context.Context, u *User) error {
@@ -171,9 +196,6 @@ func (lldap LLDap) AddUser(ctx context.Context, u *User) error {
 		return err
 	}
 	log.Info("AddUser resp data = %+v", data)
-
-	tenant := lldap.getTenant(ctx)
-	log.Info("AddUser tenant=%s", tenant)
 
 	return nil
 }
@@ -248,7 +270,56 @@ func (lldap LLDap) DeleteUser(ctx context.Context, u *User) error {
 	return nil
 }
 
+func (lldap LLDap) getGroupByName(ctx context.Context, displayName string) (*Group, error) {
+	gs, err := lldap.ListGroup(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range gs {
+		if g.DisplayName == displayName {
+			return g, nil
+		}
+	}
+	return nil, nil
+}
+
+func (lldap LLDap) GetGroup(ctx context.Context, id string) (*Group, error) {
+	_id, err := strconv.Atoi(id)
+	if err != nil {
+		return nil, LdapParamsError {
+			Params: []string{"id"},
+		}
+	}
+
+	query := `{group($id: Int!){id uuid displayName}}`
+	variables := struct {
+		ID int `json:"id"`
+	} {
+		ID: _id,
+	}
+
+	resp, err := lldap.doGraphQL(ctx, query, variables)
+	if err != nil {
+		log.Error("GetGroup/doGraphQL(%s, %s) error, %v", query, variables, err)
+		return nil, err
+	}
+
+	data := struct {
+		Group *Group `json:"group"`
+	}{}
+	if err := lldap.respGraphQL(ctx, resp, &data); err != nil {
+		log.Error("AddUser/respGraphQL error, %v", err)
+		return nil, err
+	}
+	return data.Group, nil
+}
+
 func (lldap LLDap) AddGroup(ctx context.Context, g *Group) error {
+	if _g, _ := lldap.getGroupByName(ctx, g.DisplayName); _g != nil {
+		g.ID = _g.ID
+		return LdapDuplicateError{}
+	}
+
 	query := `mutation createGroup($group:String!){createGroup(name:$group){id}}`
 	variables := struct {
 		Group string `json:"group"`
@@ -276,23 +347,26 @@ func (lldap LLDap) AddGroup(ctx context.Context, g *Group) error {
 	return nil
 }
 
-type UpdateGroup struct {
-	ID          int    `json:"id"`
-	DisplayName string `json:"displayName"`
-}
-
 func (lldap LLDap) UpdateGroup(ctx context.Context, g *Group) error {
-	if g == nil || g.ID == 0 {
+	if g == nil {
 		return LdapParamsError {
 			Params: []string{"group.ID"},
 		}
 	}
+	if _g, _ := lldap.getGroupByName(ctx, g.DisplayName); _g != nil {
+		return LdapDuplicateError{}
+	}
+
+	type UpdateGroupForm struct {
+		ID          int    `json:"id"`
+		DisplayName string `json:"displayName"`
+	}
 
 	query := "mutation updateGroup($group:UpdateGroupInput!){updateGroup(group:$group){ok}}"
 	variables := struct {
-		Group *UpdateGroup `json:"group"`
+		Group *UpdateGroupForm `json:"group"`
 	} {
-		Group: &UpdateGroup {
+		Group: &UpdateGroupForm {
 			ID:          g.ID,
 			DisplayName: g.DisplayName,
 		},
@@ -326,9 +400,9 @@ func (lldap LLDap) UpdateGroup(ctx context.Context, g *Group) error {
 }
 
 func (lldap LLDap) DeleteGroup(ctx context.Context, g *Group) error {
-	if g == nil || g.ID == 0 {
+	if g == nil {
 		return LdapParamsError{
-			Params: []string{"group.ID"},
+			Params: []string{"g"},
 		}
 	}
 
@@ -403,4 +477,80 @@ func (lldap LLDap) ListGroup(ctx context.Context) ([]*Group, error) {
 	}
 
 	return data.Groups, nil
+}
+
+func (lldap LLDap) JoinGroup(ctx context.Context, u *User, g *Group) error {
+	if u == nil || g == nil {
+		return errors.New("u || g is empty")
+	}
+
+	query := "mutation addUserToGroup($userId: String!, $groupId: Int!){addUserToGroup(userId:$userId,groupId:$groupId){ok}}"
+	variables := struct {
+		UserId string `json:"userId"`
+		GroupId int `json:"groupId"`
+	}{
+		UserId: u.ID,
+		GroupId: g.ID,
+	}
+	resp, err := lldap.doGraphQL(ctx, query, variables)
+	if err != nil {
+		log.Error("JoinGroup/doGraphQL(%s, %s) error, %v", query, variables, err)
+		return err
+	}
+
+	type addUserToGroup struct {
+		Ok bool `json:"ok"`
+	}
+	data := struct {
+		addUserToGroup *addUserToGroup `json:"addUserToGroup"`
+	} {}
+	if err := lldap.respGraphQL(ctx, resp, &data); err != nil {
+		log.Error("JoinGroup/respGraphQL error, %v", err)
+		return err
+	}
+
+	if data.addUserToGroup != nil && !data.addUserToGroup.Ok {
+		return LdapIntervalError {}
+	}
+
+	log.Info("JoinGroup(%+v, %+v) success", u, g)
+	return nil
+}
+
+func (lldap LLDap) QuitGroup(ctx context.Context, u *User, g *Group) error {
+	if u == nil  || g == nil{
+		return errors.New("u || g is empty")
+	}
+
+	query := "mutation removeUserFromGroup($userId: String!, $groupId: Int!){removeUserFromGroup(userId:$userId,groupId:$groupId){ok}}"
+	variables := struct {
+		UserId string `json:"userId"`
+		GroupId int `json:"groupId"`
+	} {
+		UserId: u.ID,
+		GroupId: g.ID,
+	}
+	resp, err := lldap.doGraphQL(ctx, query, variables)
+	if err != nil {
+		log.Error("QuitGroup/doGraphQL(%s, %s) error, %v", query, variables, err)
+		return err
+	}
+
+	type removeUserFromGroup struct {
+		Ok bool `json:"ok"`
+	}
+	data := struct {
+		removeUserFromGroup *removeUserFromGroup `json:"removeUserFromGroup"`
+	} {}
+	if err := lldap.respGraphQL(ctx, resp, &data); err != nil {
+		log.Error("JoinGroup/respGraphQL error, %v", err)
+		return err
+	}
+
+	if data.removeUserFromGroup != nil && !data.removeUserFromGroup.Ok {
+		return LdapIntervalError {}
+	}
+
+	log.Info("QuitGroup(%+v, %+v) success", u, g)
+	return nil
 }
