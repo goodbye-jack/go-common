@@ -156,8 +156,8 @@ func (p TenantPolicy) ToArr() []string {
 
 func NewRolePolicy(user, role string) Policy {
 	return &RolePolicy{
-		role,
-		user,
+		role: role,
+		user: user,
 	}
 }
 
@@ -173,6 +173,70 @@ func NewReq(ten, dom, sub, obj, act string) *Req {
 		obj,
 		act,
 	}
+}
+
+func (c *RbacClient) GetRolePolicy(sub string) (*RolePolicy, error) {
+	policies, err := c.e.GetFilteredPolicy(0, "g", sub)
+	if err != nil {
+		log.Error("GetRolePolicy/GetFilteredPolicy(0, %s) error, %v", sub, err)
+		return nil, err
+	}
+	if len(policies) == 0 {
+		return nil, nil
+	}
+	if len(policies) > 1 {
+		log.Warn("GetRolePolicy/GetFilterPolicy(0, %s) result count %d", sub, len(policies))
+	}
+
+	log.Info("GetRolePolicy(%s), result, %+v", sub, policies)
+	return &RolePolicy {
+		role: policies[0][0],
+		user: policies[0][1],
+	}, nil
+}
+
+func (c *RbacClient) AddRolePolicy(rp *RolePolicy) error {
+	return c.AddPolicies([]Policy{rp})
+}
+
+func (c *RbacClient) UpdateRolePolicy(rp *RolePolicy, role string) error {
+	newRp := NewRolePolicy(rp.user, role)
+	updated, err := c.e.UpdatePolicy(rp.ToArr(), newRp.ToArr())
+	if err != nil {
+		return err
+	}
+	log.Info("UpdateRolePolicy(%v, %v), %b updated", rp.ToArr(), newRp.ToArr(), updated)
+
+	if updated {
+		return c.save()
+	}
+
+	return nil
+}
+
+func (c *RbacClient) DeleteRolePolicy(rp *RolePolicy) error {
+	removed, err := c.e.RemoveFilteredPolicy(0, "g", rp.user)
+	if err != nil {
+		return err
+	}
+	log.Info("DeleteRolePolicy %v, %b removed", rp)
+
+	if removed {
+		return c.save()
+	}
+
+	return nil
+}
+
+func (c *RbacClient) save() error {
+	if err := c.e.SavePolicy(); err != nil {
+		log.Errorf("save/SavePolicy, %v", err)
+		return err
+	}
+	if err := c.w.Update(); err != nil {
+		log.Errorf("save/Update, %v", err)
+	}
+	return nil
 }
 
 func (c *RbacClient) AddPolicies(policies []Policy) error {
@@ -192,15 +256,8 @@ func (c *RbacClient) AddPolicies(policies []Policy) error {
 		log.Errorf("AddPolicies, casbin Enforcer.AddPolices not ok")
 		return errors.New("AddPolices Failed")
 	}
-	if err := c.e.SavePolicy(); err != nil {
-		log.Errorf("AddPolicies/SavePolicy, %v", err)
-		return err
-	}
-	if err := c.w.Update(); err != nil {
-		log.Errorf("AddPolicies/Update, %v", err)
-	}
 	log.Info("AddPolicies %+v success", policies)
-	return nil
+	return c.save()
 }
 
 func (c *RbacClient) Enforce(r *Req) (bool, error) {
