@@ -68,8 +68,8 @@ type TenantPolicy struct {
 }
 
 type RolePolicy struct {
-	user string
-	role string
+	User string
+	Role string
 }
 
 type RbacClient struct {
@@ -156,13 +156,13 @@ func (p TenantPolicy) ToArr() []string {
 
 func NewRolePolicy(user, role string) Policy {
 	return &RolePolicy{
-		role: role,
-		user: user,
+		Role: role,
+		User: user,
 	}
 }
 
 func (p *RolePolicy) ToArr() []string {
-	return []string{"g", p.user, p.role}
+	return []string{"g", p.User, p.Role}
 }
 
 func NewReq(ten, dom, sub, obj, act string) *Req {
@@ -190,8 +190,8 @@ func (c *RbacClient) GetRolePolicy(sub string) (*RolePolicy, error) {
 
 	log.Info("GetRolePolicy(%s), result, %+v", sub, policies)
 	return &RolePolicy {
-		role: policies[0][0],
-		user: policies[0][1],
+		Role: policies[0][0],
+		User: policies[0][1],
 	}, nil
 }
 
@@ -200,7 +200,7 @@ func (c *RbacClient) AddRolePolicy(rp *RolePolicy) error {
 }
 
 func (c *RbacClient) UpdateRolePolicy(rp *RolePolicy, role string) error {
-	newRp := NewRolePolicy(rp.user, role)
+	newRp := NewRolePolicy(rp.User, role)
 	updated, err := c.e.UpdatePolicy(rp.ToArr(), newRp.ToArr())
 	if err != nil {
 		return err
@@ -215,7 +215,7 @@ func (c *RbacClient) UpdateRolePolicy(rp *RolePolicy, role string) error {
 }
 
 func (c *RbacClient) DeleteRolePolicy(rp *RolePolicy) error {
-	removed, err := c.e.RemoveFilteredPolicy(0, "g", rp.user)
+	removed, err := c.e.RemoveFilteredPolicy(0, "g", rp.User)
 	if err != nil {
 		return err
 	}
