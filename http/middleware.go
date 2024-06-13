@@ -1,21 +1,21 @@
 package http
 
 import (
-	"fmt"
 	"context"
-	"net/http"
+	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/rbac"
 	"github.com/goodbye-jack/go-common/utils"
-	"github.com/goodbye-jack/go-common/log"
+	"net/http"
 )
 
 func RbacMiddleware() gin.HandlerFunc {
 	rbacClient := rbac.NewRbacClient()
 
 	return func(c *gin.Context) {
-		user := GetUser(c) 
-		tenant := GetTenant(c) 
+		user := GetUser(c)
+		tenant := GetTenant(c)
 		req := rbac.NewReq(
 			tenant,
 			c.Request.Host,

@@ -23,16 +23,16 @@ func GetTenant(c *gin.Context) string {
 
 func JsonResponse(c *gin.Context, data interface{}, err error) {
 	statusCode := 200
-	message := ""
+	message := "success"
 
 	if err != nil {
 		data = nil
-		message = err.Error()
+		message = whichError(err)
 		statusCode = 500
 	}
 
 	c.JSON(statusCode, gin.H{
-		"data": data,
+		"data":    data,
 		"message": message,
 	})
 }

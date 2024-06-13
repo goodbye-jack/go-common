@@ -10,11 +10,11 @@ import (
 
 type Route struct {
 	service_name string
-	url         string
-	methods     []string
-	sso         bool
-	roles       []string
-	handlerFunc gin.HandlerFunc
+	url          string
+	methods      []string
+	sso          bool
+	roles        []string
+	handlerFunc  gin.HandlerFunc
 }
 
 var RoleMapping = map[string][]string{}
@@ -58,11 +58,11 @@ func NewRoute(service_name string, url string, methods []string, role string, ss
 
 	return &Route{
 		service_name: service_name,
-		sso:        sso,
-		url:        url,
-		methods:    methods,
-		roles:      RoleMapping[role],
-		handlerFunc: handlerFunc,
+		sso:          sso,
+		url:          url,
+		methods:      methods,
+		roles:        RoleMapping[role],
+		handlerFunc:  handlerFunc,
 	}
 }
 
@@ -104,7 +104,7 @@ func (r *Route) ToGinRoute() []*gin.RouteInfo {
 	ans := []*gin.RouteInfo{}
 	for _, method := range r.methods {
 		ans = append(
-			ans, 
+			ans,
 			&gin.RouteInfo{
 				Method:      method,
 				Path:        r.url,

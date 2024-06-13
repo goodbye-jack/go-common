@@ -1,17 +1,17 @@
 package http
 
 import (
-	"io"
-	"errors"
-	"context"
-	"time"
-	"fmt"
 	"bytes"
-	"strings"
-	"net/http"
-	"github.com/goodbye-jack/go-common/log"
+	"context"
+	"errors"
+	"fmt"
 	"github.com/goodbye-jack/go-common/config"
+	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/utils"
+	"io"
+	"net/http"
+	"strings"
+	"time"
 )
 
 type HTTPClient struct {
@@ -49,10 +49,10 @@ func NewHTTPClient(tenant, service_name string) *HTTPClient {
 		DisableCompression: true,
 	}
 	uniq2client[uniq] = &HTTPClient{
-		tenant:       tenant,
-		service_name: service_name,
+		tenant:         tenant,
+		service_name:   service_name,
 		service_domain: service_domain,
-		client: &http.Client {
+		client: &http.Client{
 			Transport: transport,
 		},
 	}
@@ -79,8 +79,8 @@ func (c *HTTPClient) do(ctx context.Context, method, url string, data []byte, he
 	}
 	//Header
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept",       "application/json")
-	for k, v := range(headers) {
+	req.Header.Set("Accept", "application/json")
+	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 	resp, err := c.client.Do(req)
@@ -93,7 +93,7 @@ func (c *HTTPClient) do(ctx context.Context, method, url string, data []byte, he
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >=300 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, errors.New(
 			fmt.Sprintf("%s(%s) statusCode=%d, %s", method, absUrl, resp.StatusCode, string(body)),
 		)
