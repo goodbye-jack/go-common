@@ -7,7 +7,6 @@ import (
 	"github.com/casbin/casbin/v2/persist"
 	"github.com/casbin/redis-adapter/v3"
 	rediswatcher "github.com/casbin/redis-watcher/v2"
-	"github.com/goodbye-jack/go-common/config"
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/redis/go-redis/v9"
 )
@@ -79,14 +78,9 @@ type RbacClient struct {
 
 var rbacClient *RbacClient = nil
 
-func NewRbacClient() *RbacClient {
+func NewRbacClient(redisAddr string) *RbacClient {
 	if rbacClient != nil {
 		return rbacClient
-	}
-
-	redisAddr := config.GetConfigString("redis_addr")
-	if redisAddr == "" {
-		log.Fatal("config.yaml no redis_addr configuration")
 	}
 	log.Info("rbac redis address is %v", redisAddr)
 
@@ -154,13 +148,6 @@ func (p TenantPolicy) ToArr() []string {
 	return []string{"p1", p.ten, p.dom}
 }
 
-func NewRolePolicy(user, role string) Policy {
-	return &RolePolicy{
-		Role: role,
-		User: user,
-	}
-}
-
 func (p *RolePolicy) ToArr() []string {
 	return []string{"g", p.User, p.Role}
 }
@@ -189,7 +176,7 @@ func (c *RbacClient) GetRolePolicy(sub string) (*RolePolicy, error) {
 	}
 
 	log.Info("GetRolePolicy(%s), result, %+v", sub, policies)
-	return &RolePolicy {
+	return &RolePolicy{
 		Role: policies[0][0],
 		User: policies[0][1],
 	}, nil
@@ -200,7 +187,10 @@ func (c *RbacClient) AddRolePolicy(rp *RolePolicy) error {
 }
 
 func (c *RbacClient) UpdateRolePolicy(rp *RolePolicy, role string) error {
-	newRp := NewRolePolicy(rp.User, role)
+	newRp := &RolePolicy{
+		User: rp.User,
+		Role: role,
+	}
 	updated, err := c.e.UpdatePolicy(rp.ToArr(), newRp.ToArr())
 	if err != nil {
 		return err
