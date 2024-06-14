@@ -292,7 +292,7 @@ func (lldap LLDap) GetGroup(ctx context.Context, id string) (*Group, error) {
 	}
 	log.Info("GetGroup(%s)", id)
 
-	query := `{query group($id: Int!){id uuid displayName}}`
+	query := `query group($id:Int!){group(groupId:$id){id uuid displayName}}`
 	variables := struct {
 		ID int `json:"id"`
 	} {

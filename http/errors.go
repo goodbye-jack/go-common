@@ -6,10 +6,10 @@ import (
 )
 
 const (
-	serverErrorMessage = "服务器有点儿累, 稍作休息."
-	clientErrorMessage = "操作问题"
-	paramsErrorMessage = "输入参数有问题， 要检查一下输入参数"
-	intervalErrorMessage = "服务器出了点问题，联系服务器维护人员吧"
+	serverErrorMessage    = "服务器有点儿累, 稍作休息."
+	clientErrorMessage    = "操作问题"
+	paramsErrorMessage    = "输入参数有问题， 要检查一下输入参数"
+	intervalErrorMessage  = "服务器出了点问题，联系服务器维护人员吧"
 	duplicateErrorMessage = "相关数据已经存在于系统内啦."
 )
 
@@ -29,7 +29,7 @@ type intervalError struct {
 	message string
 }
 
-type duplicateError struct{
+type duplicateError struct {
 	message string
 }
 
@@ -124,6 +124,7 @@ func DuplicateErrorf(format string, opt ...interface{}) error {
 }
 
 func whichError(err error) string {
+	log.Error("http error, %v", err)
 	for _, httpError := range []error{
 		&serverError{
 			message: serverErrorMessage,
@@ -141,8 +142,8 @@ func whichError(err error) string {
 			message: duplicateErrorMessage,
 		},
 	} {
-		log.Info(httpError)
 		if errors.As(err, httpError) {
+			log.Info("whichError, return %s", httpError.Error())
 			return httpError.Error()
 		}
 	}
