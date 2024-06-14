@@ -151,7 +151,7 @@ func (lldap LLDap) respGraphQL(ctx context.Context, resp []byte, data interface{
 }
 
 func (lldap LLDap) GetUser(ctx context.Context, id string) (*User, error) {
-	query := `query user($id:String!){user(userId:$id){id email displayName firstName lastName avatar}}`
+	query := `query user($id:String!){user(userId:$id){id email displayName firstName lastName avatar groups{id uuid displayName}}}`
 	variables := struct {
 		ID string `json:"id"`
 	} {
@@ -292,7 +292,7 @@ func (lldap LLDap) GetGroup(ctx context.Context, id string) (*Group, error) {
 	}
 	log.Info("GetGroup(%s)", id)
 
-	query := `query group($id:Int!){group(groupId:$id){id uuid displayName}}`
+	query := `query group($id:Int!){group(groupId:$id){id uuid displayName users{id email displayName}}}`
 	variables := struct {
 		ID int `json:"id"`
 	} {
