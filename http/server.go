@@ -3,6 +3,7 @@ package http
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/log"
+	"github.com/goodbye-jack/go-common/config"
 	"github.com/goodbye-jack/go-common/rbac"
 	"github.com/goodbye-jack/go-common/utils"
 	"net/http"
@@ -19,7 +20,10 @@ type HTTPServer struct {
 }
 
 func init() {
-	rbacClient = rbac.NewRbacClient()
+	rbacClient = rbac.NewRbacClient(
+                config.GetConfigString(utils.CasbinRedisAddrName),
+        )
+
 }
 
 func NewHTTPServer(service_name string) *HTTPServer {

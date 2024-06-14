@@ -11,8 +11,6 @@ import (
 )
 
 func RbacMiddleware() gin.HandlerFunc {
-	rbacClient := rbac.NewRbacClient()
-
 	return func(c *gin.Context) {
 		user := GetUser(c)
 		tenant := GetTenant(c)

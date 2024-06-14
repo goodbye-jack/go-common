@@ -18,4 +18,6 @@ const (
 
 	TenantContextName = "ContextTenant"
 	TenantHeaderName  = "X-Tenant"
+
+	CasbinRedisAddrName = "redis_addr"
 )
