@@ -26,6 +26,10 @@ func TestNewLLDap(t *testing.T) {
 		fmt.Printf("%+v", err)
 	}
 
+	if _, err := lldap.GetUser(ctx, u.ID); err != nil {
+		fmt.Printf("%v", err)
+	}
+
 	u.DisplayName = "Han RedHan"
 
 	lldap.UpdateUser(ctx, u)
@@ -34,6 +38,9 @@ func TestNewLLDap(t *testing.T) {
 		DisplayName: "League",
 	}
 	if err := lldap.AddGroup(ctx, g); err == nil {
+
+		lldap.GetGroup(ctx, g.DisplayName)
+
 		lldap.JoinGroup(ctx, u, g)
 		lldap.QuitGroup(ctx, u, g)
 
