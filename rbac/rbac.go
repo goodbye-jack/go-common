@@ -177,7 +177,7 @@ func (c *RbacClient) GetRolePolicy(sub string) (*RolePolicy, error) {
 
 	log.Info("GetRolePolicy(%s), result, %+v", sub, policies)
 	return &RolePolicy{
-		Role: policies[0][0],
+		Role: policies[0][2],
 		User: policies[0][1],
 	}, nil
 }
