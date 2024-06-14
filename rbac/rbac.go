@@ -219,10 +219,10 @@ func (c *RbacClient) DeleteRolePolicy(rp *RolePolicy) error {
 }
 
 func (c *RbacClient) save() error {
-	if err := c.e.SavePolicy(); err != nil {
-		log.Errorf("save/SavePolicy, %v", err)
-		return err
-	}
+	//if err := c.e.SavePolicy(); err != nil {
+	//	log.Errorf("save/SavePolicy, %v", err)
+	//	return err
+	//}
 	if err := c.w.Update(); err != nil {
 		log.Errorf("save/Update, %v", err)
 	}
@@ -235,7 +235,7 @@ func (c *RbacClient) AddPolicies(policies []Policy) error {
 		_policy := p.ToArr()
 		_policies = append(_policies, _policy)
 	}
-	log.Infof("rabc AddPolicies, %+v", _policies)
+	log.Info("rabc AddPolicies, %+v", _policies)
 
 	ok, err := c.e.AddPoliciesEx(_policies)
 	if err != nil {
