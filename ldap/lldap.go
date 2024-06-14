@@ -202,10 +202,25 @@ func (lldap LLDap) AddUser(ctx context.Context, u *User) error {
 
 func (lldap LLDap) UpdateUser(ctx context.Context, u *User) error {
 	query := `mutation updateUser($user:UpdateUserInput!){updateUser(user:$user){ok}}`
+	type updateUserForm  struct {
+	        ID          string   `json:"id"`
+	        Email       string   `json:"email"`
+	        DisplayName string   `json:"displayName"`
+	        FirstName   string   `json:"firstName"`
+	        LastName    string   `json:"lastName"`
+	        Avatar      string   `json:"avatar"`
+	}
 	variables := struct {
-		User *User `json:"user"`
+		User *updateUserForm `json:"user"`
 	}{
-		User: u,
+		User: &updateUserForm {
+			ID: u.ID,
+			Email: u.Email,
+			DisplayName: u.DisplayName,
+			FirstName: u.FirstName,
+			LastName: u.LastName,
+			Avatar: u.Avatar,
+		},
 	}
 
 	resp, err := lldap.doGraphQL(ctx, query, variables)
