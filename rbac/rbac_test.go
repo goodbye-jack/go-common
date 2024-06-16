@@ -14,18 +14,33 @@ func TestRbac(t *testing.T) {
 		log.Fatal("config.yaml no redis_addr configuration")
 	}
 
+	rbac := NewRbacClient(redisAddr)
+	
+	aRp, err := rbac.GetRolePolicy("admin")
+	if err != nil {
+		log.Error("GetRolePolicy, error %v", err)
+	}
+
 	rp := &RolePolicy{
 		User: "admin",
 		Role: utils.RoleAdministrator,
 	}
 
-	rbac := NewRbacClient(redisAddr)
+	if err := rbac.AddRolePolicy(rp); err != nil {
+		log.Error("AddRolePolicy, error, %v", err)
+	}
 
-	rbac.AddRolePolicy(rp)
+	ok, err := rbac.Enforce(NewReq("admin2", "go-common", "/ping", "GET"))
+	log.Info("Enforce, result, %v", ok)
 
-	rbac.GetRolePolicy("admin")
+	aRp, err = rbac.GetRolePolicy("admin")
+	if err != nil {
+		log.Error("GetRolePolicy, error %v", err)
+	}
+	log.Info("%v", aRp)
 
 	rbac.UpdateRolePolicy(rp, utils.RoleManager)
 
 	rbac.GetRolePolicy("admin")
+	rbac.DeleteRolePolicy(rp)
 }

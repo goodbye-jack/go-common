@@ -54,11 +54,7 @@ func (s *HTTPServer) prepare() {
 		policies = append(policies, route.ToRbacPolicy()...)
 		routeInfos = append(routeInfos, route.ToGinRoute()...)
 	}
-	policies = append(
-		policies,
-		rbac.NewTenantPolicy(utils.TenantAnonymous, s.service_name),
-	)
-	rbacClient.AddPolicies(policies)
+	rbacClient.AddActionPolicies(policies)
 
 	for _, routeInfo := range routeInfos {
 		s.router.Handle(routeInfo.Method, routeInfo.Path, routeInfo.HandlerFunc)

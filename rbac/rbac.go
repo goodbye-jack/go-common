@@ -12,25 +12,22 @@ import (
 )
 
 // [request_definition]
-// ten: tenant
 // dom: service_name
 // sub: user
 // obj: path
 // act: method
 //
 // [policy_definition]
-// ten: tenant
 // dom: service_name
 // sub: role
 // obj: path
 // act: method
 const text = `
 [request_definition]
-r = ten, dom, sub, obj, act
+r = sub, dom, obj, act
 
 [policy_definition]
-p = dom, sub, obj, act
-p1 = ten, dom
+p = sub, dom, obj, act
 
 [role_definition]
 g = _, _
@@ -39,11 +36,10 @@ g = _, _
 e = some(where (p.eft == allow))
 
 [matchers]
-m = g(r.sub, p.sub) && r.ten == p1.ten && r.dom == p1.dom && r.dom == p.dom && r.obj == p.obj && r.act == p.act
+m = g(r.sub, p.sub) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
 `
 
 type Req struct {
-	ten string
 	dom string
 	sub string
 	obj string
@@ -88,6 +84,7 @@ func NewRbacClient(redisAddr string) *RbacClient {
 	if err != nil {
 		log.Fatalf("error, newModelFromString, %v", err)
 	}
+
 	adapter, err := redisadapter.NewAdapter("tcp", redisAddr)
 	if err != nil {
 		log.Fatalf("error, newAdapter, %v", err)
@@ -134,7 +131,7 @@ func NewActionPolicy(dom, sub, obj, act string) Policy {
 }
 
 func (p ActionPolicy) ToArr() []string {
-	return []string{"p", p.dom, p.sub, p.obj, p.act}
+	return []string{p.sub, p.dom, p.obj, p.act}
 }
 
 func NewTenantPolicy(ten, dom string) Policy {
@@ -149,21 +146,24 @@ func (p TenantPolicy) ToArr() []string {
 }
 
 func (p *RolePolicy) ToArr() []string {
-	return []string{"g", p.User, p.Role}
+	return []string{p.User, p.Role}
 }
 
-func NewReq(ten, dom, sub, obj, act string) *Req {
+func NewReq(sub, dom, obj, act string) *Req {
 	return &Req{
-		ten,
-		dom,
-		sub,
-		obj,
-		act,
+		dom: dom,
+		sub: sub,
+		obj: obj,
+		act: act,
 	}
 }
 
+func (r Req) ToArr() []string {
+	return []string {r.sub, r.dom, r.obj, r.act}
+}
+
 func (c *RbacClient) GetRolePolicy(sub string) (*RolePolicy, error) {
-	policies, err := c.e.GetFilteredPolicy(0, "g", sub)
+	policies, err := c.e.GetFilteredGroupingPolicy(0, sub)
 	if err != nil {
 		log.Error("GetRolePolicy/GetFilteredPolicy(0, %s) error, %v", sub, err)
 		return nil, err
@@ -177,13 +177,32 @@ func (c *RbacClient) GetRolePolicy(sub string) (*RolePolicy, error) {
 
 	log.Info("GetRolePolicy(%s), result, %+v", sub, policies)
 	return &RolePolicy{
-		Role: policies[0][2],
-		User: policies[0][1],
+		Role: policies[0][1],
+		User: policies[0][0],
 	}, nil
 }
 
 func (c *RbacClient) AddRolePolicy(rp *RolePolicy) error {
-	return c.AddPolicies([]Policy{rp})
+	log.Info("AddRolePolicy(%v)", *rp)
+	_rp, err := c.GetRolePolicy(rp.User);
+	if err != nil {
+		log.Error("AddRolePolicy/GetRolePolicy(%v) error, %v", *rp, err)
+		return err
+	}
+	if _rp != nil && _rp.Role != rp.Role {
+		log.Info("AddRolePolicy(%v) had existed", *rp)
+		return nil
+	}
+
+	added, err := c.e.AddGroupingPolicy(rp.ToArr())
+	if err != nil {
+		log.Error("AddRolePolicy/AddGroupingPolicy(%v) error, %v", *rp, err)
+		return err
+	}
+	if added {
+		return c.save()
+	}
+	return nil
 }
 
 func (c *RbacClient) UpdateRolePolicy(rp *RolePolicy, role string) error {
@@ -205,7 +224,7 @@ func (c *RbacClient) UpdateRolePolicy(rp *RolePolicy, role string) error {
 }
 
 func (c *RbacClient) DeleteRolePolicy(rp *RolePolicy) error {
-	removed, err := c.e.RemoveFilteredPolicy(0, "g", rp.User)
+	removed, err := c.e.RemoveFilteredGroupingPolicy(0, rp.User)
 	if err != nil {
 		return err
 	}
@@ -219,17 +238,17 @@ func (c *RbacClient) DeleteRolePolicy(rp *RolePolicy) error {
 }
 
 func (c *RbacClient) save() error {
-	//if err := c.e.SavePolicy(); err != nil {
-	//	log.Errorf("save/SavePolicy, %v", err)
-	//	return err
-	//}
+	if err := c.e.SavePolicy(); err != nil {
+		log.Errorf("save/SavePolicy, %v", err)
+		return err
+	}
 	if err := c.w.Update(); err != nil {
 		log.Errorf("save/Update, %v", err)
 	}
 	return nil
 }
 
-func (c *RbacClient) AddPolicies(policies []Policy) error {
+func (c *RbacClient) AddActionPolicies(policies []Policy) error {
 	_policies := [][]string{}
 	for _, p := range policies {
 		_policy := p.ToArr()
@@ -251,5 +270,11 @@ func (c *RbacClient) AddPolicies(policies []Policy) error {
 }
 
 func (c *RbacClient) Enforce(r *Req) (bool, error) {
-	return true, nil
+	ok, err := c.e.Enforce(r.sub, r.dom, r.obj, r.act)
+	if err != nil {
+		log.Error("Enforce(%v) error, %v", *r, err)
+		return false, err
+	}
+	log.Info("Enforce(%v) result , %v", *r, ok)
+	return ok, nil
 }

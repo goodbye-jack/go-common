@@ -13,9 +13,7 @@ import (
 func RbacMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := GetUser(c)
-		tenant := GetTenant(c)
 		req := rbac.NewReq(
-			tenant,
 			c.Request.Host,
 			user,
 			c.Request.URL.Path,
