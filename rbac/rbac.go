@@ -75,28 +75,28 @@ type RbacClient struct {
 var rbacClient *RbacClient = nil
 
 func NewRbacClient(redisAddr string) *RbacClient {
+	log.Info("NewRbacClient(%s)", redisAddr)
 	if rbacClient != nil {
 		return rbacClient
 	}
-	log.Info("rbac redis address is %v", redisAddr)
 
 	m, err := model.NewModelFromString(text)
 	if err != nil {
-		log.Fatalf("error, newModelFromString, %v", err)
+		log.Fatalf("NewRbacClient/NewModelFromString error, %v", err)
 	}
 
 	adapter, err := redisadapter.NewAdapter("tcp", redisAddr)
 	if err != nil {
-		log.Fatalf("error, newAdapter, %v", err)
+		log.Fatalf("NewRbacClient/NewAdapter error, %v", err)
 	}
 
 	e, err := casbin.NewEnforcer(m, adapter)
 	if err != nil {
-		log.Fatalf("error, NewEnforcer, %v", err)
+		log.Fatal("NewRbacClient/NewEnforcer error, %v", err)
 	}
 
 	if err := e.LoadPolicy(); err != nil {
-		log.Fatalf("error, LoadPolicy, %v", err)
+		log.Fatal("NewRbacClient/LoadPolicy error, %v", err)
 	}
 
 	w, err := rediswatcher.NewWatcher(redisAddr, rediswatcher.WatcherOptions{
@@ -107,11 +107,14 @@ func NewRbacClient(redisAddr string) *RbacClient {
 		IgnoreSelf: true,
 	})
 	if err != nil {
-		log.Fatalf("error, NewWatcher, %v", err)
+		log.Fatalf("NewRbacClient/NewWatcher error, %v", err)
 	}
 
 	if err := e.SetWatcher(w); err != nil {
-		log.Fatalf("error, SetWatcher, %v", err)
+		log.Fatal("NewRbacClient/SetWatcher error, %v", err)
+	}
+	if err := w.SetUpdateCallback(rediswatcher.DefaultUpdateCallback(e)); err != nil {
+		log.Fatal("NewRbacClient/SetUpdateCallback error, %v", err)
 	}
 
 	rbacClient = &RbacClient{
@@ -159,7 +162,7 @@ func NewReq(sub, dom, obj, act string) *Req {
 }
 
 func (r Req) ToArr() []string {
-	return []string {r.sub, r.dom, r.obj, r.act}
+	return []string{r.sub, r.dom, r.obj, r.act}
 }
 
 func (c *RbacClient) GetRolePolicy(sub string) (*RolePolicy, error) {
@@ -184,7 +187,7 @@ func (c *RbacClient) GetRolePolicy(sub string) (*RolePolicy, error) {
 
 func (c *RbacClient) AddRolePolicy(rp *RolePolicy) error {
 	log.Info("AddRolePolicy(%v)", *rp)
-	_rp, err := c.GetRolePolicy(rp.User);
+	_rp, err := c.GetRolePolicy(rp.User)
 	if err != nil {
 		log.Error("AddRolePolicy/GetRolePolicy(%v) error, %v", *rp, err)
 		return err

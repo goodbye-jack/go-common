@@ -15,7 +15,7 @@ func TestRbac(t *testing.T) {
 	}
 
 	rbac := NewRbacClient(redisAddr)
-	
+
 	aRp, err := rbac.GetRolePolicy("admin")
 	if err != nil {
 		log.Error("GetRolePolicy, error %v", err)

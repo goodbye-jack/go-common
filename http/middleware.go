@@ -13,8 +13,9 @@ import (
 func RbacMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := GetUser(c)
+		serviceName := GetServiceName(c)
 		req := rbac.NewReq(
-			c.Request.Host,
+			serviceName,
 			user,
 			c.Request.URL.Path,
 			c.Request.Method,
