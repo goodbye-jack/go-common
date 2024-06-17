@@ -11,18 +11,20 @@ import (
 )
 
 func RbacMiddleware() gin.HandlerFunc {
+	log.Info("RbacMiddleware")
 	return func(c *gin.Context) {
+		log.Info("RbacMiddleware()")
 		user := GetUser(c)
 		serviceName := GetServiceName(c)
 		req := rbac.NewReq(
-			serviceName,
 			user,
+			serviceName,
 			c.Request.URL.Path,
 			c.Request.Method,
 		)
 		ok, err := rbacClient.Enforce(req)
 		if err != nil {
-			log.Errorf("RbacMiddleware, %v", err)
+			log.Errorf("RbacMiddleware/Enforce(%v), %v", *req, err)
 		}
 
 		if !ok {
@@ -45,6 +47,7 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 		}
 	}
 	return func(c *gin.Context) {
+		log.Info("LoginRequiredMiddleware()")
 		sso := uniq2sso[fmt.Sprintf("%s_%s", c.Request.URL.Path, c.Request.Method)]
 		u := GetUser(c)
 		if u == utils.UserAnonymous && sso {
@@ -58,6 +61,7 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 
 func TenantMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		log.Info("TenantMiddleware()")
 		tenant := c.Request.Header.Get(utils.TenantHeaderName)
 
 		ctx := context.WithValue(

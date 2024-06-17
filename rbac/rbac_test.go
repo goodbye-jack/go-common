@@ -30,7 +30,7 @@ func TestRbac(t *testing.T) {
 		log.Error("AddRolePolicy, error, %v", err)
 	}
 
-	ok, err := rbac.Enforce(NewReq("admin2", "go-common", "/ping", "GET"))
+	ok, err := rbac.Enforce(NewReq("admin", "go-common", "/ping", "GET"))
 	log.Info("Enforce, result, %v", ok)
 
 	aRp, err = rbac.GetRolePolicy("admin")
@@ -42,5 +42,4 @@ func TestRbac(t *testing.T) {
 	rbac.UpdateRolePolicy(rp, utils.RoleManager)
 
 	rbac.GetRolePolicy("admin")
-	rbac.DeleteRolePolicy(rp)
 }

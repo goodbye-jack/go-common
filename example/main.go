@@ -15,6 +15,7 @@ type World struct {
 func main() {
 	addr := config.GetConfigString("addr")
 	service_name := config.GetConfigString("service_name")
+
 	server := myHttp.NewHTTPServer(service_name)
 	server.Route("/hello", []string{"GET"}, utils.RoleManager, false, func(c *gin.Context) {
 		world := World {
@@ -28,6 +29,5 @@ func main() {
 		}
 		myHttp.JsonResponse(c, world, errors.New("error"))
 	})
-
 	server.Run(addr)
 }

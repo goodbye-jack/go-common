@@ -56,10 +56,6 @@ func (s *HTTPServer) prepare() {
 	}
 	rbacClient.AddActionPolicies(policies)
 
-	for _, routeInfo := range routeInfos {
-		s.router.Handle(routeInfo.Method, routeInfo.Path, routeInfo.HandlerFunc)
-	}
-
 	loginRequiredMiddleware := LoginRequiredMiddleware(s.routes)
 	rbacMiddleware := RbacMiddleware()
 	tenantMiddleware := TenantMiddleware()
@@ -67,10 +63,14 @@ func (s *HTTPServer) prepare() {
 	s.router.Use(loginRequiredMiddleware)
 	s.router.Use(rbacMiddleware)
 	s.router.Use(tenantMiddleware)
+
+	for _, routeInfo := range routeInfos {
+		s.router.Handle(routeInfo.Method, routeInfo.Path, routeInfo.HandlerFunc)
+	}
 }
 
 func (s *HTTPServer) Run(addr string) {
-	log.Infof("server %v is running", addr)
+	log.Info("server %v is running", addr)
 	s.prepare()
 	s.router.Run(addr)
 }
