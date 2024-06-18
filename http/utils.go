@@ -8,6 +8,7 @@ import (
 )
 
 func GetServiceName(c *gin.Context) string {
+	log.Info("Header, Host(%s)", c.Request.Header.Get("Host"))
 	log.Info("GetServiceName(%s)", c.Request.Host)
 	parts := strings.Split(c.Request.Host, ".")
 	if len(parts) == 0 {
