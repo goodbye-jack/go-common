@@ -1,8 +1,11 @@
 package orm
 
 import (
+	"errors"
 	"testing"
 	"gorm.io/gorm"
+	"context"
+	"github.com/goodbye-jack/go-common/config"
 )
 
 
@@ -13,20 +16,44 @@ type Tester struct {
 }
 
 func TestORM(t *testing.T) {
-	orm := NewOrm()
+	orm := NewOrm(
+		config.GetConfigString("tidb_dsn"),
+	)
 	orm.AutoMigrate(&Tester{})
 
 	tr := Tester {
 		Name: "Tester",
 	}
+	ctx := context.Background()
 
-	orm.Create(&tr)
+	orm.Create(ctx, &tr)
 
 	ntr := &Tester {}
-	if err := orm.First(ntr, "name = ?", "Tester"); err !=  nil {
+	if err := orm.First(ctx, ntr, "name = ?", "Tester"); err !=  nil {
 		t.Error(err)
 	}
-
 	t.Log(ntr.Name)
+
+	orm.Transaction(ctx, func(tx *gorm.DB) error {
+		tr2 := Tester {
+			Name: "Tester3",
+		}
+		if err := tx.WithContext(ctx).Create(&tr2).Error; err != nil {
+			return err
+		}
+
+		ntr := &Tester {}
+		if err := orm.First(ctx, ntr, "name = ?", "Tester3"); err !=  nil {
+			t.Error(err)
+		}
+		t.Log(ntr.Name)
+		return errors.New("TransactionError")
+	})
+
+	ntr2 := &Tester {}
+	if err := orm.First(ctx, ntr2, "name = ?", "Tester3"); err !=  nil {
+		t.Error(err)
+	}
+	t.Log(ntr2.Name)
 
 } 
