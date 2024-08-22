@@ -11,6 +11,7 @@ const (
 	paramsErrorMessage    = "输入参数有问题， 要检查一下输入参数"
 	intervalErrorMessage  = "服务器出了点问题，联系服务器维护人员吧"
 	duplicateErrorMessage = "相关数据已经存在于系统内啦."
+	wrongPassErrorMessage = "手机号或者密码错误."
 )
 
 type serverError struct {
@@ -30,6 +31,10 @@ type intervalError struct {
 }
 
 type duplicateError struct {
+	message string
+}
+
+type wrongPassError struct {
 	message string
 }
 
@@ -123,6 +128,23 @@ func DuplicateErrorf(format string, opt ...interface{}) error {
 	return errors.Wrapf(err, format, opt...)
 }
 
+func (e wrongPassError) Error() string {
+	return e.message
+}
+
+func WrongPassError(message string) error {
+	err := wrongPassError{
+		message: wrongPassErrorMessage,
+	}
+	return errors.Wrapf(err, message)
+}
+
+func WrongPassErrorf(format string, opt ...interface{}) error {
+	err := wrongPassError{
+		message: wrongPassErrorMessage,
+	}
+	return errors.Wrapf(err, format, opt...)
+}
 func whichError(err error) string {
 	log.Error("http error, %v", err)
 	for _, httpError := range []error{
@@ -140,6 +162,9 @@ func whichError(err error) string {
 		},
 		&duplicateError{
 			message: duplicateErrorMessage,
+		},
+		&wrongPassError{
+			message: wrongPassErrorMessage,
 		},
 	} {
 		if errors.As(err, httpError) {
