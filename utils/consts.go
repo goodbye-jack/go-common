@@ -22,4 +22,7 @@ const (
 	CasbinRedisAddrName = "redis_addr"
 
 	JWTSecret = "goodbye-jack,comeon"
+
+	ConfigNameToken = "cookie_token"
+	ConfigNameTokenExpired = "cookie_token_expired_seconds"
 )

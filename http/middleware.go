@@ -7,6 +7,7 @@ import (
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/rbac"
 	"github.com/goodbye-jack/go-common/utils"
+	"github.com/goodbye-jack/go-common/config"
 	"net/http"
 )
 
@@ -46,13 +47,25 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 			uniq2sso[uniq] = false
 		}
 	}
+	tokenName := config.GetConfigString(utils.ConfigNameToken)
+	log.Info("token name is %s", tokenName)
 	return func(c *gin.Context) {
 		log.Info("LoginRequiredMiddleware()")
 		sso := uniq2sso[fmt.Sprintf("%s_%s", c.Request.URL.Path, c.Request.Method)]
-		u := GetUser(c)
-		if u == utils.UserAnonymous && sso {
-			c.AbortWithStatus(http.StatusUnauthorized)
-			return
+		if sso {
+			token, err := c.Cookie(tokenName)
+			//Cookie not existed
+			if err != nil {
+				log.Warn("Cookie/%s not existed, %v", tokenName, err)
+				c.AbortWithStatus(http.StatusUnauthorized)
+				return
+			}
+			//Token expired
+			if _, err := utils.ParseJWT(token); err != nil {
+				log.Warn("Token(%s) expired, %v", token, err)
+				c.AbortWithStatus(http.StatusUnauthorized)
+				return
+			}
 		}
 
 		c.Next()
