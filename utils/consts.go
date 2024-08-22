@@ -20,4 +20,6 @@ const (
 	TenantHeaderName  = "X-Tenant"
 
 	CasbinRedisAddrName = "redis_addr"
+
+	JWTSecret = "goodbye-jack,comeon"
 )
