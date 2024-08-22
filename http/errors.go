@@ -39,14 +39,14 @@ func (e serverError) Error() string {
 
 func ServerError(message string) error {
 	err := serverError{
-		message: "serverError",
+		message: serverErrorMessage,
 	}
 	return errors.Wrap(err, message)
 }
 
 func ServerErrorf(format string, opt ...interface{}) error {
 	err := serverError{
-		message: "serverError",
+		message: serverErrorMessage,
 	}
 	return errors.Wrapf(err, format, opt...)
 }
@@ -57,14 +57,14 @@ func (e clientError) Error() string {
 
 func ClientError(message string) error {
 	err := clientError{
-		message: "clientError",
+		message: clientErrorMessage,
 	}
 	return errors.Wrapf(err, message)
 }
 
 func ClientErrorf(format string, opt ...interface{}) error {
 	err := clientError{
-		message: "clientError",
+		message: clientErrorMessage,
 	}
 	return errors.Wrapf(err, format, opt...)
 }
@@ -75,14 +75,14 @@ func (e paramsError) Error() string {
 
 func ParamsError(message string) error {
 	err := paramsError{
-		message: "paramsError",
+		message: paramsErrorMessage,
 	}
 	return errors.Wrapf(err, message)
 }
 
 func ParamsErrorf(format string, opt ...interface{}) error {
 	err := paramsError{
-		message: "paramsError",
+		message: paramsErrorMessage,
 	}
 	return errors.Wrapf(err, format, opt...)
 }
@@ -93,14 +93,14 @@ func (e intervalError) Error() string {
 
 func IntervalError(message string) error {
 	err := intervalError{
-		message: "intervalError",
+		message: intervalErrorMessage,
 	}
 	return errors.Wrapf(err, message)
 }
 
 func IntervalErrorf(format string, opt ...interface{}) error {
 	err := intervalError{
-		message: "intervalError",
+		message: intervalErrorMessage,
 	}
 	return errors.Wrapf(err, format, opt...)
 }
@@ -111,14 +111,14 @@ func (e duplicateError) Error() string {
 
 func DuplicateError(message string) error {
 	err := duplicateError{
-		message: "duplicateError",
+		message: duplicateErrorMessage,
 	}
 	return errors.Wrapf(err, message)
 }
 
 func DuplicateErrorf(format string, opt ...interface{}) error {
 	err := duplicateError{
-		message: "duplicateError",
+		message: duplicateErrorMessage,
 	}
 	return errors.Wrapf(err, format, opt...)
 }
@@ -143,6 +143,7 @@ func whichError(err error) string {
 		},
 	} {
 		if errors.As(err, httpError) {
+			log.Info(err)
 			log.Info("whichError, return %s", httpError.Error())
 			return httpError.Error()
 		}
