@@ -15,7 +15,7 @@ func RbacMiddleware() gin.HandlerFunc {
 	log.Info("RbacMiddleware")
 	return func(c *gin.Context) {
 		log.Info("RbacMiddleware()")
-		user := GetUser(c)
+		user := c.GetString("UserID")
 		serviceName := GetServiceName(c)
 		req := rbac.NewReq(
 			user,
@@ -61,11 +61,13 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 				return
 			}
 			//Token expired
-			if _, err := utils.ParseJWT(token); err != nil {
+			uid, err := utils.ParseJWT(token)
+			if err != nil {
 				log.Warn("Token(%s) expired, %v", token, err)
 				c.AbortWithStatus(http.StatusUnauthorized)
 				return
 			}
+			c.Set("UserID", uid)
 		}
 
 		c.Next()
