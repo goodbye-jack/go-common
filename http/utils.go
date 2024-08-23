@@ -18,12 +18,16 @@ func GetServiceName(c *gin.Context) string {
 }
 
 func GetUser(c *gin.Context) string {
-	user := c.Request.Header.Get("Remote-User")
+	user := c.GetString("UserID")
 	log.Info("GetUser(%s)", user)
 	if user == "" {
 		user = utils.UserAnonymous
 	}
 	return user
+}
+
+func SetUser(c *gin.Context, user string) {
+	c.Set("UserID", user)
 }
 
 func GetTenant(c *gin.Context) string {

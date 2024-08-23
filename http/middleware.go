@@ -15,7 +15,7 @@ func RbacMiddleware() gin.HandlerFunc {
 	log.Info("RbacMiddleware")
 	return func(c *gin.Context) {
 		log.Info("RbacMiddleware()")
-		user := c.GetString("UserID")
+		user := GetUser(c)
 		serviceName := GetServiceName(c)
 		req := rbac.NewReq(
 			user,
@@ -67,7 +67,7 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 				c.AbortWithStatus(http.StatusUnauthorized)
 				return
 			}
-			c.Set("UserID", uid)
+			SetUser(c, uid)
 		}
 
 		c.Next()
