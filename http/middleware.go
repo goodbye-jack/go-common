@@ -9,12 +9,17 @@ import (
 	"github.com/goodbye-jack/go-common/utils"
 	"github.com/goodbye-jack/go-common/config"
 	"net/http"
+	"strings"
 )
 
 func RbacMiddleware() gin.HandlerFunc {
 	log.Info("RbacMiddleware")
 	return func(c *gin.Context) {
 		log.Info("RbacMiddleware()")
+		if strings.HasPrefix(c.Request.URL.Path, "/static/") {
+			c.Next()
+			return
+		}
 		user := GetUser(c)
 		serviceName := GetServiceName(c)
 		req := rbac.NewReq(
