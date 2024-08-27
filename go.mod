@@ -6,6 +6,7 @@ require (
 	github.com/casbin/casbin/v2 v2.89.0
 	github.com/casbin/redis-adapter/v3 v3.5.0
 	github.com/casbin/redis-watcher/v2 v2.5.0
+	github.com/gin-contrib/static v1.1.2
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/pkg/errors v0.9.1

@@ -2,6 +2,7 @@ package http
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/gin-contrib/static"
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/config"
 	"github.com/goodbye-jack/go-common/rbac"
@@ -67,6 +68,10 @@ func (s *HTTPServer) prepare() {
 	for _, routeInfo := range routeInfos {
 		s.router.Handle(routeInfo.Method, routeInfo.Path, routeInfo.HandlerFunc)
 	}
+}
+
+func (s *HTTPServer) StaticFs(static_dir string) {
+	s.router.Use(static.Serve("/static", static.LocalFile(static_dir, true)))
 }
 
 func (s *HTTPServer) Run(addr string) {
