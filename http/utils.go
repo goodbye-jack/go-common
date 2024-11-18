@@ -4,6 +4,7 @@ import (
 	"strings"
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/log"
+	"github.com/goodbye-jack/go-common/config"
 	"github.com/goodbye-jack/go-common/utils"
 )
 
@@ -36,6 +37,17 @@ func GetTenant(c *gin.Context) string {
 		return utils.TenantAnonymous
 	}
 	return tenant
+}
+
+func AddTokenCookie(c *gin.Context, token string, tokenExpired int) {
+	tokenName := config.GetConfigString(utils.ConfigNameToken)
+	if tokenName == "" {
+		log.Warn("!!!!!!!!!!!token name is empty!!!!!!!")
+		tokenName = "good-token"
+	}
+	log.Info("token name = %s", tokenName)
+
+	c.SetCookie(tokenName, token, tokenExpired, "/", "", false, true)
 }
 
 func JsonResponse(c *gin.Context, data interface{}, err error) {

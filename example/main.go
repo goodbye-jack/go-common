@@ -17,7 +17,7 @@ func main() {
 	service_name := config.GetConfigString("service_name")
 
 	server := myHttp.NewHTTPServer(service_name)
-	server.StaticFs(".")
+	server.StaticFs("/static")
 	server.Route("/hello", []string{"GET"}, utils.RoleManager, false, func(c *gin.Context) {
 		world := World {
 			Name: "China",
