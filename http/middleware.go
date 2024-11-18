@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-func RbacMiddleware() gin.HandlerFunc {
+func RbacMiddleware(serviceName string) gin.HandlerFunc {
 	log.Info("RbacMiddleware")
 	return func(c *gin.Context) {
 		log.Info("RbacMiddleware()")
@@ -21,7 +21,6 @@ func RbacMiddleware() gin.HandlerFunc {
 			return
 		}
 		user := GetUser(c)
-		serviceName := GetServiceName(c)
 		req := rbac.NewReq(
 			user,
 			serviceName,

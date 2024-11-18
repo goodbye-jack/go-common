@@ -58,7 +58,7 @@ func (s *HTTPServer) prepare() {
 	rbacClient.AddActionPolicies(policies)
 
 	loginRequiredMiddleware := LoginRequiredMiddleware(s.routes)
-	rbacMiddleware := RbacMiddleware()
+	rbacMiddleware := RbacMiddleware(s.service_name)
 	tenantMiddleware := TenantMiddleware()
 
 	s.router.Use(loginRequiredMiddleware)

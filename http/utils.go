@@ -1,22 +1,11 @@
 package http
 
 import (
-	"strings"
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/config"
 	"github.com/goodbye-jack/go-common/utils"
 )
-
-func GetServiceName(c *gin.Context) string {
-	log.Info("Header, Host(%s)", c.Request.Header.Get("Host"))
-	log.Info("GetServiceName(%s)", c.Request.Host)
-	parts := strings.Split(c.Request.Host, ".")
-	if len(parts) == 0 {
-		return ""
-	}
-	return parts[0]
-}
 
 func GetUser(c *gin.Context) string {
 	user := c.GetString("UserID")
