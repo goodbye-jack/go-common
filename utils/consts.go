@@ -1,8 +1,7 @@
 package utils
 
 const (
-	RoleGuest         = "guest"
-	RoleEditor        = "editor"
+	RoleIdle          = ""
 	RoleManager       = "manager"
 	RoleAdministrator = "administrator"
 
@@ -23,6 +22,6 @@ const (
 
 	JWTSecret = "goodbye-jack,comeon"
 
-	ConfigNameToken = "cookie_token"
+	ConfigNameToken        = "cookie_token"
 	ConfigNameTokenExpired = "cookie_token_expired_seconds"
 )

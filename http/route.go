@@ -9,38 +9,19 @@ import (
 )
 
 type Route struct {
-	service_name string
-	url          string
-	methods      []string
-	sso          bool
-	roles        []string
+	ServiceName  string
+	Url          string
+	Methods      []string
+	Sso          bool
+	DefaultRoles []string
 	handlerFunc  gin.HandlerFunc
 }
 
 var RoleMapping = map[string][]string{}
 
 func init() {
-	RoleMapping[""] = []string{
+	RoleMapping[utils.RoleIdle] = []string{
 		utils.RoleAdministrator,
-		utils.RoleManager,
-		utils.RoleEditor,
-		utils.RoleGuest,
-		utils.UserAnonymous,
-	}
-	RoleMapping[utils.RoleGuest] = []string{
-		utils.RoleAdministrator,
-		utils.RoleManager,
-		utils.RoleEditor,
-		utils.RoleGuest,
-	}
-	RoleMapping[utils.RoleEditor] = []string{
-		utils.RoleAdministrator,
-		utils.RoleManager,
-		utils.RoleEditor,
-	}
-	RoleMapping[utils.RoleManager] = []string{
-		utils.RoleAdministrator,
-		utils.RoleManager,
 	}
 	RoleMapping[utils.RoleAdministrator] = []string{
 		utils.RoleAdministrator,
@@ -57,11 +38,11 @@ func NewRoute(service_name string, url string, methods []string, role string, ss
 	}
 
 	return &Route{
-		service_name: service_name,
-		sso:          sso,
-		url:          url,
-		methods:      methods,
-		roles:        RoleMapping[role],
+		ServiceName:  service_name,
+		Sso:          sso,
+		Url:          url,
+		Methods:      methods,
+		DefaultRoles: RoleMapping[role],
 		handlerFunc:  handlerFunc,
 	}
 }
@@ -69,9 +50,9 @@ func NewRoute(service_name string, url string, methods []string, role string, ss
 func (r *Route) ToSso() ([]string, []string) {
 	sso := []string{}
 	nonsso := []string{}
-	for _, method := range r.methods {
-		uniq := fmt.Sprintf("%s_%s", r.url, method)
-		if r.sso {
+	for _, method := range r.Methods {
+		uniq := fmt.Sprintf("%s_%s", r.Url, method)
+		if r.Sso {
 			sso = append(sso, uniq)
 		} else {
 			nonsso = append(nonsso, uniq)
@@ -82,17 +63,17 @@ func (r *Route) ToSso() ([]string, []string) {
 
 func (r *Route) ToRbacPolicy() []rbac.Policy {
 	ans := []rbac.Policy{}
-	for _, method := range r.methods {
-		if len(r.roles) == 0 {
+	for _, method := range r.Methods {
+		if len(r.DefaultRoles) == 0 {
 			ans = append(
 				ans,
-				rbac.NewActionPolicy(r.service_name, utils.UserAnonymous, r.url, method),
+				rbac.NewActionPolicy(r.ServiceName, utils.UserAnonymous, r.Url, method),
 			)
 		}
-		for _, role := range r.roles {
+		for _, role := range r.DefaultRoles {
 			ans = append(
 				ans,
-				rbac.NewActionPolicy(r.service_name, role, r.url, method),
+				rbac.NewActionPolicy(r.ServiceName, role, r.Url, method),
 			)
 		}
 	}
@@ -102,12 +83,12 @@ func (r *Route) ToRbacPolicy() []rbac.Policy {
 
 func (r *Route) ToGinRoute() []*gin.RouteInfo {
 	ans := []*gin.RouteInfo{}
-	for _, method := range r.methods {
+	for _, method := range r.Methods {
 		ans = append(
 			ans,
 			&gin.RouteInfo{
 				Method:      method,
-				Path:        r.url,
+				Path:        r.Url,
 				HandlerFunc: r.handlerFunc,
 			},
 		)

@@ -3,9 +3,9 @@ package main
 import (
 	"errors"
 	"github.com/gin-gonic/gin"
+	"github.com/goodbye-jack/go-common/config"
 	myHttp "github.com/goodbye-jack/go-common/http"
 	"github.com/goodbye-jack/go-common/utils"
-	"github.com/goodbye-jack/go-common/config"
 )
 
 type World struct {
@@ -18,14 +18,14 @@ func main() {
 
 	server := myHttp.NewHTTPServer(service_name)
 	server.StaticFs("/static")
-	server.Route("/hello", []string{"GET"}, utils.RoleManager, false, func(c *gin.Context) {
-		world := World {
+	server.Route("/hello", []string{"GET"}, utils.RoleAdministrator, false, func(c *gin.Context) {
+		world := World{
 			Name: "China",
 		}
 		myHttp.JsonResponse(c, world, nil)
 	})
-	server.Route("/hello/error", []string{"GET"}, utils.RoleManager, false, func(c *gin.Context) {
-		world := World {
+	server.Route("/hello/error", []string{"GET"}, utils.RoleAdministrator, false, func(c *gin.Context) {
+		world := World{
 			Name: "China",
 		}
 		myHttp.JsonResponse(c, world, errors.New("error"))
