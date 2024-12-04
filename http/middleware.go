@@ -50,27 +50,24 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 		}
 	}
 	tokenName := config.GetConfigString(utils.ConfigNameToken)
-	log.Info("token name is %s", tokenName)
 	return func(c *gin.Context) {
-		log.Info("LoginRequiredMiddleware()")
 		sso := uniq2sso[fmt.Sprintf("%s_%s", c.Request.URL.Path, c.Request.Method)]
-		if sso {
-			token, err := c.Cookie(tokenName)
-			//Cookie not existed
-			if err != nil {
-				log.Warn("Cookie/%s not existed, %v", tokenName, err)
-				c.AbortWithStatus(http.StatusUnauthorized)
-				return
-			}
-			//Token expired
-			uid, err := utils.ParseJWT(token)
-			if err != nil {
-				log.Warn("Token(%s) expired, %v", token, err)
-				c.AbortWithStatus(http.StatusUnauthorized)
-				return
-			}
-			SetUser(c, uid)
+		token, err := c.Cookie(tokenName)
+		//Cookie not existed
+		if err != nil && sso {
+			log.Warn("Cookie/%s not existed, %v", tokenName, err)
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
 		}
+		//Token expired
+		uid, err := utils.ParseJWT(token)
+		if err != nil && sso {
+			log.Warn("Token(%s) expired, %v", token, err)
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		log.Info("LoginRequiredMiddleware(), uid=%s", uid)
+		SetUser(c, uid)
 
 		c.Next()
 	}
