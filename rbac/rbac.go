@@ -272,6 +272,41 @@ func (c *RbacClient) AddActionPolicies(policies []Policy) error {
 	return c.save()
 }
 
+func (c *RbacClient) GetActionPolicies(role string) ([]*ActionPolicy, error) {
+	log.Info("GetActionPolicies, role is %s", role)
+	content, err := c.e.GetFilteredPolicy(0, role)
+	if err != nil {
+		log.Error("GetActionPolicies/GetFilteredPolicy failed, %v, error, %v", content, err)
+		return nil, err
+	}
+
+	log.Info("GetActionPolicies/FilteredPolicies return content: %v", content)
+	ans := []*ActionPolicy{}
+	for _, item := range content {
+		ans = append(ans, &ActionPolicy{
+			sub: item[0],
+			dom: item[1],
+			obj: item[2],
+			act: item[3],
+		})
+	}
+	return ans, nil
+}
+
+func (c *RbacClient) DeleteActionPolicy(ap *ActionPolicy) error {
+	removed, err := c.e.RemovePolicy(ap.ToArr())
+	if err != nil {
+		log.Error("DeleteActionPolicy/RemovePolicy, error %v", err)
+		return err
+	}
+
+	log.Info("DeleteActionPolicy %v, removed: %v", ap, removed)
+	if removed {
+		return c.save()
+	}
+	return nil
+}
+
 func (c *RbacClient) Enforce(r *Req) (bool, error) {
 	ok, err := c.e.Enforce(r.sub, r.dom, r.obj, r.act)
 	if err != nil {

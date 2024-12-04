@@ -42,4 +42,10 @@ func TestRbac(t *testing.T) {
 	rbac.UpdateRolePolicy(rp, utils.RoleManager)
 
 	rbac.GetRolePolicy("admin")
+
+	aps, err := rbac.GetActionPolicies("administrator")
+	if err != nil {
+		log.Error("GetActionPolicies, error %v", err)
+	}
+	log.Info("All ActionPolicies, %v", aps)
 }
