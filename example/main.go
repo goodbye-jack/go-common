@@ -30,5 +30,6 @@ func main() {
 		}
 		myHttp.JsonResponse(c, world, errors.New("error"))
 	})
+	server.Prepare()
 	server.Run(addr)
 }

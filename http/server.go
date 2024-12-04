@@ -58,7 +58,7 @@ func (s *HTTPServer) Route(path string, methods []string, role string, sso bool,
 	s.routes = append(s.routes, NewRoute(s.service_name, path, methods, role, sso, fn))
 }
 
-func (s *HTTPServer) prepare() {
+func (s *HTTPServer) Prepare() {
 	policies := []rbac.Policy{}
 	routeInfos := []*gin.RouteInfo{}
 	for _, route := range s.routes {
@@ -86,6 +86,5 @@ func (s *HTTPServer) StaticFs(static_dir string) {
 
 func (s *HTTPServer) Run(addr string) {
 	log.Info("server %v is running", addr)
-	s.prepare()
 	s.router.Run(addr)
 }
