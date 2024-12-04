@@ -51,10 +51,10 @@ type Policy interface {
 }
 
 type ActionPolicy struct {
-	dom string
-	sub string
-	obj string
-	act string
+	Dom string
+	Sub string
+	Obj string
+	Act string
 }
 
 type TenantPolicy struct {
@@ -126,15 +126,15 @@ func NewRbacClient(redisAddr string) *RbacClient {
 
 func NewActionPolicy(dom, sub, obj, act string) Policy {
 	return &ActionPolicy{
-		dom,
-		sub,
-		obj,
-		act,
+		Dom: dom,
+		Sub: sub,
+		Obj: obj,
+		Act: act,
 	}
 }
 
 func (p ActionPolicy) ToArr() []string {
-	return []string{p.sub, p.dom, p.obj, p.act}
+	return []string{p.Sub, p.Dom, p.Obj, p.Act}
 }
 
 func NewTenantPolicy(ten, dom string) Policy {
@@ -284,10 +284,10 @@ func (c *RbacClient) GetActionPolicies(role string) ([]*ActionPolicy, error) {
 	ans := []*ActionPolicy{}
 	for _, item := range content {
 		ans = append(ans, &ActionPolicy{
-			sub: item[0],
-			dom: item[1],
-			obj: item[2],
-			act: item[3],
+			Sub: item[0],
+			Dom: item[1],
+			Obj: item[2],
+			Act: item[3],
 		})
 	}
 	return ans, nil
