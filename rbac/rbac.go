@@ -300,7 +300,7 @@ func (c *RbacClient) DeleteActionPolicy(ap *ActionPolicy) error {
 		return err
 	}
 
-	log.Info("DeleteActionPolicy %v, removed: %v", ap, removed)
+	log.Info("DeleteActionPolicy %v, removed: %v", *ap, removed)
 	if removed {
 		return c.save()
 	}

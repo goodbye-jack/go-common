@@ -48,4 +48,8 @@ func TestRbac(t *testing.T) {
 		log.Error("GetActionPolicies, error %v", err)
 	}
 	log.Info("All ActionPolicies, %v", aps)
+
+	if err := rbac.DeleteActionPolicy(aps[0]); err != nil {
+		log.Error("DeleteActionPolicy, failed %v", err)
+	}
 }
