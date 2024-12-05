@@ -21,6 +21,7 @@ var RoleMapping = map[string][]string{}
 
 func init() {
 	RoleMapping[utils.RoleIdle] = []string{
+		utils.UserAnonymous,
 		utils.RoleAdministrator,
 	}
 	RoleMapping[utils.RoleAdministrator] = []string{

@@ -3,6 +3,7 @@ package utils
 import (
 	"time"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/goodbye-jack/go-common/log"
 )
 
 type payload struct {
@@ -24,6 +25,7 @@ func GenJWT(data string, expiredSeconds int) (string, error) {
 }
 
 func ParseJWT(token string) (string, error) {
+	log.Info("ParseJWT then token=%s", token)
 	t, err := jwt.ParseWithClaims(token, &payload{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(JWTSecret), nil
 	})
@@ -33,4 +35,4 @@ func ParseJWT(token string) (string, error) {
 	} else {
 		return "", err
 	}
-} 
+}
