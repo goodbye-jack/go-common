@@ -54,17 +54,21 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 		sso := uniq2sso[fmt.Sprintf("%s_%s", c.Request.URL.Path, c.Request.Method)]
 		token, err := c.Cookie(tokenName)
 		//Cookie not existed
-		if err != nil && sso {
+		if err != nil || token == "" {
 			log.Warn("Cookie/%s not existed, %v", tokenName, err)
-			c.AbortWithStatus(http.StatusUnauthorized)
-			return
+			if sso {
+				c.AbortWithStatus(http.StatusUnauthorized)
+				return
+			}
 		}
 		//Token expired
 		uid, err := utils.ParseJWT(token)
-		if err != nil && sso {
+		if err != nil {
 			log.Warn("Token(%s) expired, %v", token, err)
-			c.AbortWithStatus(http.StatusUnauthorized)
-			return
+			if sso {
+				c.AbortWithStatus(http.StatusUnauthorized)
+				return
+			}
 		}
 		log.Info("LoginRequiredMiddleware(), uid=%s", uid)
 		SetUser(c, uid)
