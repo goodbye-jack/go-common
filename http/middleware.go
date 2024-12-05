@@ -58,8 +58,9 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 			log.Warn("Cookie/%s not existed, %v", tokenName, err)
 			if sso {
 				c.AbortWithStatus(http.StatusUnauthorized)
-				return
 			}
+			c.Next()
+			return
 		}
 		//Token expired
 		uid, err := utils.ParseJWT(token)
