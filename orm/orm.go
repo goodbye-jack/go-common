@@ -71,3 +71,11 @@ func (o *Orm) Delete(ctx context.Context, ptr interface{}) error {
 	db := o.db.WithContext(ctx)
 	return db.Delete(ptr).Error
 }
+
+func (o *Orm) Preload(key string, ctx context.Context, res interface{}, filters ...interface{}) error {
+	db := o.db.WithContext(ctx)
+	if len(filters) > 0 {
+		return db.Preload(key).Where(filters[0], filters[1:]...).Find(res).Error
+	}
+	return db.Preload(key).Find(res).Error
+}
