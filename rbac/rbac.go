@@ -252,6 +252,9 @@ func (c *RbacClient) save() error {
 }
 
 func (c *RbacClient) AddActionPolicies(policies []Policy) error {
+	if len(policies) == 0 {
+		return nil
+	}
 	_policies := [][]string{}
 	for _, p := range policies {
 		_policy := p.ToArr()
