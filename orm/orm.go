@@ -2,9 +2,9 @@ package orm
 
 import (
 	"context"
+	"github.com/goodbye-jack/go-common/log"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"github.com/goodbye-jack/go-common/log"
 )
 
 type Orm struct {
@@ -17,7 +17,7 @@ func NewOrm(dsn string) *Orm {
 	if err != nil {
 		log.Fatal("mysql connect failed, %v", err)
 	}
-	return &Orm {
+	return &Orm{
 		db: db,
 	}
 }
@@ -78,4 +78,12 @@ func (o *Orm) Preload(key string, ctx context.Context, res interface{}, filters 
 		return db.Preload(key).Where(filters[0], filters[1:]...).Find(res).Error
 	}
 	return db.Preload(key).Find(res).Error
+}
+
+func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page, pageSize int, filters ...interface{}) error {
+	db := o.db.WithContext(ctx)
+	if len(filters) > 0 {
+		return db.Preload(key).Where(filters[0], filters[1:]...).Limit(pageSize).Offset(page * pageSize).Find(res).Error
+	}
+	return db.Preload(key).Limit(pageSize).Offset(page * pageSize).Find(res).Error
 }
