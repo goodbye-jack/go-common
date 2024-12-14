@@ -88,10 +88,20 @@ func (o *Orm) Preload(key string, ctx context.Context, res interface{}, filters 
 	return db.Preload(key).Find(res).Error
 }
 
-func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page, pageSize int, filters ...interface{}) error {
+func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, total int64, page, pageSize int, filters ...interface{}) (interface{}, int64, error) {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
-		return db.Preload(key).Where(filters[0], filters[1:]...).Limit(pageSize).Offset((page - 1) * pageSize).Find(res).Error
+		//return db.Preload(key).Where(filters[0], filters[1:]...).Limit(pageSize).Offset((page - 1) * pageSize).Find(res).Error
+		tx := db.Model(&res).Where(filters[0], filters[1:]...)
+		tx.Count(&total)
+		tx.Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(res)
+		return res, total, nil
+	} else {
+		tx := db.Model(&res)
+		tx.Count(&total)
+		tx.Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(res)
+		return res, total, nil
 	}
-	return db.Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(res).Error
+	//return db.Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(res).Error
+	//return
 }
