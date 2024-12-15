@@ -62,12 +62,12 @@ func (o *Orm) Page(ctx context.Context, res interface{}, page, pageSize int, fil
 	return db.Limit(pageSize).Offset((page - 1) * pageSize).Find(res).Error
 }
 
-func (o *Orm) Count(ctx context.Context, T any, total int64, filters ...interface{}) error {
+func (o *Orm) Count(ctx context.Context, model interface{}, total int64, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
-		return db.Where(filters[0], filters[1:]...).Model(&T).Count(&total).Error
+		return db.Where(filters[0], filters[1:]...).Model(&model).Count(&total).Error
 	}
-	return db.Model(&T).Count(&total).Error
+	return db.Model(&model).Count(&total).Error
 }
 
 func (o *Orm) Update(ctx context.Context, ptr interface{}) error {
