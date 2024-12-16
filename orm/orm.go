@@ -65,9 +65,17 @@ func (o *Orm) Page(ctx context.Context, res interface{}, page, pageSize int, fil
 func (o *Orm) Count(ctx context.Context, model interface{}, total int64, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
-		return db.Where(filters[0], filters[1:]...).Model(&model).Count(&total).Error
+		return db.Where(filters[0], filters[1:]...).Find(model).Count(&total).Error
 	}
-	return db.Model(&model).Count(&total).Error
+	return db.Find(model).Count(&total).Error
+}
+
+func (o *Orm) CountNew(ctx context.Context, res interface{}, total int64, filters ...interface{}) error {
+	db := o.db.WithContext(ctx)
+	if len(filters) > 0 {
+		return db.Where(filters[0], filters[1:]...).Find(res).Count(&total).Error
+	}
+	return db.Find(res).Count(&total).Error
 }
 
 func (o *Orm) Update(ctx context.Context, ptr interface{}) error {
@@ -91,11 +99,8 @@ func (o *Orm) Preload(key string, ctx context.Context, res interface{}, filters 
 func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, model interface{}, total int64, page, pageSize int, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
-		tx := db.Model(&model).Where(filters[0], filters[1:]...)
-		tx.Count(&total)
-		return tx.Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Error
+		return db.Where(filters[0], filters[1:]...).Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Error
 	} else {
-		tx := db.Model(&model).Count(&total)
-		return tx.Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Error
+		return db.Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Error
 	}
 }
