@@ -62,6 +62,15 @@ func (o *Orm) Page(ctx context.Context, res interface{}, page, pageSize int, fil
 	return db.Limit(pageSize).Offset((page - 1) * pageSize).Find(res).Error
 }
 
+func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page, pageSize int, filters ...interface{}) error {
+	db := o.db.WithContext(ctx)
+	if len(filters) > 0 {
+		return db.Where(filters[0], filters[1:]...).Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Error
+	} else {
+		return db.Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Error
+	}
+}
+
 func (o *Orm) Count(ctx context.Context, model interface{}, total int64, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
@@ -76,6 +85,14 @@ func (o *Orm) CountNew(ctx context.Context, res interface{}, total int64, filter
 		return db.Where(filters[0], filters[1:]...).Find(res).Count(&total).Error
 	}
 	return db.Find(res).Count(&total).Error
+}
+
+func (o *Orm) PreloadCount(key string, ctx context.Context, res interface{}, total int64, filters ...interface{}) error {
+	db := o.db.WithContext(ctx)
+	if len(filters) > 0 {
+		return db.Preload(key).Where(filters[0], filters[1:]...).Find(res).Count(&total).Error
+	}
+	return db.Preload(key).Find(res).Count(&total).Error
 }
 
 func (o *Orm) Update(ctx context.Context, ptr interface{}) error {
@@ -94,21 +111,4 @@ func (o *Orm) Preload(key string, ctx context.Context, res interface{}, filters 
 		return db.Preload(key).Where(filters[0], filters[1:]...).Find(res).Error
 	}
 	return db.Preload(key).Find(res).Error
-}
-
-func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page, pageSize int, filters ...interface{}) error {
-	db := o.db.WithContext(ctx)
-	if len(filters) > 0 {
-		return db.Where(filters[0], filters[1:]...).Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Error
-	} else {
-		return db.Limit(pageSize).Offset((page - 1) * pageSize).Preload(key).Find(&res).Error
-	}
-}
-
-func (o *Orm) PreloadCount(key string, ctx context.Context, res interface{}, total int64, filters ...interface{}) error {
-	db := o.db.WithContext(ctx)
-	if len(filters) > 0 {
-		return db.Preload(key).Where(filters[0], filters[1:]...).Find(res).Count(&total).Error
-	}
-	return db.Preload(key).Find(res).Count(&total).Error
 }
