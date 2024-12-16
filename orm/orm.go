@@ -101,6 +101,14 @@ func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page
 	if len(filters) > 0 {
 		return db.Where(filters[0], filters[1:]...).Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Error
 	} else {
-		return db.Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Error
+		return db.Limit(pageSize).Offset((page - 1) * pageSize).Preload(key).Find(&res).Error
 	}
+}
+
+func (o *Orm) PreloadCount(key string, ctx context.Context, res interface{}, total int64, filters ...interface{}) error {
+	db := o.db.WithContext(ctx)
+	if len(filters) > 0 {
+		return db.Preload(key).Where(filters[0], filters[1:]...).Find(res).Count(&total).Error
+	}
+	return db.Preload(key).Find(res).Count(&total).Error
 }
