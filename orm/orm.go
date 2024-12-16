@@ -54,6 +54,14 @@ func (o *Orm) FindAll(ctx context.Context, res interface{}, filters ...interface
 	return db.Find(res).Error
 }
 
+func (o *Orm) Preload(key string, ctx context.Context, res interface{}, filters ...interface{}) error {
+	db := o.db.WithContext(ctx)
+	if len(filters) > 0 {
+		return db.Preload(key).Where(filters[0], filters[1:]...).Find(res).Error
+	}
+	return db.Preload(key).Find(res).Error
+}
+
 func (o *Orm) Page(ctx context.Context, res interface{}, page, pageSize int, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
@@ -65,9 +73,9 @@ func (o *Orm) Page(ctx context.Context, res interface{}, page, pageSize int, fil
 func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page, pageSize int, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
-		return db.Where(filters[0], filters[1:]...).Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Error
+		return db.Where(filters[0], filters[1:]...).Limit(pageSize).Offset((page - 1) * pageSize).Preload(key).Find(&res).Error
 	} else {
-		return db.Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Preload(key).Error
+		return db.Limit(pageSize).Offset((page - 1) * pageSize).Preload(key).Find(&res).Error
 	}
 }
 
@@ -103,12 +111,4 @@ func (o *Orm) Update(ctx context.Context, ptr interface{}) error {
 func (o *Orm) Delete(ctx context.Context, ptr interface{}) error {
 	db := o.db.WithContext(ctx)
 	return db.Delete(ptr).Error
-}
-
-func (o *Orm) Preload(key string, ctx context.Context, res interface{}, filters ...interface{}) error {
-	db := o.db.WithContext(ctx)
-	if len(filters) > 0 {
-		return db.Preload(key).Where(filters[0], filters[1:]...).Find(res).Error
-	}
-	return db.Preload(key).Find(res).Error
 }
