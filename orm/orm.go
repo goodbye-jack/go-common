@@ -70,6 +70,17 @@ func (o *Orm) Page(ctx context.Context, res interface{}, page, pageSize int, fil
 	return db.Limit(pageSize).Offset((page - 1) * pageSize).Find(res).Error
 }
 
+func (o *Orm) PageReturn(ctx context.Context, res interface{}, page, pageSize int, total int64, filters ...interface{}) (interface{}, int64, error) {
+	db := o.db.WithContext(ctx)
+	if len(filters) > 0 {
+		db.Count(&total).Where(filters[0], filters[1:]...).Limit(pageSize).Offset((page - 1) * pageSize).Find(res)
+		return res, total, nil
+	} else {
+		db.Count(&total).Limit(pageSize).Offset((page - 1) * pageSize).Find(res)
+		return res, total, nil
+	}
+}
+
 func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page, pageSize int, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
