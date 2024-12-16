@@ -67,7 +67,7 @@ func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page
 	if len(filters) > 0 {
 		return db.Where(filters[0], filters[1:]...).Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Error
 	} else {
-		return db.Preload(key).Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Error
+		return db.Limit(pageSize).Offset((page - 1) * pageSize).Find(&res).Preload(key).Error
 	}
 }
 
