@@ -102,32 +102,16 @@ func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page
 	}
 }
 
-func (o *Orm) Count(ctx context.Context, model interface{}, total int64, filters ...interface{}) error {
+func (o *Orm) Count(ctx context.Context, table string, model interface{}, total int64, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	// 根据表名获取对应的模型结构体
 	modelNew := reflect.New(reflect.TypeOf(model).Elem()).Interface()
+	db.Table(table).Set("gorm:model", modelNew)
 	if len(filters) > 0 {
-		return db.Model(modelNew).Where(filters[0], filters[1:]...).Count(&total).Error
+		return db.Where(filters[0], filters[1:]...).Count(&total).Error
 	}
-	return db.Model(model).Count(&total).Error
+	return db.Count(&total).Error
 }
-
-//
-//func (o *Orm) CountNew(ctx context.Context, res interface{}, total int64, filters ...interface{}) error {
-//	db := o.db.WithContext(ctx)
-//	if len(filters) > 0 {
-//		return db.Where(filters[0], filters[1:]...).Find(res).Count(&total).Error
-//	}
-//	return db.Find(res).Count(&total).Error
-//}
-//
-//func (o *Orm) PreloadCount(key string, ctx context.Context, res interface{}, total int64, filters ...interface{}) error {
-//	db := o.db.WithContext(ctx)
-//	if len(filters) > 0 {
-//		return db.Preload(key).Where(filters[0], filters[1:]...).Find(res).Count(&total).Error
-//	}
-//	return db.Preload(key).Find(res).Count(&total).Error
-//}
 
 func (o *Orm) Update(ctx context.Context, ptr interface{}) error {
 	db := o.db.WithContext(ctx)
