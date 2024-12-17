@@ -101,7 +101,6 @@ func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page
 		return db.Limit(pageSize).Offset((page - 1) * pageSize).Preload(key).Find(res).Error
 	}
 }
-
 func (o *Orm) Count(ctx context.Context, table string, model interface{}, total int64, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	// 根据表名获取对应的模型结构体
