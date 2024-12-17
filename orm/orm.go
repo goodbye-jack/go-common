@@ -6,6 +6,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"reflect"
 )
 
 type Orm struct {
@@ -101,13 +102,16 @@ func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page
 	}
 }
 
-//func (o *Orm) Count(ctx context.Context, model interface{}, total int64, filters ...interface{}) error {
-//	db := o.db.WithContext(ctx)
-//	if len(filters) > 0 {
-//		return db.Where(filters[0], filters[1:]...).Find(model).Count(&total).Error
-//	}
-//	return db.Find(model).Count(&total).Error
-//}
+func (o *Orm) Count(ctx context.Context, model interface{}, total int64, filters ...interface{}) error {
+	db := o.db.WithContext(ctx)
+	// 根据表名获取对应的模型结构体
+	modelNew := reflect.New(reflect.TypeOf(model).Elem()).Interface()
+	if len(filters) > 0 {
+		return db.Model(modelNew).Where(filters[0], filters[1:]...).Count(&total).Error
+	}
+	return db.Model(model).Count(&total).Error
+}
+
 //
 //func (o *Orm) CountNew(ctx context.Context, res interface{}, total int64, filters ...interface{}) error {
 //	db := o.db.WithContext(ctx)
