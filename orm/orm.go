@@ -93,6 +93,16 @@ func (o *Orm) PagePerLoadCondition(key string, ctx context.Context, res interfac
 	}
 }
 
+func (o *Orm) PreloadCount(key string, ctx context.Context, res interface{}, total int64, filters ...interface{}) (int64, error) {
+	db := o.db.WithContext(ctx)
+	if len(filters) > 0 {
+		db.Where(filters[0], filters[1:]...).Preload(key).Find(res).Count(&total)
+		return total, nil
+	}
+	db.Preload(key).Find(res).Count(&total)
+	return total, nil
+}
+
 func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page, pageSize int, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
