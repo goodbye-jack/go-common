@@ -72,12 +72,23 @@ func (o *Orm) Page(ctx context.Context, res interface{}, page, pageSize int, fil
 	return db.Limit(pageSize).Offset((page - 1) * pageSize).Find(res).Error
 }
 
-func (o *Orm) PagePerLoadNew(key string, ctx context.Context, res interface{}, page, pageSize int, subKey string, subCondition string, filters ...interface{}) error {
+func (o *Orm) PagePerLoadCondition(key string, ctx context.Context, res interface{}, page, pageSize int, subKey string, subCondition string, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
-		return db.Where(filters[0], filters[1:]...).Limit(pageSize).Offset((page-1)*pageSize).Preload(key, subKey+" = ?", subCondition).Find(res).Error
+		//return db.Where(filters[0], filters[1:]...).Limit(pageSize).Offset((page-1)*pageSize).Preload(key, subKey+" = ?", subCondition).Find(res).Error
+		if len(subKey) != 0 && len(subCondition) != 0 {
+			return db.Where(filters[0], filters[1:]...).Limit(pageSize).Offset((page-1)*pageSize).Preload(key, subKey+" = ?", subCondition).Find(res).Error
+		} else {
+			return db.Where(filters[0], filters[1:]...).Limit(pageSize).Offset((page - 1) * pageSize).Preload(key).Find(res).Error
+		}
 	} else {
-		return db.Limit(pageSize).Offset((page-1)*pageSize).Preload(key, subKey+" = ?", subCondition).Find(res).Error
+		//return db.Limit(pageSize).Offset((page-1)*pageSize).Preload(key, subKey+" = ?", subCondition).Find(res).Error
+		if len(subKey) != 0 && len(subCondition) != 0 {
+			return db.Limit(pageSize).Offset((page-1)*pageSize).Preload(key, subKey+" = ?", subCondition).Find(res).Error
+		} else {
+			return db.Limit(pageSize).Offset((page - 1) * pageSize).Preload(key).Find(res).Error
+		}
+
 	}
 }
 
