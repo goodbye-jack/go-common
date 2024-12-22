@@ -57,6 +57,14 @@ func (o *Orm) FindAll(ctx context.Context, res interface{}, filters ...interface
 	return db.Find(res).Error
 }
 
+func (o *Orm) FindAllWithOrder(ctx context.Context, res interface{}, order interface{}, filters ...interface{}) error {
+	db := o.db.WithContext(ctx).Order(order)
+	if len(filters) > 0 {
+		return db.Where(filters[0], filters[1:]...).Find(res).Error
+	}
+	return db.Find(res).Error
+}
+
 func (o *Orm) Preload(key string, ctx context.Context, res interface{}, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
