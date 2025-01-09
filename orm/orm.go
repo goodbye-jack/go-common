@@ -2,6 +2,7 @@ package orm
 
 import (
 	"context"
+	"fmt"
 	"github.com/goodbye-jack/go-common/log"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -79,6 +80,15 @@ func (o *Orm) Page(ctx context.Context, res interface{}, page, pageSize int, fil
 		return db.Where(filters[0], filters[1:]...).Limit(pageSize).Offset((page - 1) * pageSize).Find(res).Error
 	}
 	return db.Limit(pageSize).Offset((page - 1) * pageSize).Find(res).Error
+}
+
+func (o *Orm) FindJoins(ctx context.Context, res interface{}, returnRows, whereCondition string, page, pageSize int, joins ...string) error {
+	db := o.db.WithContext(ctx).Select(returnRows)
+	for index, value := range joins {
+		fmt.Printf("Index: %d, Value: %d\n", index, value)
+		db.Joins(value)
+	}
+	return db.Where(whereCondition).Limit(pageSize).Offset((page - 1) * pageSize).Find(res).Error
 }
 
 func (o *Orm) PagePerLoadCondition(key string, ctx context.Context, res interface{}, page, pageSize int, subKey string, subCondition string, filters ...interface{}) error {
