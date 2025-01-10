@@ -82,7 +82,16 @@ func (o *Orm) Page(ctx context.Context, res interface{}, page, pageSize int, fil
 	return db.Limit(pageSize).Offset((page - 1) * pageSize).Find(res).Error
 }
 
-func (o *Orm) FindJoins(tableName string, ctx context.Context, res interface{}, returnRows, whereCondition string, page, pageSize int, joins ...string) error {
+func (o *Orm) FindJoins(tableName string, ctx context.Context, res interface{}, returnRows, whereCondition string, joins ...string) error {
+	db := o.db.WithContext(ctx).Table(tableName).Select(returnRows)
+	for index, value := range joins {
+		fmt.Printf("Index: %d, Value: %d\n", index, value)
+		db.Joins(value)
+	}
+	return db.Where(whereCondition).Find(res).Error
+}
+
+func (o *Orm) PageJoins(tableName string, ctx context.Context, res interface{}, returnRows, whereCondition string, page, pageSize int, joins ...string) error {
 	db := o.db.WithContext(ctx).Table(tableName).Select(returnRows)
 	for index, value := range joins {
 		fmt.Printf("Index: %d, Value: %d\n", index, value)
