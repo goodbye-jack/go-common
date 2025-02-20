@@ -159,17 +159,7 @@ func (o *Orm) Delete(ctx context.Context, ptr interface{}) error {
 	return db.Delete(ptr).Error
 }
 
-func (o *Orm) GroupBy(ctx context.Context, res interface{}, tableName string, groupColumns string) error {
+func (o *Orm) GroupBy(ctx context.Context, tableName string, whereClause interface{}, results interface{}, groupColumns string) error {
 	db := o.db.WithContext(ctx).Table(tableName)
-	if len(groupColumns) == 0 {
-		return db.Select(res).Error // 没有GROUP BY时直接选择字段
-	}
-	return db.Select(res).Group(groupColumns).Error
+	return db.Where(whereClause).Group(groupColumns).Find(results).Error
 }
-
-//func GroupByAndSelect(db *gorm.DB, selectFields []string, groupColumns ...string) *gorm.DB {
-//	if len(groupColumns) == 0 {
-//		return db.Select(selectFields) // 没有GROUP BY时直接选择字段
-//	}
-//	return db.Select(selectFields).Group(groupColumns...) // 否则先选择字段再进行GROUP BY
-//}
