@@ -159,7 +159,7 @@ func (o *Orm) Delete(ctx context.Context, ptr interface{}) error {
 	return db.Delete(ptr).Error
 }
 
-func (o *Orm) GroupBy(ctx context.Context, tableName string, whereClause interface{}, results interface{}, groupColumns string) error {
-	db := o.db.WithContext(ctx).Table(tableName)
-	return db.Where(whereClause).Group(groupColumns).Find(results).Error
+func (o *Orm) GroupBy(ctx context.Context, tableName string, selectColumns string, whereClause interface{}, results interface{}, groupColumns string) error {
+	db := o.db.WithContext(ctx)
+	return db.Table(tableName).Select(selectColumns).Where(whereClause).Group(groupColumns).Find(results).Error
 }
