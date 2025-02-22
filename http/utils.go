@@ -2,8 +2,8 @@ package http
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/config"
+	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/utils"
 )
 
@@ -52,5 +52,22 @@ func JsonResponse(c *gin.Context, data interface{}, err error) {
 	c.JSON(statusCode, gin.H{
 		"data":    data,
 		"message": message,
+	})
+}
+
+func JsonResponsePage(c *gin.Context, pageNo int, pageSize int, totalCount int, data interface{}, err error) {
+	statusCode := 200
+	message := "success"
+	if err != nil {
+		data = nil
+		message = whichError(err)
+		statusCode = 500
+	}
+	c.JSON(statusCode, gin.H{
+		"data":      data,
+		"page_no":   pageNo,
+		"page_size": pageSize,
+		"total":     totalCount,
+		"message":   message,
 	})
 }
