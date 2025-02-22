@@ -161,9 +161,8 @@ func (o *Orm) GroupBy(ctx context.Context, tableName string, selectColumns strin
 	return db.Table(tableName).Select(selectColumns).Where(whereClause).Group(groupColumns).Find(results).Error
 }
 
-func (o *Orm) Top(ctx context.Context, tableName string, whereClause interface{}, groupColumn string, sortColumn string, sortSc string, limitCount int, results interface{}) error {
+func (o *Orm) Top(ctx context.Context, tableName string, selectColumns string, whereClause interface{}, groupColumn string, sortColumn string, sortSc string, limitCount int, results interface{}) error {
 	db := o.db.WithContext(ctx)
-	selectColumns := groupColumn + " , " + sortColumn
 	sortBy := sortColumn + " " + sortSc
 	return db.Table(tableName).Select(selectColumns).Where(whereClause).Group(groupColumn).Order(sortBy).Limit(limitCount).Scan(&results).Error
 }
