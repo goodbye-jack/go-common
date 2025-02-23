@@ -138,12 +138,12 @@ func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page
 		return db.Limit(pageSize).Offset((page - 1) * pageSize).Preload(key).Find(res).Error
 	}
 }
-func (o *Orm) Count(ctx context.Context, model interface{}, total int64, filters ...interface{}) error {
+func (o *Orm) Count(ctx context.Context, model interface{}, total *int64, filters ...interface{}) error {
 	db := o.db.WithContext(ctx).Model(&model)
 	if len(filters) > 0 {
-		return db.Where(filters[0], filters[1:]...).Count(&total).Error
+		return db.Where(filters[0], filters[1:]...).Count(total).Error
 	}
-	return db.Count(&total).Error
+	return db.Count(total).Error
 }
 
 func (o *Orm) Update(ctx context.Context, ptr interface{}) error {
