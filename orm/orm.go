@@ -166,3 +166,7 @@ func (o *Orm) Top(ctx context.Context, tableName string, selectColumns string, w
 	sortBy := sortColumn + " " + sortSc
 	return db.Table(tableName).Select(selectColumns).Where(whereClause).Group(groupColumn).Order(sortBy).Limit(limitCount).Find(results).Error
 }
+
+func (o *Orm) Exec(sql string, value ...interface{}) error {
+	return o.db.Exec(sql, value).Error
+}
