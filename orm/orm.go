@@ -170,3 +170,11 @@ func (o *Orm) Top(ctx context.Context, tableName string, selectColumns string, w
 func (o *Orm) Exec(sql string, value ...interface{}) error {
 	return o.db.Exec(sql, value).Error
 }
+
+func (o *Orm) Raw(sql string, result interface{}, value ...interface{}) error {
+	return o.db.Raw(sql, &value).Scan(&result).Error
+}
+
+func (o *Orm) RawRows(sql string, value ...interface{}) (gorm.Rows, error) {
+	return o.db.Raw(sql, value).Rows()
+}
