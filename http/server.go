@@ -8,16 +8,32 @@ import (
 	"github.com/goodbye-jack/go-common/rbac"
 	"github.com/goodbye-jack/go-common/utils"
 	"net/http"
+	"time"
+	"context"
 )
 
 var (
 	rbacClient *rbac.RbacClient = nil
 )
 
+type Operation struct {
+	User       string                 `json:"user"`
+	Time       time.Time              `json:"time"`
+	Path       string                 `json:"path"`
+	Method     string                 `json:"path"`
+	StatusCode int                    `json:"status_code"`
+	Duration   int                    `json:"duration"`
+	Body       map[string]interface{} `json:"body"`
+	Tips       string                 `json:"tips"`
+}
+
+type OpRecordFn func(ctx context.Context, op Operation) error
+
 type HTTPServer struct {
 	service_name string
 	routes       []*Route
 	router       *gin.Engine
+	opRecordFn   OpRecordFn
 }
 
 func init() {
@@ -29,7 +45,7 @@ func init() {
 
 func NewHTTPServer(service_name string) *HTTPServer {
 	routes := []*Route{
-		NewRoute(service_name, "/ping", []string{"GET"}, "", false, func(c *gin.Context) {
+		NewRoute(service_name, "/ping", "健康检查", []string{"GET"}, "", false, func(c *gin.Context) {
 			c.String(http.StatusOK, "Pong")
 		}),
 	}
@@ -55,11 +71,18 @@ func (s *HTTPServer) Route(path string, methods []string, role string, sso bool,
 	if len(methods) == 0 {
 		methods = append(methods, "GET")
 	}
-	s.routes = append(s.routes, NewRoute(s.service_name, path, methods, role, sso, fn))
+	s.routes = append(s.routes, NewRoute(s.service_name, path, "", methods, role, sso, fn))
 }
 
-func (s *HTTPServer) Use(middleware gin.HandlerFunc) {
-	s.router.Use(middleware)
+func (s *HTTPServer) Route2(path string, tips string, methods []string, role string, sso bool, fn gin.HandlerFunc) {
+	if len(methods) == 0 {
+		methods = append(methods, "GET")
+	}
+	s.routes = append(s.routes, NewRoute(s.service_name, path, tips, methods, role, sso, fn))
+}
+
+func (s *HTTPServer) SetOpRecordFn(fn OpRecordFn) {
+	s.opRecordFn = fn
 }
 
 func (s *HTTPServer) Prepare() {
@@ -71,6 +94,7 @@ func (s *HTTPServer) Prepare() {
 	}
 	rbacClient.AddActionPolicies(policies)
 
+	recordOperationMiddleware := RecordOperationMiddleware(s.routes, s.opRecordFn)
 	loginRequiredMiddleware := LoginRequiredMiddleware(s.routes)
 	rbacMiddleware := RbacMiddleware(s.service_name)
 	tenantMiddleware := TenantMiddleware()
@@ -78,6 +102,7 @@ func (s *HTTPServer) Prepare() {
 	s.router.Use(loginRequiredMiddleware)
 	s.router.Use(rbacMiddleware)
 	s.router.Use(tenantMiddleware)
+	s.router.Use(recordOperationMiddleware)
 
 	for _, routeInfo := range routeInfos {
 		s.router.Handle(routeInfo.Method, routeInfo.Path, routeInfo.HandlerFunc)

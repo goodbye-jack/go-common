@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"context"
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/config"
@@ -10,6 +12,11 @@ import (
 
 type World struct {
 	Name string `json:"name"`
+}
+
+func recordOp(ctx context.Context, op myHttp.Operation) error {
+	fmt.Println("%+v", op)
+	return nil
 }
 
 func main() {
@@ -30,6 +37,7 @@ func main() {
 		}
 		myHttp.JsonResponse(c, world, errors.New("error"))
 	})
+	server.SetOpRecordFn(recordOp)
 	server.Prepare()
 	server.Run(addr)
 }

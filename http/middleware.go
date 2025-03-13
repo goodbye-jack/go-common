@@ -1,15 +1,19 @@
 package http
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/config"
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/rbac"
 	"github.com/goodbye-jack/go-common/utils"
+	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func RbacMiddleware(serviceName string) gin.HandlerFunc {
@@ -91,5 +95,72 @@ func TenantMiddleware() gin.HandlerFunc {
 
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
+	}
+}
+
+func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if fn == nil {
+			c.Next()
+			return
+		}
+
+		start := time.Now()
+		var bodyBytes []byte
+		if c.Request.Body != nil {
+			bodyBytes, _ = ioutil.ReadAll(c.Request.Body)
+			c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+		}
+
+		tips := ""
+		for _, route := range routes {
+			if route.Url == c.FullPath() {
+				for _, method := range route.Methods {
+					if method == c.Request.Method {
+						tips = route.Tips
+					}
+				}
+				if tips != "" {
+					break
+				}
+			}
+		}
+
+		c.Next()
+
+		var bodyMap map[string]interface{}
+		contentType := c.ContentType()
+		if len(bodyBytes) > 0 {
+			switch {
+			case contentType == "application/json":
+				json.Unmarshal(bodyBytes, &bodyMap)
+			case contentType == "multipart/form-data" || contentType == "application/x-www-form-urlencoded":
+				c.Request.ParseForm()
+				bodyMap = make(map[string]interface{})
+				for k, v := range c.Request.PostForm {
+					if len(v) == 1 {
+						bodyMap[k] = v[0]
+					} else {
+						bodyMap[k] = v
+					}
+				}
+			}
+		}
+
+		op := Operation{
+			User:       GetUser(c),
+			Time:       start,
+			Path:       c.FullPath(),
+			Method:     c.Request.Method,
+			StatusCode: c.Writer.Status(),
+			Duration:   int(time.Since(start).Milliseconds()),
+			Body:       bodyMap,
+			Tips:       tips,
+		}
+
+		// 异步记录日志
+		go func() {
+			_ = fn(c.Request.Context(), op)
+		}()
 	}
 }

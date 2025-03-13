@@ -13,6 +13,7 @@ type Route struct {
 	Url          string
 	Methods      []string
 	Sso          bool
+	Tips         string
 	DefaultRoles []string
 	handlerFunc  gin.HandlerFunc
 }
@@ -29,7 +30,7 @@ func init() {
 	}
 }
 
-func NewRoute(service_name string, url string, methods []string, role string, sso bool, handlerFunc gin.HandlerFunc) *Route {
+func NewRoute(service_name string, url string, tips string, methods []string, role string, sso bool, handlerFunc gin.HandlerFunc) *Route {
 	if len(methods) == 0 {
 		log.Fatal("NewRoute methods is empty")
 	}
@@ -40,6 +41,7 @@ func NewRoute(service_name string, url string, methods []string, role string, ss
 
 	return &Route{
 		ServiceName:  service_name,
+		Tips:         tips,
 		Sso:          sso,
 		Url:          url,
 		Methods:      methods,
