@@ -58,6 +58,10 @@ func (s *HTTPServer) Route(path string, methods []string, role string, sso bool,
 	s.routes = append(s.routes, NewRoute(s.service_name, path, methods, role, sso, fn))
 }
 
+func (s *HTTPServer) Use(middleware gin.HandlerFunc) {
+	s.router.Use(middleware)
+}
+
 func (s *HTTPServer) Prepare() {
 	policies := []rbac.Policy{}
 	routeInfos := []*gin.RouteInfo{}
