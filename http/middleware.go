@@ -101,6 +101,7 @@ func TenantMiddleware() gin.HandlerFunc {
 func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if fn == nil {
+			log.Warn("RecorOperationMiddleware callback not set")
 			c.Next()
 			return
 		}
@@ -157,6 +158,7 @@ func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
 			Body:       bodyMap,
 			Tips:       tips,
 		}
+		log.Info("RecordOperaionMiddlware callback starting")
 
 		// 异步记录日志
 		go func() {
