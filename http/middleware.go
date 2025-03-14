@@ -115,7 +115,7 @@ func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
 
 		tips := ""
 		for _, route := range routes {
-			if route.Url == c.FullPath() {
+			if route.Url == c.Request.URL.Path {
 				for _, method := range route.Methods {
 					if method == c.Request.Method {
 						tips = route.Tips
@@ -148,10 +148,10 @@ func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
 			}
 		}
 
-		op := Operation{
+		op := Operation {
 			User:       GetUser(c),
 			Time:       start,
-			Path:       c.FullPath(),
+			Path:       c.Request.URL.Path,
 			Method:     c.Request.Method,
 			StatusCode: c.Writer.Status(),
 			Duration:   int(time.Since(start).Milliseconds()),
