@@ -148,6 +148,8 @@ func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
 			}
 		}
 
+		clientIP := c.ClientIP()
+
 		op := Operation {
 			User:       GetUser(c),
 			Time:       start,
@@ -157,6 +159,7 @@ func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
 			Duration:   int(time.Since(start).Milliseconds()),
 			Body:       bodyMap,
 			Tips:       tips,
+			ClientIP:   clientIP,
 		}
 		log.Info("RecordOperaionMiddlware callback starting")
 

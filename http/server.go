@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/config"
@@ -9,7 +10,6 @@ import (
 	"github.com/goodbye-jack/go-common/utils"
 	"net/http"
 	"time"
-	"context"
 )
 
 var (
@@ -21,6 +21,7 @@ type Operation struct {
 	Time       time.Time              `json:"time"`
 	Path       string                 `json:"path"`
 	Method     string                 `json:"path"`
+	ClientIP   string                 `json:"client_ip"`
 	StatusCode int                    `json:"status_code"`
 	Duration   int                    `json:"duration"`
 	Body       map[string]interface{} `json:"body"`
@@ -98,6 +99,9 @@ func (s *HTTPServer) Prepare() {
 	loginRequiredMiddleware := LoginRequiredMiddleware(s.routes)
 	rbacMiddleware := RbacMiddleware(s.service_name)
 	tenantMiddleware := TenantMiddleware()
+
+	// 设置信任的代理IP（例如Nginx的IP）
+	s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"})
 
 	s.router.Use(loginRequiredMiddleware)
 	s.router.Use(rbacMiddleware)
