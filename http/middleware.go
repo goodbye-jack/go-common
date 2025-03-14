@@ -162,7 +162,7 @@ func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
 
 		// 异步记录日志
 		go func() {
-			_ = fn(c.Request.Context(), op)
+			_ = fn(context.Background(), op)
 		}()
 	}
 }
