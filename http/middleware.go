@@ -149,9 +149,16 @@ func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
 		}
 
 		clientIP := c.ClientIP()
+		user := GetUser(c)
+		// login supported
+		if u, ok := bodyMap["phone"]; ok {
+			if ustr, ok := u.(string); ok {
+				user = ustr
+			}
+		}
 
 		op := Operation {
-			User:       GetUser(c),
+			User:       user,
 			Time:       start,
 			Path:       c.Request.URL.Path,
 			Method:     c.Request.Method,
