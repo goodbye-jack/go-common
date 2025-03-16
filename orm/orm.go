@@ -29,6 +29,10 @@ func (o *Orm) AutoMigrate(ptr interface{}) {
 	o.db.AutoMigrate(ptr)
 }
 
+//func (o *Orm) Migrator(ptr interface{}) {
+//	o.db.Migrator().CreateIndex(ptr, "", "")
+//}
+
 func (o *Orm) Transaction(ctx context.Context, fn func(tx *gorm.DB) error) {
 	db := o.db.WithContext(ctx)
 	db.Transaction(fn)
