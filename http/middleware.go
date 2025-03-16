@@ -13,8 +13,26 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
+
+// 定义一个全局的拦截过滤器接口
+type SsoHandler interface {
+	Verify(c *gin.Context) bool
+}
+
+var ssoHandlers map[string]SsoHandler = map[string]SsoHandler{}
+var ssoMu sync.Mutex
+
+func Register(name string, handler SsoHandler) {
+	ssoMu.Lock()
+	if _, ok := ssoHandlers[name]; ok {
+		fmt.Printf("GlobalSsoHandler %s had registerd", name)
+	}
+	ssoHandlers[name] = handler
+	ssoMu.Unlock()
+}
 
 func RbacMiddleware(serviceName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -75,6 +93,22 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 				return
 			}
 		}
+		// ====以下  用于与统一登录对接时，需要每次都回调统一登录token验证====
+		ssoEnabled := config.GetConfigString(utils.SsoEnabledVerify)
+		if sso && ssoEnabled == "true" {
+			nowHandlerName := config.GetConfigString(utils.SsoVerifyHandlerName)
+			for name, handler := range ssoHandlers {
+				if name == nowHandlerName {
+					if !handler.Verify(c) {
+						c.AbortWithStatus(http.StatusUnauthorized)
+						return
+					}
+					break
+				}
+			}
+		}
+		// ====以上  用于与统一登录对接时，需要每次都回调统一登录token验证====
+		
 		log.Info("LoginRequiredMiddleware(), uid=%s", uid)
 		SetUser(c, uid)
 
@@ -157,7 +191,7 @@ func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
 			}
 		}
 
-		op := Operation {
+		op := Operation{
 			User:       user,
 			Time:       start,
 			Path:       c.Request.URL.Path,
