@@ -55,7 +55,7 @@ func JsonResponse(c *gin.Context, data interface{}, err error) {
 	})
 }
 
-func JsonResponsePage(c *gin.Context, pageNo int, pageSize int, totalCount int, data interface{}, err error) {
+func JsonResponsePage(c *gin.Context, pageNo int, pageSize int, totalCount int64, data interface{}, err error) {
 	statusCode := 200
 	message := "success"
 	if err != nil {
