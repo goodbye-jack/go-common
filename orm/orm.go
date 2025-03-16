@@ -3,10 +3,13 @@ package orm
 import (
 	"context"
 	"fmt"
-	"github.com/goodbye-jack/go-common/log"
+	"log"
+
+	goodlog "github.com/goodbye-jack/go-common/log"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"os"
 	"time"
 )
 
@@ -15,11 +18,17 @@ type Orm struct {
 }
 
 func NewOrm(dsn string) *Orm {
-	log.Info("NewOrm param:dsn=", dsn)
+	goodlog.Info("NewOrm param:dsn=", dsn)
 	//queryLogger := log.SlowQueryLogger{Threshold: 1000 * time.Millisecond}
 	//db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: queryLogger.LogMode(logger.Info)})
-	slowQueryLogger := log.SlowQueryLogger{Threshold: 1000 * time.Millisecond}
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: slowQueryLogger.LogMode(logger.Info)})
+	//slowQueryLogger := log.SlowQueryLogger{Threshold: 1000 * time.Millisecond}
+	//db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: slowQueryLogger.LogMode(logger.Info)})
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
+		SlowThreshold:             1000 * time.Millisecond,
+		LogLevel:                  logger.Info,
+		IgnoreRecordNotFoundError: false,
+		Colorful:                  true,
+	}).LogMode(logger.Info)})
 	if err != nil {
 		log.Fatal("mysql connect failed, %v", err)
 	}
