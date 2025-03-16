@@ -1,6 +1,7 @@
 package log
 
 import (
+	"context"
 	"fmt"
 	"gorm.io/gorm/logger"
 	"time"
@@ -14,16 +15,15 @@ func (l *SlowQueryLogger) LogMode(logger.LogLevel) logger.Interface {
 	panic("implement me")
 }
 
-// Info(context. Context, string, ...interface{})
-func (l *SlowQueryLogger) Info(ctx string, i ...interface{}) {
+func (l *SlowQueryLogger) Info(ctx context.Context, i ...interface{}) {
 	fmt.Printf("Info: %s %v\n", ctx, i)
 }
 
-func (l *SlowQueryLogger) Warn(ctx string, i ...interface{}) {
+func (l *SlowQueryLogger) Warn(ctx context.Context, i ...interface{}) {
 	fmt.Printf("Warn: %s %v\n", ctx, i)
 }
 
-func (l *SlowQueryLogger) Error(ctx string, i ...interface{}) {
+func (l *SlowQueryLogger) Error(ctx context.Context, i ...interface{}) {
 	fmt.Printf("Error: %s %v\n", ctx, i)
 }
 

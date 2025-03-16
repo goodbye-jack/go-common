@@ -16,13 +16,10 @@ type Orm struct {
 
 func NewOrm(dsn string) *Orm {
 	log.Info("NewOrm param:dsn=", dsn)
-	// &gorm.Config{Logger: logger.Default.LogMode(logger.Info)}
-	//db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{
-	//	Logger: &SlowQueryLogger{threshold: 100 * time.Millisecond}, // 设置慢查询阈值为100毫秒
-	//})
-
-	queryLogger := log.SlowQueryLogger{Threshold: 1000 * time.Millisecond}
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: queryLogger.LogMode(logger.Info)})
+	//queryLogger := log.SlowQueryLogger{Threshold: 1000 * time.Millisecond}
+	//db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: queryLogger.LogMode(logger.Info)})
+	slowQueryLogger := log.SlowQueryLogger{Threshold: 1000 * time.Millisecond}
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: slowQueryLogger.LogMode(logger.Info)})
 	if err != nil {
 		log.Fatal("mysql connect failed, %v", err)
 	}
