@@ -24,7 +24,7 @@ func NewOrm(dsn string) *Orm {
 	//slowQueryLogger := log.SlowQueryLogger{Threshold: 1000 * time.Millisecond}
 	//db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: slowQueryLogger.LogMode(logger.Info)})
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
-		SlowThreshold:             1000 * time.Millisecond,
+		SlowThreshold:             2000 * time.Millisecond,
 		LogLevel:                  logger.Info,
 		IgnoreRecordNotFoundError: false,
 		Colorful:                  true,
