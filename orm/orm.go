@@ -19,10 +19,6 @@ type Orm struct {
 
 func NewOrm(dsn string) *Orm {
 	goodlog.Info("NewOrm param:dsn=", dsn)
-	//queryLogger := log.SlowQueryLogger{Threshold: 1000 * time.Millisecond}
-	//db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: queryLogger.LogMode(logger.Info)})
-	//slowQueryLogger := log.SlowQueryLogger{Threshold: 1000 * time.Millisecond}
-	//db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: slowQueryLogger.LogMode(logger.Info)})
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
 		SlowThreshold:             2000 * time.Millisecond,
 		LogLevel:                  logger.Info,
@@ -156,6 +152,15 @@ func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page
 }
 func (o *Orm) Count(ctx context.Context, model interface{}, total *int64, filters ...interface{}) error {
 	db := o.db.WithContext(ctx).Model(&model)
+	if len(filters) > 0 {
+		return db.Where(filters[0], filters[1:]...).Count(total).Error
+	}
+	return db.Count(total).Error
+}
+
+func (o *Orm) CountIdx(ctx context.Context, model interface{}, selectColumns string, total *int64, filters ...interface{}) error {
+	//db := o.db.WithContext(ctx).Model(&model).Select("count(*) as total")
+	db := o.db.WithContext(ctx).Model(&model).Select(&selectColumns)
 	if len(filters) > 0 {
 		return db.Where(filters[0], filters[1:]...).Count(total).Error
 	}
