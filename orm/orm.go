@@ -160,7 +160,7 @@ func (o *Orm) Count(ctx context.Context, model interface{}, total *int64, filter
 
 func (o *Orm) CountIdx(ctx context.Context, model interface{}, selectColumns string, total *int64, filters ...interface{}) error {
 	//db := o.db.WithContext(ctx).Model(&model).Select("count(*) as total")
-	db := o.db.WithContext(ctx).Model(&model).Select(&selectColumns)
+	db := o.db.WithContext(ctx).Model(&model).Select(selectColumns)
 	if len(filters) > 0 {
 		return db.Where(filters[0], filters[1:]...).Count(total).Error
 	}
