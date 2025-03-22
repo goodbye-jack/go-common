@@ -41,6 +41,10 @@ func (o *Orm) Migrator(ptr interface{}, indexName string) {
 	o.db.Migrator().CreateIndex(ptr, indexName).Error()
 }
 
+func (o *Orm) Table(name string, args ...interface{}) (tx *DB) {
+	return db.Table(name, args...)
+}
+
 func (o *Orm) Transaction(ctx context.Context, fn func(tx *gorm.DB) error) {
 	db := o.db.WithContext(ctx)
 	db.Transaction(fn)
