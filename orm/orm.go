@@ -42,7 +42,7 @@ func (o *Orm) Migrator(ptr interface{}, indexName string) {
 }
 
 func (o *Orm) Table(name string, args ...interface{}) (tx *gorm.DB) {
-	return db.Table(name, args...)
+	return o.db.Table(name, args...)
 }
 
 func (o *Orm) Transaction(ctx context.Context, fn func(tx *gorm.DB) error) {
