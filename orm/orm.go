@@ -41,7 +41,7 @@ func (o *Orm) Migrator(ptr interface{}, indexName string) {
 	o.db.Migrator().CreateIndex(ptr, indexName).Error()
 }
 
-func (o *Orm) Table(name string, args ...interface{}) (tx *DB) {
+func (o *Orm) Table(name string, args ...interface{}) (tx *gorm.DB) {
 	return db.Table(name, args...)
 }
 
