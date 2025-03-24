@@ -181,6 +181,14 @@ func (o *Orm) Delete(ctx context.Context, ptr interface{}) error {
 	return db.Delete(ptr).Error
 }
 
+func (o *Orm) DeleteCondition(ctx context.Context, ptr interface{}, filters ...interface{}) error {
+	db := o.db.WithContext(ctx)
+	if len(filters) > 0 {
+		return db.Where(filters[0], filters[1:]...).Delete(ptr).Error
+	}
+	return db.Delete(ptr).Error
+}
+
 func (o *Orm) GroupBy(ctx context.Context, tableName string, selectColumns string, whereClause interface{}, results interface{}, groupColumns string) error {
 	db := o.db.WithContext(ctx)
 	return db.Table(tableName).Select(selectColumns).Where(whereClause).Group(groupColumns).Find(results).Error
