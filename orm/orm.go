@@ -19,8 +19,11 @@ type Orm struct {
 
 func NewOrm(dsn string) *Orm {
 	goodlog.Info("NewOrm param:dsn=", dsn)
+	//if slowSqlMaxTime < 200 {
+	//	log.Println("slowSqlMaxTime is less than 200毫秒,注意时长分配")
+	//}
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
-		SlowThreshold:             2000 * time.Millisecond,
+		SlowThreshold:             4000 * time.Millisecond,
 		LogLevel:                  logger.Info,
 		IgnoreRecordNotFoundError: false,
 		Colorful:                  true,
