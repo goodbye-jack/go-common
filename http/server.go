@@ -75,7 +75,8 @@ func (s *HTTPServer) Route(path string, methods []string, role string, sso bool,
 	s.routes = append(s.routes, NewRoute(s.service_name, path, "", methods, role, sso, fn))
 }
 
-func (s *HTTPServer) Route2(path string, tips string, methods []string, role string, sso bool, fn gin.HandlerFunc) {
+// RouteCarryLog Carrying logs
+func (s *HTTPServer) RouteCarryLog(path string, tips string, methods []string, role string, sso bool, fn gin.HandlerFunc) {
 	if len(methods) == 0 {
 		methods = append(methods, "GET")
 	}
