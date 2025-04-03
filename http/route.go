@@ -24,6 +24,10 @@ func init() {
 	RoleMapping[utils.RoleIdle] = []string{
 		utils.UserAnonymous,
 		utils.RoleAdministrator,
+		utils.RoleDefault,
+		utils.RoleMuseum,
+		utils.RoleMuseumOffice,
+		utils.RoleAppraisalStation,
 	}
 	RoleMapping[utils.RoleAdministrator] = []string{
 		utils.RoleAdministrator,
