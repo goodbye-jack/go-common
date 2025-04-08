@@ -208,7 +208,7 @@ func (o *Orm) Exec(sql string, value ...interface{}) error {
 }
 
 func (o *Orm) Raw(sql string, result interface{}, value ...interface{}) error {
-	return o.db.Raw(sql, &value).Scan(&result).Error
+	return o.db.Raw(sql, value...).Scan(result).Error
 }
 
 func (o *Orm) RawRows(sql string, value ...interface{}) (gorm.Rows, error) {
