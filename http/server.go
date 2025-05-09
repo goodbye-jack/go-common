@@ -168,7 +168,9 @@ func (s *HTTPServer) Prepare() {
 }
 
 func (s *HTTPServer) StaticFs(static_dir string) {
-	s.router.Use(static.Serve("/static", static.LocalFile(static_dir, true)))
+	//s.router.Use(static.Serve("/static", static.LocalFile(static_dir, true)))
+	// 禁用/static访问,必须要有参数才能访问
+	s.router.Use(static.Serve("/static", static.LocalFile(static_dir, false)))
 }
 
 func (s *HTTPServer) Run(addr string) {
