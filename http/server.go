@@ -77,12 +77,12 @@ func (s *HTTPServer) Route(path string, methods []string, role string, sso bool,
 	s.routes = append(s.routes, NewRoute(s.service_name, path, "", methods, role, sso, false, fn))
 }
 
-// RouteCarryLog Carrying logs
-func (s *HTTPServer) RouteCarryLog(path string, tips string, methods []string, role string, sso bool, fn gin.HandlerFunc) {
+// RouteForRA 鉴定专用router,携带日志记录,明确角色
+func (s *HTTPServer) RouteForRA(path string, tips string, methods []string, roles []string, sso bool, fn gin.HandlerFunc) {
 	if len(methods) == 0 {
 		methods = append(methods, "GET")
 	}
-	s.routes = append(s.routes, NewRoute(s.service_name, path, tips, methods, role, sso, false, fn))
+	s.routes = append(s.routes, NewRouteForRA(s.service_name, path, tips, methods, roles, sso, false, fn))
 }
 
 func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, role string, sso bool, business_approval bool, fn gin.HandlerFunc) {

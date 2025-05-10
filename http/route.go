@@ -21,6 +21,7 @@ type Route struct {
 }
 
 var RoleMapping = map[string][]string{}
+var RoleMappingPrecise = map[string]string{}
 
 func init() {
 	RoleMapping[utils.RoleIdle] = []string{
@@ -34,6 +35,11 @@ func init() {
 	RoleMapping[utils.RoleAdministrator] = []string{
 		utils.RoleAdministrator,
 	}
+	RoleMappingPrecise[utils.RoleDefault] = utils.RoleDefault
+	RoleMappingPrecise[utils.RoleMuseum] = utils.RoleMuseum
+	RoleMappingPrecise[utils.RoleMuseumOffice] = utils.RoleMuseum
+	RoleMappingPrecise[utils.RoleAppraisalStation] = utils.RoleAppraisalStation
+	RoleMappingPrecise[utils.RoleAdministrator] = utils.RoleAdministrator
 }
 
 func NewRoute(service_name string, url string, tips string, methods []string, role string, sso bool, business_approval bool, handlerFunc gin.HandlerFunc) *Route {
@@ -52,6 +58,30 @@ func NewRoute(service_name string, url string, tips string, methods []string, ro
 		DefaultRoles:     RoleMapping[role],
 		handlerFunc:      handlerFunc,
 		BusinessApproval: business_approval,
+		middlewares:      []gin.HandlerFunc{}, // 初始化空中间件链
+	}
+}
+
+func NewRouteForRA(serviceName string, url string, tips string, methods []string, roles []string, sso bool, businessApproval bool, handlerFunc gin.HandlerFunc) *Route {
+	if len(methods) == 0 {
+		log.Fatal("NewRoute methods is empty")
+	}
+	newRoles := []string{}
+	for _, role := range roles {
+		if _, ok := RoleMappingPrecise[role]; ok { // 代表权限在初始化的权限角色中,
+			// 可以进行访问,这块应该是脱离common 的 但是还是等后面重新设计吧 OK
+			newRoles = append(newRoles, role)
+		}
+	}
+	return &Route{
+		ServiceName:      serviceName,
+		Tips:             tips,
+		Sso:              sso,
+		Url:              url,
+		Methods:          methods,
+		DefaultRoles:     newRoles,
+		handlerFunc:      handlerFunc,
+		BusinessApproval: businessApproval,
 		middlewares:      []gin.HandlerFunc{}, // 初始化空中间件链
 	}
 }
