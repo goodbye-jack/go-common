@@ -40,6 +40,7 @@ func init() {
 	RoleMappingPrecise[utils.RoleMuseumOffice] = utils.RoleMuseum
 	RoleMappingPrecise[utils.RoleAppraisalStation] = utils.RoleAppraisalStation
 	RoleMappingPrecise[utils.RoleAdministrator] = utils.RoleAdministrator
+	RoleMappingPrecise[utils.UserAnonymous] = utils.UserAnonymous
 }
 
 func NewRoute(service_name string, url string, tips string, methods []string, role string, sso bool, business_approval bool, handlerFunc gin.HandlerFunc) *Route {
