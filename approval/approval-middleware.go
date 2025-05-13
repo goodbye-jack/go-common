@@ -2,6 +2,7 @@ package approval
 
 import (
 	"bytes"
+	"encoding/base64"
 	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
@@ -77,20 +78,52 @@ func ApprovalMiddleware(config Config) gin.HandlerFunc {
 				}
 				requestInfo["fields"] = fields
 				// 处理文件
+				//files := make(map[string][]map[string]interface{})
+				//for key, fileHeaders := range form.File {
+				//	fileList := make([]map[string]interface{}, 0, len(fileHeaders))
+				//	for _, fileHeader := range fileHeaders {
+				//		fileList = append(fileList, map[string]interface{}{
+				//			"name":        fileHeader.Filename,
+				//			"size":        fileHeader.Size,
+				//			"contentType": fileHeader.Header.Get("Content-Type"),
+				//			// 注意：这里不直接存储文件内容，而是在 CreateApprovalProcess 中处理上传
+				//		})
+				//	}
+				//	files[key] = fileList
+				//}
+				//requestInfo["files"] = files
+				// 处理文件
 				files := make(map[string][]map[string]interface{})
 				for key, fileHeaders := range form.File {
 					fileList := make([]map[string]interface{}, 0, len(fileHeaders))
 					for _, fileHeader := range fileHeaders {
+						// 打开文件
+						file, err := fileHeader.Open()
+						if err != nil {
+							c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to open file"})
+							return
+						}
+						defer file.Close()
+						// 读取文件内容
+						fileContent, err := io.ReadAll(file)
+						if err != nil {
+							c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to read file"})
+							return
+						}
+						// Base64编码（适合小文件）
+						encodedContent := base64.StdEncoding.EncodeToString(fileContent)
 						fileList = append(fileList, map[string]interface{}{
 							"name":        fileHeader.Filename,
 							"size":        fileHeader.Size,
 							"contentType": fileHeader.Header.Get("Content-Type"),
-							// 注意：这里不直接存储文件内容，而是在 CreateApprovalProcess 中处理上传
+							"content":     encodedContent, // 存储Base64编码的内容
+							"encoded":     true,           // 标记为已编码
 						})
 					}
 					files[key] = fileList
 				}
 				requestInfo["files"] = files
+
 			}
 		case "application/x-www-form-urlencoded":
 			// 处理表单编码请求
