@@ -8,7 +8,7 @@ type ApprovalHandler interface {
 	ShouldApprove(c *gin.Context) bool
 
 	// CreateApprovalProcess 创建审批流程
-	CreateApprovalProcess(c *gin.Context, requestData []byte) (processID string, err error)
+	CreateApprovalProcess(c *gin.Context, requestData map[string]interface{}) (processID string, err error)
 
 	// GetApprovalProcess 获取审批流程状态
 	GetApprovalProcess(c *gin.Context, processID string) (status int, err error)
@@ -30,7 +30,7 @@ func (h *DefaultHandler) ShouldApprove(c *gin.Context) bool {
 	return false
 }
 
-func (h *DefaultHandler) CreateApprovalProcess(c *gin.Context, requestData []byte) (string, error) {
+func (h *DefaultHandler) CreateApprovalProcess(c *gin.Context, requestData map[string]interface{}) (string, error) {
 	return "", nil
 }
 
