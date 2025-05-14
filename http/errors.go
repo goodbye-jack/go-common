@@ -43,9 +43,11 @@ func (e serverError) Error() string {
 }
 
 func ServerError(message string) error {
-	err := serverError{
-		message: serverErrorMessage,
+	err := serverError{}
+	if message == "" {
+		err.message = serverErrorMessage
 	}
+	err.message = message
 	return errors.Wrap(err, message)
 }
 
@@ -61,9 +63,11 @@ func (e clientError) Error() string {
 }
 
 func ClientError(message string) error {
-	err := clientError{
-		message: clientErrorMessage,
+	err := clientError{}
+	if message == "" {
+		message = clientErrorMessage
 	}
+	err.message = message
 	return errors.Wrapf(err, message)
 }
 
@@ -79,9 +83,11 @@ func (e paramsError) Error() string {
 }
 
 func ParamsError(message string) error {
-	err := paramsError{
-		message: paramsErrorMessage,
+	err := paramsError{}
+	if message == "" {
+		message = paramsErrorMessage
 	}
+	err.message = message
 	return errors.Wrapf(err, message)
 }
 
@@ -97,9 +103,11 @@ func (e intervalError) Error() string {
 }
 
 func IntervalError(message string) error {
-	err := intervalError{
-		message: intervalErrorMessage,
+	err := intervalError{}
+	if message == "" {
+		message = intervalErrorMessage
 	}
+	err.message = message
 	return errors.Wrapf(err, message)
 }
 
