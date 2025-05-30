@@ -6,7 +6,9 @@ import (
 	"log"
 
 	goodlog "github.com/goodbye-jack/go-common/log"
+	_ "github.com/team-ide/go-driver/driver/kingbase/v8r6/kingbase.com/gokb"
 	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"os"
@@ -17,17 +19,24 @@ type Orm struct {
 	db *gorm.DB
 }
 
-func NewOrm(dsn string) *Orm {
-	goodlog.Info("NewOrm param:dsn=", dsn)
-	//if slowSqlMaxTime < 200 {
-	//	log.Println("slowSqlMaxTime is less than 200毫秒,注意时长分配")
-	//}
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
-		SlowThreshold:             4000 * time.Millisecond,
-		LogLevel:                  logger.Info,
-		IgnoreRecordNotFoundError: false,
-		Colorful:                  true,
-	}).LogMode(logger.Info)})
+func NewOrm(dsn, dbtype string) *Orm {
+	goodlog.Info("NewOrm param:dsn=%s", dsn)
+
+	dialector := mysql.Open(dsn)
+	if dbtype == "kingbase" {
+		dialector = postgres.New(postgres.Config{
+			DSN: dsn,
+		})
+	}
+	conf := &gorm.Config{
+		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
+			SlowThreshold:             2000 * time.Millisecond,
+			LogLevel:                  logger.Info,
+			IgnoreRecordNotFoundError: false,
+			Colorful:                  true,
+		}).LogMode(logger.Info),
+	}
+	db, err := gorm.Open(dialector, conf)
 	if err != nil {
 		log.Fatal("mysql connect failed, %v", err)
 	}
