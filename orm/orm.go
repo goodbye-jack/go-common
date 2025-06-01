@@ -102,7 +102,7 @@ func (o *Orm) Preload(key string, ctx context.Context, res interface{}, filters 
 }
 
 func (o *Orm) Association(column string) *Association {
-	return o.Association(columm)
+	return o.db.Association(column)
 }
 
 func (o *Orm) Page(ctx context.Context, res interface{}, page, pageSize int, sortColumn string, sortSc string, filters ...interface{}) error {
