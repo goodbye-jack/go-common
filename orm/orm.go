@@ -101,6 +101,10 @@ func (o *Orm) Preload(key string, ctx context.Context, res interface{}, filters 
 	return db.Preload(key).Find(res).Error
 }
 
+func (o *Orm) Association(column string) *Association {
+	return o.Association(columm)
+}
+
 func (o *Orm) Page(ctx context.Context, res interface{}, page, pageSize int, sortColumn string, sortSc string, filters ...interface{}) error {
 	sortBy := sortColumn + " " + sortSc
 	db := o.db.WithContext(ctx)
