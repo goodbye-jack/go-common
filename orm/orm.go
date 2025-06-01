@@ -101,7 +101,7 @@ func (o *Orm) Preload(key string, ctx context.Context, res interface{}, filters 
 	return db.Preload(key).Find(res).Error
 }
 
-func (o *Orm) Association(column string) *Association {
+func (o *Orm) Association(column string) *gorm.Association {
 	return o.db.Association(column)
 }
 
