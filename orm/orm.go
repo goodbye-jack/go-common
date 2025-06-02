@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -96,9 +97,13 @@ func (o *Orm) FindAllWithOrder(ctx context.Context, res interface{}, order inter
 func (o *Orm) Preload(key string, ctx context.Context, res interface{}, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
-		return db.Where(filters[0], filters[1:]...).Preload(key).Find(res).Error
+		db = db.Where(filters[0], filters[1:]...)
 	}
-	return db.Preload(key).Find(res).Error
+	for _, k := range strings.Split(key, ",") {
+		k = strings.TrimSpace(k)
+		db = db.Preload(k)
+	}
+	return db.Find(res).Error
 }
 
 func (o *Orm) Association(column string) *gorm.Association {
