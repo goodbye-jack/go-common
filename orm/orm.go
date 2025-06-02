@@ -170,10 +170,14 @@ func (o *Orm) PreloadCount(key string, ctx context.Context, res interface{}, tot
 func (o *Orm) PagePerLoad(key string, ctx context.Context, res interface{}, page, pageSize int, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
 	if len(filters) > 0 {
-		return db.Where(filters[0], filters[1:]...).Limit(pageSize).Offset((page - 1) * pageSize).Preload(key).Find(res).Error
-	} else {
-		return db.Limit(pageSize).Offset((page - 1) * pageSize).Preload(key).Find(res).Error
+		db = db.Where(filters[0], filters[1:]...)
 	}
+	db = db.Limit(pageSize).Offset((page - 1) * pageSize)
+	for _, k := range strings.Split(key, ",") {
+		k = strings.TrimSpace(k)
+		db = db.Preload(k)
+	}
+	return db.Find(res).Error
 }
 func (o *Orm) Count(ctx context.Context, model interface{}, total *int64, filters ...interface{}) error {
 	db := o.db.WithContext(ctx).Model(&model)
