@@ -96,6 +96,6 @@ func ApprovalMiddleware(config Config) gin.HandlerFunc {
 			return
 		}
 		// 返回审批响应
-		c.AbortWithStatusJSON(http.StatusOK, gin.H{"code": 200, "message": "请求已提交审批", "data": gin.H{"approval_id": processID, "status": "pending"}})
+		c.AbortWithStatusJSON(http.StatusOK, gin.H{"code": 200, "message": "数据已提交审批", "data": gin.H{"approval_id": processID, "status": "pending"}})
 	}
 }
