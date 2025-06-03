@@ -31,7 +31,7 @@ func NewOrm(dsn, dbtype string) *Orm {
 	}
 	conf := &gorm.Config{
 		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
-			SlowThreshold:             2000 * time.Millisecond,
+			SlowThreshold:             4000 * time.Millisecond, // 这个最小就是4,后面改成可传入数字
 			LogLevel:                  logger.Info,
 			IgnoreRecordNotFoundError: false,
 			Colorful:                  true,
