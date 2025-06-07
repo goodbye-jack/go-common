@@ -26,11 +26,6 @@ func (p *KingbaseTimeParserPlugin) Initialize(db *gorm.DB) error {
 }
 
 func (p *KingbaseTimeParserPlugin) beforeQuery(db *gorm.DB) {
-	// 只处理人大金仓数据库
-	if db.Dialector.Name() != "kingbase" {
-		return
-	}
-
 	// 替换时间类型处理器
 	stmt := db.Statement
 	if stmt.Schema == nil {
