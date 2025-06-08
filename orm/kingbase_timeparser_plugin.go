@@ -12,49 +12,17 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-type KingbaseTimeParserPlugin struct{}
-
-func (p *KingbaseTimeParserPlugin) Name() string {
-	return "kingbase_time_parser"
-}
-
-func (p *KingbaseTimeParserPlugin) Initialize(db *gorm.DB) error {
-	db.Callback().Query().Before("gorm:query").Register("kingbase:parse_time", p.beforeQuery)
-	db.Callback().Row().Before("gorm:row").Register("kingbase:parse_time", p.beforeQuery)
-	return nil
-}
-
-func (p *KingbaseTimeParserPlugin) beforeQuery(db *gorm.DB) {
-	stmt := db.Statement
-	if stmt.Schema == nil {
-		stmt.Parse(stmt.Model)
-	}
-
-	if stmt.Schema != nil {
-		for _, field := range stmt.Schema.Fields {
-			if field.FieldType == reflect.TypeOf(time.Time{}) || field.FieldType == reflect.TypeOf(&time.Time{}) {
-				field.ReflectValueOf = func(ctx context.Context, value reflect.Value) reflect.Value {
-					return reflect.ValueOf(&kingbaseTimeScanner{
-						field: field,
-						dest:  value,
-					})
-				}
-			}
-		}
-	}
-}
-
 type kingbaseTimeScanner struct {
 	field *schema.Field
-	dest  reflect.Value
+	dest  reflect.Value // 存储字段地址的反射值
 }
 
 func (s *kingbaseTimeScanner) Scan(value interface{}) error {
 	if value == nil {
 		if s.field.FieldType.Kind() == reflect.Ptr {
-			//s.dest.Set(reflect.Zero(s.field.FieldType))
+			s.dest.Elem().Set(reflect.Zero(s.field.FieldType))
 		} else {
-			//s.dest.Set(reflect.ValueOf(time.Time{}))
+			s.dest.Elem().Set(reflect.ValueOf(time.Time{}))
 		}
 		return nil
 	}
@@ -77,13 +45,14 @@ func (s *kingbaseTimeScanner) Scan(value interface{}) error {
 		return err
 	}
 
-	log.Info("Time=%+v", t)
+	log.Info("Time=%v", t)
+	elem := s.dest.Elem()
 	if s.field.FieldType.Kind() == reflect.Ptr {
-		//s.dest.Set(reflect.ValueOf(&t))
+		newT := t // 创建副本避免指针逃逸
+		elem.Set(reflect.ValueOf(&newT))
 	} else {
-		//s.dest.Set(reflect.ValueOf(t))
+		elem.Set(reflect.ValueOf(t))
 	}
-
 	return nil
 }
 
@@ -103,4 +72,44 @@ func parseKingbaseTime(s string) (time.Time, error) {
 	}
 
 	return time.Time{}, fmt.Errorf("failed to parse kingbase time: %s", s)
+}
+
+type KingbaseTimeParserPlugin struct{}
+
+func (p *KingbaseTimeParserPlugin) Name() string {
+	return "kingbase_time_parser"
+}
+
+func (p *KingbaseTimeParserPlugin) Initialize(db *gorm.DB) error {
+	// 注册回调到查询和行查询之前
+	db.Callback().Query().Before("gorm:query").Register("kingbase:parse_time", p.beforeQuery)
+	db.Callback().Row().Before("gorm:row").Register("kingbase:parse_time", p.beforeQuery)
+	return nil
+}
+
+func (p *KingbaseTimeParserPlugin) beforeQuery(db *gorm.DB) {
+	stmt := db.Statement
+	if stmt.Schema == nil {
+		stmt.Parse(stmt.Model)
+	}
+
+	if stmt.Schema != nil {
+		for _, field := range stmt.Schema.Fields {
+			if field.FieldType == reflect.TypeOf(time.Time{}) || field.FieldType == reflect.TypeOf(&time.Time{}) {
+				// 使用局部变量避免闭包捕获问题
+				currentField := field
+				field.ReflectValueOf = func(ctx context.Context, value reflect.Value) reflect.Value {
+					if value.CanAddr() {
+						// 存储字段地址而非字段值
+						return reflect.ValueOf(&kingbaseTimeScanner{
+							field: currentField,
+							dest:  value.Addr(),
+						})
+					}
+					// 无法寻址时回退到默认行为
+					return value
+				}
+			}
+		}
+	}
 }
