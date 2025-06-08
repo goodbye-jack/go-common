@@ -52,9 +52,9 @@ type kingbaseTimeScanner struct {
 func (s *kingbaseTimeScanner) Scan(value interface{}) error {
 	if value == nil {
 		if s.field.FieldType.Kind() == reflect.Ptr {
-			s.dest.Set(reflect.Zero(s.field.FieldType))
+			//s.dest.Set(reflect.Zero(s.field.FieldType))
 		} else {
-			s.dest.Set(reflect.ValueOf(time.Time{}))
+			//s.dest.Set(reflect.ValueOf(time.Time{}))
 		}
 		return nil
 	}
