@@ -42,11 +42,6 @@ func NewOrm(dsn, dbtype string) *Orm {
 	if err != nil {
 		log.Fatal("%s connect failed, %v", dbtype, err)
 	}
-	if dbtype == "kingbase" {
-		if err := db.Use(&KingbaseTimeParserPlugin{}); err != nil {
-			panic("failed to register time parser plugin")
-		}
-	}
 	return &Orm{
 		db: db,
 	}
