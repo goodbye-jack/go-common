@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
+	_ "gitea.com/kingbase/gokb" // Kingbase 驱动
 	goodlog "github.com/goodbye-jack/go-common/log"
-	_ "github.com/team-ide/go-driver/driver/kingbase/v8r6/kingbase.com/gokb"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -26,7 +26,8 @@ func NewOrm(dsn, dbtype string) *Orm {
 	dialector := mysql.Open(dsn)
 	if dbtype == "kingbase" {
 		dialector = postgres.New(postgres.Config{
-			DSN: dsn,
+			DriverName: "kingbase", // 指定使用 kingbase 驱动
+			DSN:        dsn,
 		})
 	}
 	conf := &gorm.Config{
@@ -39,7 +40,7 @@ func NewOrm(dsn, dbtype string) *Orm {
 	}
 	db, err := gorm.Open(dialector, conf)
 	if err != nil {
-		log.Fatal("mysql connect failed, %v", err)
+		log.Fatal("%s connect failed, %v", dbtype, err)
 	}
 	if dbtype == "kingbase" {
 		if err := db.Use(&KingbaseTimeParserPlugin{}); err != nil {

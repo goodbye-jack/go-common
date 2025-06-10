@@ -3,6 +3,7 @@ module github.com/goodbye-jack/go-common
 go 1.22.3
 
 require (
+	gitea.com/kingbase/gokb v0.0.0-20201021123113-29bd62a876c3
 	github.com/casbin/casbin/v2 v2.89.0
 	github.com/casbin/redis-adapter/v3 v3.5.0
 	github.com/casbin/redis-watcher/v2 v2.5.0
@@ -13,7 +14,6 @@ require (
 	github.com/redis/go-redis/v9 v9.5.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/viper v1.18.2
-	github.com/team-ide/go-driver v1.3.6
 	gorm.io/driver/mysql v1.5.7
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.25.11
