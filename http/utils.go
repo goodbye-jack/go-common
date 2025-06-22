@@ -32,7 +32,7 @@ func AddTokenCookie(c *gin.Context, token string, tokenExpired int) {
 	tokenName := config.GetConfigString(utils.ConfigNameToken)
 	if tokenName == "" {
 		log.Warn("!!!!!!!!!!!token name is empty!!!!!!!")
-		tokenName = "good-token"
+		tokenName = "good_token"
 	}
 	log.Info("token name = %s", tokenName)
 
