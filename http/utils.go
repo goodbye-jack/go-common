@@ -39,6 +39,16 @@ func AddTokenCookie(c *gin.Context, token string, tokenExpired int) {
 	c.SetCookie(tokenName, token, tokenExpired, "/", "", false, true)
 }
 
+func SetTokenCookie(c *gin.Context, token string, tokenExpired int, secure, httpOnly bool) {
+	tokenName := config.GetConfigString(utils.ConfigNameToken)
+	if tokenName == "" {
+		log.Warn("!!!!!!!!!!!token name is empty!!!!!!!")
+		tokenName = "good_token"
+	}
+	log.Info("token name = %s", tokenName)
+	c.SetCookie(tokenName, token, tokenExpired, "/", "", secure, httpOnly)
+}
+
 func JsonResponse(c *gin.Context, data interface{}, err error) {
 	statusCode := 200
 	message := "success"
