@@ -9,6 +9,8 @@ import (
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/rbac"
 	"github.com/goodbye-jack/go-common/utils"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"net/http"
 	"time"
 )
@@ -175,5 +177,8 @@ func (s *HTTPServer) StaticFs(static_dir string) {
 
 func (s *HTTPServer) Run(addr string) {
 	log.Info("server %v is running", addr)
+
+	s.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	s.router.Run(addr)
 }
