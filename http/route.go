@@ -67,7 +67,7 @@ func NewRouteForRA(serviceName string, url string, tips string, methods []string
 	if len(methods) == 0 {
 		log.Fatal("NewRoute methods is empty")
 	}
-	newRoles := []string{}
+	var newRoles []string
 	for _, role := range roles {
 		if _, ok := RoleMappingPrecise[role]; ok { // 代表权限在初始化的权限角色中,
 			// 可以进行访问,这块应该是脱离common 的 但是还是等后面重新设计吧 OK
