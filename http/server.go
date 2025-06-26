@@ -87,8 +87,8 @@ func (s *HTTPServer) RouteForRA(path string, tips string, methods []string, role
 	s.routes = append(s.routes, NewRouteForRA(s.service_name, path, tips, methods, roles, sso, false, fn))
 }
 
-func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, role string, sso bool, business_approval bool, fn gin.HandlerFunc) {
-	route := NewRoute(s.service_name, path, tips, methods, role, sso, business_approval, fn)
+func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles []string, sso bool, business_approval bool, fn gin.HandlerFunc) {
+	route := NewRouteForRA(s.service_name, path, tips, methods, roles, sso, business_approval, fn)
 	// 添加业务审批中间件(如果需要)
 	if business_approval && s.approvalHandler != nil {
 		aConfig := approval.Config{
