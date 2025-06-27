@@ -11,8 +11,9 @@ const (
 	RoleMuseumOffice     = "MUSEUM_OFFICE_ROLE"     // 博物馆处角色
 
 	//not login
-	UserAnonymous     = "anonymous"
-	UserAdministrator = "administrator"
+	UserAnonymous = "anonymous"
+	// 注视调,改成从引用的项目中传入角色编码,然后使用
+	//UserAdministrator = "administrator"
 
 	TenantAnonymous = ""
 

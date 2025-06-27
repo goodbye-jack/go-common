@@ -5,6 +5,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/rbac"
+	role2 "github.com/goodbye-jack/go-common/role"
 	"github.com/goodbye-jack/go-common/utils"
 )
 
@@ -20,43 +21,51 @@ type Route struct {
 	middlewares      []gin.HandlerFunc // 中间件链(新增)
 }
 
-var RoleMapping = map[string][]string{}
-var RoleMappingPrecise = map[string]string{}
+// var RoleMapping = map[string][]string{}
+//var RoleMappingPrecise = map[string]string{}
 
-func init() {
-	RoleMapping[utils.RoleIdle] = []string{
-		utils.UserAnonymous,
-		utils.RoleAdministrator,
-		utils.RoleDefault,
-		utils.RoleMuseum,
-		utils.RoleMuseumOffice,
-		utils.RoleAppraisalStation,
-	}
-	RoleMapping[utils.RoleAdministrator] = []string{
-		utils.RoleAdministrator,
-	}
-	RoleMappingPrecise[utils.RoleDefault] = utils.RoleDefault
-	RoleMappingPrecise[utils.RoleMuseum] = utils.RoleMuseum
-	RoleMappingPrecise[utils.RoleMuseumOffice] = utils.RoleMuseum
-	RoleMappingPrecise[utils.RoleAppraisalStation] = utils.RoleAppraisalStation
-	RoleMappingPrecise[utils.RoleAdministrator] = utils.RoleAdministrator
-	RoleMappingPrecise[utils.UserAnonymous] = utils.UserAnonymous
-}
+//func init() {
+//	//RoleMapping[utils.RoleIdle] = []string{
+//	//	utils.UserAnonymous,
+//	//	utils.RoleAdministrator,
+//	//	utils.RoleDefault,
+//	//	utils.RoleMuseum,
+//	//	utils.RoleMuseumOffice,
+//	//	utils.RoleAppraisalStation,
+//	//}
+//	//RoleMapping[utils.RoleAdministrator] = []string{
+//	//	utils.RoleAdministrator,
+//	//}
+//	RoleMappingPrecise[utils.RoleDefault] = utils.RoleDefault
+//	RoleMappingPrecise[utils.RoleMuseum] = utils.RoleMuseum
+//	RoleMappingPrecise[utils.RoleMuseumOffice] = utils.RoleMuseum
+//	RoleMappingPrecise[utils.RoleAppraisalStation] = utils.RoleAppraisalStation
+//	RoleMappingPrecise[utils.RoleAdministrator] = utils.RoleAdministrator
+//	RoleMappingPrecise[utils.UserAnonymous] = utils.UserAnonymous
+//}
 
-func NewRoute(service_name string, url string, tips string, methods []string, role string, sso bool, business_approval bool, handlerFunc gin.HandlerFunc) *Route {
+func NewRoute(service_name string, url string, tips string, methods []string, roles []string, sso bool, business_approval bool, handlerFunc gin.HandlerFunc) *Route {
 	if len(methods) == 0 {
 		log.Fatal("NewRoute methods is empty")
 	}
-	if _, ok := RoleMapping[role]; !ok {
-		log.Fatalf("the role %v is invalid", role)
+	//if _, ok := RoleMapping[role]; !ok {
+	//	log.Fatalf("the role %v is invalid", role)
+	//}
+	var newRoles []string
+	for _, role := range roles {
+		if _, ok := role2.GetRoleMapping()[role]; ok { // 代表权限在初始化的权限角色中,
+			// 可以进行访问,这块应该是脱离common 的 但是还是等后面重新设计吧 OK
+			newRoles = append(newRoles, role)
+		}
 	}
 	return &Route{
-		ServiceName:      service_name,
-		Tips:             tips,
-		Sso:              sso,
-		Url:              url,
-		Methods:          methods,
-		DefaultRoles:     RoleMapping[role],
+		ServiceName: service_name,
+		Tips:        tips,
+		Sso:         sso,
+		Url:         url,
+		Methods:     methods,
+		//DefaultRoles:     RoleMapping[role],
+		DefaultRoles:     newRoles,
 		handlerFunc:      handlerFunc,
 		BusinessApproval: business_approval,
 		middlewares:      []gin.HandlerFunc{}, // 初始化空中间件链
@@ -69,7 +78,7 @@ func NewRouteForRA(serviceName string, url string, tips string, methods []string
 	}
 	var newRoles []string
 	for _, role := range roles {
-		if _, ok := RoleMappingPrecise[role]; ok { // 代表权限在初始化的权限角色中,
+		if _, ok := role2.GetRoleMapping()[role]; ok { // 代表权限在初始化的权限角色中,
 			// 可以进行访问,这块应该是脱离common 的 但是还是等后面重新设计吧 OK
 			newRoles = append(newRoles, role)
 		}
@@ -134,31 +143,3 @@ func (r *Route) ToRbacPolicy() []rbac.Policy {
 	}
 	return ans
 }
-
-// ToGinRoute 转换为Gin路由信息(修改后版本)
-//func (r *Route) ToGinRoute() []*gin.RouteInfo {
-//	var routeInfos []*gin.RouteInfo
-//	for _, method := range r.Methods {
-//		routeInfos = append(routeInfos, &gin.RouteInfo{
-//			Method:      method,
-//			Path:        r.Url,
-//			HandlerFunc: r.GetHandlersChain()..., // 展开处理链
-//		})
-//	}
-//	return routeInfos
-//}
-
-//func (r *Route) ToGinRoute() []*gin.RouteInfo {
-//	var ans []*gin.RouteInfo
-//	for _, method := range r.Methods {
-//		ans = append(
-//			ans,
-//			&gin.RouteInfo{
-//				Method:      method,
-//				Path:        r.Url,
-//				HandlerFunc: r.handlerFunc,
-//			},
-//		)
-//	}
-//	return ans
-//}
