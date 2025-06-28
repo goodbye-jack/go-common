@@ -36,7 +36,7 @@ func Register(name string, handler SsoHandler) {
 
 func RbacMiddleware(serviceName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if strings.HasPrefix(c.Request.URL.Path, "/static/") {
+		if strings.HasPrefix(c.Request.URL.Path, "/static/") ||  strings.HasPrefix(c.Request.URL.Path, "/static/") {
 			c.Next()
 			return
 		}
