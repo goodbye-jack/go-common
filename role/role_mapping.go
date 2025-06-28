@@ -9,7 +9,6 @@ import (
 // RoleMappingConfig 定义角色映射配置结构
 type RoleMappingConfig struct {
 	RoleMapping map[string]string
-	//RoleMappingPrecise map[string]string
 }
 
 // 默认配置
@@ -26,74 +25,85 @@ var defaultRoleMappingConfig = RoleMappingConfig{
 
 // 全局配置实例
 var (
-	roleMappingConfig = defaultRoleMappingConfig
-	once              sync.Once
+	roleConfig     RoleMappingConfig
+	roleConfigOnce sync.Once
 )
 
 // InitRoleMapping 初始化角色映射配置
-func InitRoleMapping(config RoleMappingConfig) {
-	once.Do(func() {
-		// 验证配置
-		if err := validateRoleConfig(config); err != nil {
-			fmt.Printf("角色配置验证失败，使用默认配置: %v\n", err)
-			return
+// 支持从角色列表初始化，也支持从完整配置初始化
+func InitRoleMapping(config interface{}) {
+	roleConfigOnce.Do(func() {
+		switch cfg := config.(type) {
+		case []string:
+			// 从角色列表初始化
+			roleConfig = initFromRoleList(cfg)
+			fmt.Println("从角色列表初始化角色配置成功")
+		case RoleMappingConfig:
+			// 从完整配置初始化
+			roleConfig = cfg
+			validateAndMergeConfig(&roleConfig)
+			fmt.Println("从完整配置初始化角色配置成功")
+		default:
+			// 使用默认配置
+			roleConfig = defaultRoleMappingConfig
+			fmt.Println("使用默认角色配置")
 		}
-		// 设置配置
-		roleMappingConfig = config
-		fmt.Println("角色配置已成功初始化")
 	})
 }
 
-// validateRoleConfig 验证角色配置
-func validateRoleConfig(config RoleMappingConfig) error {
-	// 验证 RoleMapping
-	//for role, mappedRoles := range config.RoleMapping {
-	//	if role == "" {
-	//		return fmt.Errorf("RoleMapping 中发现空角色键")
-	//	}
-	//	for _, mappedRole := range mappedRoles {
-	//		if mappedRole == "" {
-	//			return fmt.Errorf("RoleMapping 中角色 %s 的映射值为空", role)
-	//		}
-	//	}
-	//}
-	// 验证 RoleMappingPrecise
-	for role, preciseRole := range config.RoleMapping {
-		if role == "" || preciseRole == "" {
-			return fmt.Errorf("RoleMappingPrecise 中发现空键或空值")
+// validateAndMergeConfig 验证并合并配置
+func validateAndMergeConfig(config *RoleMappingConfig) {
+	// 如果没有提供任何映射，使用默认映射
+	if config.RoleMapping == nil || len(config.RoleMapping) == 0 {
+		config.RoleMapping = defaultRoleMappingConfig.RoleMapping
+		return
+	}
+	// 合并默认映射（保留用户提供的映射，添加默认映射中没有的）
+	for role, mappedRole := range defaultRoleMappingConfig.RoleMapping {
+		if _, exists := config.RoleMapping[role]; !exists {
+			config.RoleMapping[role] = mappedRole
 		}
 	}
-
-	return nil
 }
 
-//// GetRoleMapping 获取角色映射
-//func GetRoleMapping() map[string][]string {
-//	return roleMappingConfig.RoleMapping
-//}
+// initFromRoleList 从角色列表初始化角色配置
+func initFromRoleList(roleList []string) RoleMappingConfig {
+	config := defaultRoleMappingConfig
+	// 如果角色列表为空，返回默认配置
+	if len(roleList) == 0 {
+		return config
+	}
+	// 创建新的映射，保留默认映射并添加/覆盖角色列表中的角色
+	preciseMapping := make(map[string]string)
+	// 复制默认映射
+	for role, mappedRole := range config.RoleMapping {
+		preciseMapping[role] = mappedRole
+	}
+	// 添加/覆盖角色列表中的角色
+	for _, role := range roleList {
+		preciseMapping[role] = role
+	}
+	config.RoleMapping = preciseMapping
+	return config
+}
 
-// GetRoleMappingPrecise 获取精确角色映射
-func GetRoleMapping() map[string]string {
-	return roleMappingConfig.RoleMapping
+// GetPreciseRoleMapping 获取精确角色映射
+func GetRoleMapping(role string) (string, bool) {
+	if roleConfig.RoleMapping == nil {
+		return "", false
+	}
+	mappedRole, exists := roleConfig.RoleMapping[role]
+	return mappedRole, exists
 }
 
 // HasRole 检查用户是否拥有特定角色
 func HasRole(userRole, requiredRole string) bool {
-	// 先检查精确映射
-	if preciseRole, exists := GetRoleMapping()[userRole]; exists {
+	// 检查精确映射
+	if preciseRole, exists := GetRoleMapping(userRole); exists {
 		if preciseRole == requiredRole {
 			return true
 		}
 	}
-	//// 再检查普通映射
-	//for role, roles := range GetRoleMapping() {
-	//	if role == requiredRole {
-	//		for _, r := range roles {
-	//			if r == userRole {
-	//				return true
-	//			}
-	//		}
-	//	}
-	//}
-	return false
+	// 如果用户角色与所需角色直接匹配，也返回 true
+	return userRole == requiredRole
 }
