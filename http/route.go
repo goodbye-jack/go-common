@@ -21,36 +21,54 @@ type Route struct {
 	middlewares      []gin.HandlerFunc // 中间件链(新增)
 }
 
-// var RoleMapping = map[string][]string{}
-//var RoleMappingPrecise = map[string]string{}
+var RoleMapping = map[string][]string{}
+var RoleMappingPrecise = map[string]string{}
 
-//func init() {
-//	//RoleMapping[utils.RoleIdle] = []string{
-//	//	utils.UserAnonymous,
-//	//	utils.RoleAdministrator,
-//	//	utils.RoleDefault,
-//	//	utils.RoleMuseum,
-//	//	utils.RoleMuseumOffice,
-//	//	utils.RoleAppraisalStation,
-//	//}
-//	//RoleMapping[utils.RoleAdministrator] = []string{
-//	//	utils.RoleAdministrator,
-//	//}
-//	RoleMappingPrecise[utils.RoleDefault] = utils.RoleDefault
-//	RoleMappingPrecise[utils.RoleMuseum] = utils.RoleMuseum
-//	RoleMappingPrecise[utils.RoleMuseumOffice] = utils.RoleMuseum
-//	RoleMappingPrecise[utils.RoleAppraisalStation] = utils.RoleAppraisalStation
-//	RoleMappingPrecise[utils.RoleAdministrator] = utils.RoleAdministrator
-//	RoleMappingPrecise[utils.UserAnonymous] = utils.UserAnonymous
-//}
+func init() {
+	RoleMapping[utils.RoleIdle] = []string{
+		utils.UserAnonymous,
+		utils.RoleAdministrator,
+		utils.RoleDefault,
+		utils.RoleMuseum,
+		utils.RoleMuseumOffice,
+		utils.RoleAppraisalStation,
+	}
+	RoleMapping[utils.RoleAdministrator] = []string{
+		utils.RoleAdministrator,
+	}
+	RoleMappingPrecise[utils.RoleDefault] = utils.RoleDefault
+	RoleMappingPrecise[utils.RoleMuseum] = utils.RoleMuseum
+	RoleMappingPrecise[utils.RoleMuseumOffice] = utils.RoleMuseum
+	RoleMappingPrecise[utils.RoleAppraisalStation] = utils.RoleAppraisalStation
+	RoleMappingPrecise[utils.RoleAdministrator] = utils.RoleAdministrator
+	RoleMappingPrecise[utils.UserAnonymous] = utils.UserAnonymous
+}
 
-func NewRoute(service_name string, url string, tips string, methods []string, roles []string, sso bool, business_approval bool, handlerFunc gin.HandlerFunc) *Route {
+func NewRoute(service_name string, url string, tips string, methods []string, role string, sso bool, business_approval bool, handlerFunc gin.HandlerFunc) *Route {
 	if len(methods) == 0 {
 		log.Fatal("NewRoute methods is empty")
 	}
-	//if _, ok := RoleMapping[role]; !ok {
-	//	log.Fatalf("the role %v is invalid", role)
-	//}
+	if _, ok := RoleMapping[role]; !ok {
+		log.Fatalf("the role %v is invalid", role)
+	}
+	return &Route{
+		ServiceName:  service_name,
+		Tips:         tips,
+		Sso:          sso,
+		Url:          url,
+		Methods:      methods,
+		DefaultRoles: RoleMapping[role],
+		//DefaultRoles:     newRoles,
+		handlerFunc:      handlerFunc,
+		BusinessApproval: business_approval,
+		middlewares:      []gin.HandlerFunc{}, // 初始化空中间件链
+	}
+}
+
+func NewRouteForRA(serviceName string, url string, tips string, methods []string, roles []string, sso bool, businessApproval bool, handlerFunc gin.HandlerFunc) *Route {
+	if len(methods) == 0 {
+		log.Fatal("NewRoute methods is empty")
+	}
 	var newRoles []string
 	for _, role := range roles {
 		if _, ok := role2.GetRoleMapping(role); ok { // 代表权限在初始化的权限角色中,
@@ -59,20 +77,19 @@ func NewRoute(service_name string, url string, tips string, methods []string, ro
 		}
 	}
 	return &Route{
-		ServiceName: service_name,
-		Tips:        tips,
-		Sso:         sso,
-		Url:         url,
-		Methods:     methods,
-		//DefaultRoles:     RoleMapping[role],
+		ServiceName:      serviceName,
+		Tips:             tips,
+		Sso:              sso,
+		Url:              url,
+		Methods:          methods,
 		DefaultRoles:     newRoles,
 		handlerFunc:      handlerFunc,
-		BusinessApproval: business_approval,
+		BusinessApproval: businessApproval,
 		middlewares:      []gin.HandlerFunc{}, // 初始化空中间件链
 	}
 }
 
-func NewRouteForRA(serviceName string, url string, tips string, methods []string, roles []string, sso bool, businessApproval bool, handlerFunc gin.HandlerFunc) *Route {
+func NewRouteCommon(serviceName string, url string, tips string, methods []string, roles []string, sso bool, businessApproval bool, handlerFunc gin.HandlerFunc) *Route {
 	if len(methods) == 0 {
 		log.Fatal("NewRoute methods is empty")
 	}

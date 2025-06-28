@@ -50,7 +50,7 @@ func init() {
 
 func NewHTTPServer(service_name string) *HTTPServer {
 	routes := []*Route{
-		NewRoute(service_name, "/ping", "健康检查", []string{"GET"}, []string{utils.RoleIdle}, false, false, func(c *gin.Context) {
+		NewRoute(service_name, "/ping", "健康检查", []string{"GET"}, utils.RoleIdle, false, false, func(c *gin.Context) {
 			c.String(http.StatusOK, "Pong")
 		}),
 	}
@@ -72,11 +72,11 @@ func (s *HTTPServer) GetDefaultRoles() []string {
 	}
 }
 
-func (s *HTTPServer) Route(path string, methods []string, roles []string, sso bool, fn gin.HandlerFunc) {
+func (s *HTTPServer) Route(path string, methods []string, role string, sso bool, fn gin.HandlerFunc) {
 	if len(methods) == 0 {
 		methods = append(methods, "GET")
 	}
-	s.routes = append(s.routes, NewRoute(s.service_name, path, "", methods, roles, sso, false, fn))
+	s.routes = append(s.routes, NewRoute(s.service_name, path, "", methods, role, sso, false, fn))
 }
 
 // RouteForRA 鉴定专用router,携带日志记录,明确角色
@@ -88,7 +88,7 @@ func (s *HTTPServer) RouteForRA(path string, tips string, methods []string, role
 }
 
 func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles []string, sso bool, business_approval bool, fn gin.HandlerFunc) {
-	route := NewRouteForRA(s.service_name, path, tips, methods, roles, sso, business_approval, fn)
+	route := NewRouteCommon(s.service_name, path, tips, methods, roles, sso, business_approval, fn)
 	// 添加业务审批中间件(如果需要)
 	if business_approval && s.approvalHandler != nil {
 		aConfig := approval.Config{

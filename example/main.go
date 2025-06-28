@@ -29,13 +29,13 @@ func main() {
 
 	server := myHttp.NewHTTPServer(service_name)
 	server.StaticFs("/static")
-	server.Route("/hello", []string{"GET"}, []string{utils.RoleAdministrator}, false, func(c *gin.Context) {
+	server.Route("/hello", []string{"GET"}, utils.RoleAdministrator, false, func(c *gin.Context) {
 		world := World{
 			Name: "China",
 		}
 		myHttp.JsonResponse(c, world, nil)
 	})
-	server.Route("/hello/error", []string{"GET"}, []string{utils.RoleAdministrator}, false, func(c *gin.Context) {
+	server.Route("/hello/error", []string{"GET"}, utils.RoleAdministrator, false, func(c *gin.Context) {
 		world := World{
 			Name: "China",
 		}
