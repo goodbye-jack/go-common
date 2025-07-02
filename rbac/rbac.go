@@ -192,11 +192,12 @@ func (c *RbacClient) AddRolePolicy(rp *RolePolicy) error {
 		log.Error("AddRolePolicy/GetRolePolicy(%v) error, %v", *rp, err)
 		return err
 	}
-	if _rp != nil && _rp.Role != rp.Role {
+	if _rp != nil && _rp.Role != rp.Role { // 如果缓存中的角色和当前传入的角色不一致,那么删除缓存的角色,重新传入新的角色
 		log.Info("AddRolePolicy(%v) had existed", *rp)
-		return nil
+		if errDR := c.DeleteRolePolicy(_rp); errDR != nil {
+			return errDR
+		}
 	}
-
 	added, err := c.e.AddGroupingPolicy(rp.ToArr())
 	if err != nil {
 		log.Error("AddRolePolicy/AddGroupingPolicy(%v) error, %v", *rp, err)
@@ -232,11 +233,9 @@ func (c *RbacClient) DeleteRolePolicy(rp *RolePolicy) error {
 		return err
 	}
 	log.Info("DeleteRolePolicy %v, %b removed", rp)
-
 	if removed {
 		return c.save()
 	}
-
 	return nil
 }
 
