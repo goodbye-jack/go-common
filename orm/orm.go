@@ -3,17 +3,18 @@ package orm
 import (
 	"context"
 	"fmt"
-	"log"
-
 	_ "gitea.com/kingbase/gokb" // Kingbase 驱动
 	goodlog "github.com/goodbye-jack/go-common/log"
+	_ "github.com/jasonlabz/gorm-dm-driver"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"log"
 	"os"
 	"strings"
 	"time"
+	//_ "dm"
 )
 
 type Orm struct {
@@ -22,13 +23,22 @@ type Orm struct {
 
 func NewOrm(dsn, dbtype string) *Orm {
 	goodlog.Info("NewOrm param:dsn=%s", dsn)
-
-	dialector := mysql.Open(dsn)
-	if dbtype == "kingbase" {
+	var dialector gorm.Dialector
+	switch dbtype {
+	case "mysql": // mysql
+		dialector = mysql.Open(dsn)
+	case "kingbase": //人大金仓
 		dialector = postgres.New(postgres.Config{
 			DriverName: "kingbase", // 指定使用 kingbase 驱动
 			DSN:        dsn,
 		})
+	case "dm": // 达梦数据库
+		dialector = postgres.New(postgres.Config{
+			DriverName: "godm", // 指定使用达梦数据库驱动
+			DSN:        dsn,
+		})
+	default:
+		log.Fatalf("Unsupported database type: %s", dbtype)
 	}
 	conf := &gorm.Config{
 		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
@@ -40,15 +50,45 @@ func NewOrm(dsn, dbtype string) *Orm {
 	}
 	db, err := gorm.Open(dialector, conf)
 	if err != nil {
-		log.Fatal("%s connect failed, %v", dbtype, err)
+		log.Fatalf("%s connect failed, %v", dbtype, err)
 	}
 	return &Orm{
 		db: db,
 	}
 }
 
+//func NewOrm(dsn, dbtype string) *Orm {
+//	goodlog.Info("NewOrm param:dsn=%s", dsn)
+//
+//	dialector := mysql.Open(dsn)
+//	if dbtype == "kingbase" {
+//		dialector = postgres.New(postgres.Config{
+//			DriverName: "kingbase", // 指定使用 kingbase 驱动
+//			DSN:        dsn,
+//		})
+//	}
+//	conf := &gorm.Config{
+//		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
+//			SlowThreshold:             5000 * time.Millisecond, // 这个最小就是5,后面改成可传入数字
+//			LogLevel:                  logger.Info,
+//			IgnoreRecordNotFoundError: false,
+//			Colorful:                  true,
+//		}).LogMode(logger.Info),
+//	}
+//	db, err := gorm.Open(dialector, conf)
+//	if err != nil {
+//		log.Fatal("%s connect failed, %v", dbtype, err)
+//	}
+//	return &Orm{
+//		db: db,
+//	}
+//}
+
 func (o *Orm) AutoMigrate(ptr interface{}) {
-	o.db.AutoMigrate(ptr)
+	err := o.db.AutoMigrate(ptr)
+	if err != nil {
+		return
+	}
 }
 
 func (o *Orm) Migrator(ptr interface{}, indexName string) {
