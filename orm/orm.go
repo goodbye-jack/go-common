@@ -34,7 +34,7 @@ func NewOrm(dsn, dbtype string) *Orm {
 		})
 	case "dm": // 达梦数据库
 		dialector = postgres.New(postgres.Config{
-			DriverName: "godm", // 指定使用达梦数据库驱动
+			DriverName: "dm", // 指定使用达梦数据库驱动
 			DSN:        dsn,
 		})
 	default:
