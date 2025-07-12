@@ -6,10 +6,15 @@ import (
 	"fmt"
 	_ "gitea.com/kingbase/gokb" // Kingbase 驱动
 	glog "github.com/goodbye-jack/go-common/log"
+	"github.com/goodbye-jack/go-common/orm/config"
+
 	//"github.com/goodbye-jack/go-common/orm/dialect"
-	_ "github.com/jasonlabz/gorm-dm-driver"
+	dm "github.com/jasonlabz/gorm-dm-driver"
+	//"github.com/jasonlabz/oracle"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
+	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
@@ -21,33 +26,44 @@ import (
 
 type Orm struct {
 	db     *gorm.DB
-	dbtype string // 新增：存储数据库类型（mysql/dm/kingbase）
+	dbtype config.DBType // 新增：存储数据库类型（mysql/dm/kingbase）
 }
 
 // NewOrm 创建 ORM 实例
-func NewOrm(dsn, dbtype string) *Orm {
+func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 	glog.Error("NewOrm param:dsn=%s", dsn)
-	var dialector gorm.Dialector
+
+	if dsn == "" {
+		glog.Error("NewOrm param dsn is empty:请检查您的DSN参数")
+		return nil
+	}
+	if dbtype == "" {
+		glog.Error("您没有输入DBType,默认使用mysql数据源")
+		dbtype = "mysql" // 默认使用mysql
+	}
+	if slowTime <= 0 {
+		slowTime = 3
+	}
+	var dialect gorm.Dialector
 	switch dbtype {
-	case "mysql":
-		dialector = mysql.Open(dsn)
-	case "dm": // 使用达梦专用方言
-		// dialector = dialect.NewDMDialector(dsn)
-		dialector = postgres.New(postgres.Config{
-			DriverName: "dm", // 指定使用达梦数据库驱动
-			DSN:        dsn,
-		})
-	case "kingbase": // 使用人大金仓方言（基于 PostgreSQL）
-		dialector = postgres.New(postgres.Config{
-			DriverName: "kingbase",
-			DSN:        dsn,
-		})
+	case config.DBTypeMySQL:
+		dialect = mysql.Open(dsn)
+	case config.DBTypePostgres:
+		dialect = postgres.Open(dsn)
+	case config.DBTypeSqlserver:
+		dialect = sqlserver.Open(dsn)
+	//case config.DBTypeOracle:
+	//	dialect = oracle.Open(dsn)
+	case config.DBTypeSQLite:
+		dialect = sqlite.Open(dsn)
+	case config.DBTypeDM:
+		dialect = dm.Open(dsn)
 	default:
-		log.Fatalf("Unsupported database type: %s", dbtype)
+		glog.Error(fmt.Sprintf("unsupported dbType: %s", string(dsn)))
 	}
 	config := &gorm.Config{ // 配置 GORM
 		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
-			SlowThreshold:             5000 * time.Millisecond, // 这个最小就是5,后面改成可传入数字
+			SlowThreshold:             time.Duration(slowTime) * time.Second, // 这个最小就是5,后面改成可传入数字
 			LogLevel:                  logger.Info,
 			IgnoreRecordNotFoundError: false,
 			Colorful:                  true,
@@ -55,7 +71,7 @@ func NewOrm(dsn, dbtype string) *Orm {
 		DisableForeignKeyConstraintWhenMigrating: true,
 		PrepareStmt:                              true,
 	}
-	db, err := gorm.Open(dialector, config) // 创建数据库连接
+	db, err := gorm.Open(dialect, config) // 创建数据库连接
 	if err != nil {
 		log.Fatalf("%s connect failed, %v", dbtype, err)
 	}
@@ -78,7 +94,7 @@ func NewOrm(dsn, dbtype string) *Orm {
 // 注册达梦专用钩子
 func (o *Orm) registerDMHooks() {
 	// 处理 LIMIT/OFFSET 转换
-	o.db.Callback().Query().Before("gorm:query").Register("dm:convert_limit", convertDMLimit)
+	//o.db.Callback().Query().Before("gorm:query").Register("dm:convert_limit", convertDMLimit)
 }
 
 // 注册人大金仓专用钩子
