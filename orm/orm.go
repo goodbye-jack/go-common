@@ -6,7 +6,7 @@ import (
 	"fmt"
 	_ "gitea.com/kingbase/gokb" // Kingbase 驱动
 	glog "github.com/goodbye-jack/go-common/log"
-	"github.com/goodbye-jack/go-common/orm/dialect"
+	//"github.com/goodbye-jack/go-common/orm/dialect"
 	_ "github.com/jasonlabz/gorm-dm-driver"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -32,7 +32,11 @@ func NewOrm(dsn, dbtype string) *Orm {
 	case "mysql":
 		dialector = mysql.Open(dsn)
 	case "dm": // 使用达梦专用方言
-		dialector = dialect.NewDMDialector(dsn)
+		// dialector = dialect.NewDMDialector(dsn)
+		dialector = postgres.New(postgres.Config{
+			DriverName: "dm", // 指定使用达梦数据库驱动
+			DSN:        dsn,
+		})
 	case "kingbase": // 使用人大金仓方言（基于 PostgreSQL）
 		dialector = postgres.New(postgres.Config{
 			DriverName: "kingbase",
