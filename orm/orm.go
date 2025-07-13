@@ -7,10 +7,7 @@ import (
 	_ "gitea.com/kingbase/gokb" // Kingbase 驱动
 	glog "github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/orm/config"
-
-	//"github.com/goodbye-jack/go-common/orm/dialect"
 	dm "github.com/jasonlabz/gorm-dm-driver"
-	//"github.com/jasonlabz/oracle"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -22,24 +19,25 @@ import (
 	"os"
 	"strings"
 	"time"
+	//"github.com/jasonlabz/oracle"
+	//"github.com/goodbye-jack/go-common/orm/dialect"
 )
 
 type Orm struct {
-	db     *gorm.DB
-	dbtype config.DBType // 新增：存储数据库类型（mysql/dm/kingbase）
+	db *gorm.DB
+	//dbtype config.DBType // 新增：存储数据库类型（mysql/dm/kingbase）
 }
 
 // NewOrm 创建 ORM 实例
 func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 	glog.Error("NewOrm param:dsn=%s", dsn)
-
 	if dsn == "" {
 		glog.Error("NewOrm param dsn is empty:请检查您的DSN参数")
 		return nil
 	}
 	if dbtype == "" {
 		glog.Error("您没有输入DBType,默认使用mysql数据源")
-		dbtype = "mysql" // 默认使用mysql
+		dbtype = config.DBTypeMySQL // 默认使用mysql
 	}
 	if slowTime <= 0 {
 		slowTime = 3
@@ -58,10 +56,16 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 		dialect = sqlite.Open(dsn)
 	case config.DBTypeDM:
 		dialect = dm.Open(dsn)
+	case config.DBTtypeKingBase: // 使用人大金仓方言（基于 PostgreSQL）
+		//dialect, _ = kingbase.Open(dsn)
+		dialect = postgres.New(postgres.Config{
+			DriverName: "kingbase",
+			DSN:        dsn,
+		})
 	default:
 		glog.Error(fmt.Sprintf("unsupported dbType: %s", string(dsn)))
 	}
-	config := &gorm.Config{ // 配置 GORM
+	dbConfig := &gorm.Config{ // 配置 GORM
 		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
 			SlowThreshold:             time.Duration(slowTime) * time.Second, // 这个最小就是5,后面改成可传入数字
 			LogLevel:                  logger.Info,
@@ -71,7 +75,7 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 		DisableForeignKeyConstraintWhenMigrating: true,
 		PrepareStmt:                              true,
 	}
-	db, err := gorm.Open(dialect, config) // 创建数据库连接
+	db, err := gorm.Open(dialect, dbConfig) // 创建数据库连接
 	if err != nil {
 		log.Fatalf("%s connect failed, %v", dbtype, err)
 	}
@@ -80,12 +84,11 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Minute * 3)
 	orm := &Orm{
-		db:     db,
-		dbtype: dbtype,
+		db: db,
 	}
-	if dbtype == "dm" { // 注册数据库专用钩子
+	if dbtype == config.DBTypeDM { // 注册数据库专用钩子
 		orm.registerDMHooks()
-	} else if dbtype == "kingbase" {
+	} else if dbtype == config.DBTtypeKingBase {
 		orm.registerKingbaseHooks()
 	}
 	return orm

@@ -24,6 +24,7 @@ const (
 	DBTypeOracle    DBType = "oracle"
 	DBTypeSQLite    DBType = "sqlite"
 	DBTypeDM        DBType = "dm"
+	DBTtypeKingBase DBType = "kingbase"
 )
 
 // DBDsnMap 关系型数据库类型  username、password、address、port、dbname
