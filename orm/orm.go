@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 	"log"
 	"os"
 	"strings"
@@ -74,6 +75,13 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 		}).LogMode(logger.Info),
 		DisableForeignKeyConstraintWhenMigrating: true,
 		PrepareStmt:                              true,
+		NamingStrategy: schema.NamingStrategy{
+			// 对于达梦数据库，使用大写表名和列名
+			TablePrefix:   "",
+			SingularTable: true,
+			NameReplacer:  nil,
+			NoLowerCase:   dbtype == config.DBTypeDM, // 达梦数据库不使用小写
+		},
 	}
 	db, err := gorm.Open(dialect, dbConfig) // 创建数据库连接
 	if err != nil {
