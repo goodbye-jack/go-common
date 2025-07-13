@@ -105,7 +105,12 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 // 注册达梦专用钩子
 func (o *Orm) registerDMHooks() {
 	// 处理 LIMIT/OFFSET 转换
-	o.db.Callback().Query().Before("gorm:query").Register("dm:convert_limit", convertDMLimit)
+	err := o.db.Callback().Query().Before("gorm:query").Register("dm:convert_limit", convertDMLimit)
+	if err != nil {
+		log.Fatalf("register DM hooks failed, %v", err)
+		log.Fatalf("注册达梦钩子函数失败, %v", err)
+		//return
+	}
 }
 
 // 注册人大金仓专用钩子
