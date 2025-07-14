@@ -18,7 +18,7 @@ import (
 	"gorm.io/gorm/schema"
 	"log"
 	"os"
-	"regexp"
+	//"regexp"
 	"strings"
 	"time"
 	//"github.com/jasonlabz/oracle"
@@ -234,20 +234,20 @@ func snakeToCamel(s string) string {
 
 func (o *Orm) First(ctx context.Context, res interface{}, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
-	if o.db.Dialector.Name() == "dm" && len(filters) > 0 {
-		if where, ok := filters[0].(string); ok {
-			// 转换列名为驼峰式
-			re := regexp.MustCompile(`([a-z_]+)(\s*[=<>!]+\s*)`)
-			where = re.ReplaceAllStringFunc(where, func(s string) string {
-				parts := re.FindStringSubmatch(s)
-				if len(parts) > 1 {
-					return snakeToCamel(parts[1]) + parts[2]
-				}
-				return s
-			})
-			filters[0] = where
-		}
-	}
+	//if o.db.Dialector.Name() == "dm" && len(filters) > 0 {
+	//	if where, ok := filters[0].(string); ok {
+	//		// 转换列名为驼峰式
+	//		re := regexp.MustCompile(`([a-z_]+)(\s*[=<>!]+\s*)`)
+	//		where = re.ReplaceAllStringFunc(where, func(s string) string {
+	//			parts := re.FindStringSubmatch(s)
+	//			if len(parts) > 1 {
+	//				return snakeToCamel(parts[1]) + parts[2]
+	//			}
+	//			return s
+	//		})
+	//		filters[0] = where
+	//	}
+	//}
 	return db.First(res, filters...).Error
 }
 
