@@ -15,7 +15,7 @@ type Tester struct {
 }
 
 func TestORM(t *testing.T) {
-	orm := NewOrm(config.GetConfigString("tidb_dsn"), "mysql")
+	orm := NewOrm(config.GetConfigString("tidb_dsn"), "mysql", 5)
 	orm.AutoMigrate(&Tester{})
 	tr := Tester{
 		Name: "Tester",
