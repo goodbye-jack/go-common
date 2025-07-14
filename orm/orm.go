@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm/schema"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 	//"github.com/jasonlabz/oracle"
@@ -79,8 +80,9 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 			// 对于达梦数据库，使用大写表名和列名
 			TablePrefix:   "",
 			SingularTable: true,
-			NameReplacer:  nil,
-			NoLowerCase:   dbtype == config.DBTypeDM, // 达梦数据库不使用小写
+			//NameReplacer:  nil,
+			NameReplacer: strings.NewReplacer("_", ""), // 移除下划线
+			NoLowerCase:  dbtype == config.DBTypeDM,    // 达梦数据库不使用小写
 		},
 	}
 	db, err := gorm.Open(dialect, dbConfig) // 创建数据库连接
@@ -108,7 +110,7 @@ func (o *Orm) registerDMHooks() {
 	err := o.db.Callback().Query().Before("gorm:query").Register("dm:convert_limit", convertDMLimit)
 	if err != nil {
 		log.Fatalf("register DM hooks failed, %v", err)
-		log.Fatalf("注册达梦钩子函数失败, %v", err)
+		//log.Fatalf("注册达梦钩子函数失败, %v", err)
 		//return
 	}
 }
@@ -173,7 +175,6 @@ func convertDMLimit(db *gorm.DB) {
 				FROM (%s) t
 			) WHERE rn > %d AND rn <= %d
 		`, orderExpr, originalSQL, offset, offset+limit)
-
 		// 替换原始 SQL 并清除原有分页参数
 		db.Statement.SQL.Reset()
 		db.Statement.SQL.WriteString(newSQL)
@@ -221,8 +222,32 @@ func (o *Orm) Create(ctx context.Context, ptr interface{}) error {
 	return db.Create(ptr).Error
 }
 
+func snakeToCamel(s string) string {
+	parts := strings.Split(s, "_")
+	for i := range parts {
+		if len(parts[i]) > 0 {
+			parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
+		}
+	}
+	return strings.Join(parts, "")
+}
+
 func (o *Orm) First(ctx context.Context, res interface{}, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
+	if o.db.Dialector.Name() == "dm" && len(filters) > 0 {
+		if where, ok := filters[0].(string); ok {
+			// 转换列名为驼峰式
+			re := regexp.MustCompile(`([a-z_]+)(\s*[=<>!]+\s*)`)
+			where = re.ReplaceAllStringFunc(where, func(s string) string {
+				parts := re.FindStringSubmatch(s)
+				if len(parts) > 1 {
+					return snakeToCamel(parts[1]) + parts[2]
+				}
+				return s
+			})
+			filters[0] = where
+		}
+	}
 	return db.First(res, filters...).Error
 }
 
@@ -381,7 +406,7 @@ func (o *Orm) Raw(sql string, result interface{}, value ...interface{}) error {
 //	}
 //
 
-// 修改后的 RawRows 方法
+// RawRows 修改后的 RawRows 方法
 func (o *Orm) RawRows(sql string, value ...interface{}) (*sql.Rows, error) {
 	return o.db.Raw(sql, value...).Rows()
 }
