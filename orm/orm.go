@@ -65,20 +65,23 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 		dialect = dm.Open(dsn)
 	case config.DBTtypeKingBase:
 		dialect = postgres.New(postgres.Config{
-			DriverName: string(config.DBTtypeKingBase),
+			DriverName: "kingbase",
 			DSN:        dsn,
 		})
 	default:
 		glog.Error(fmt.Sprintf("unsupported dbType: %s", string(dsn)))
 	}
-	// 创建自定义命名策略
+
+	// 创建统一的命名策略（所有数据库使用相同策略）
 	namingStrategy := schema.NamingStrategy{
 		TablePrefix:   "",
-		SingularTable: true,
-		NoLowerCase:   false, // 所有数据库都使用小写
+		SingularTable: true,  // 是否禁用表名复数化 ,是为true 否为false
+		NoLowerCase:   false, // 禁用强制大写
+
 		// 使用自定义的Replacer实现
 		NameReplacer: underscoreReplacer{},
 	}
+
 	dbConfig := &gorm.Config{
 		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
 			SlowThreshold:             time.Duration(slowTime) * time.Second,
@@ -127,6 +130,7 @@ func convertDMLimit(db *gorm.DB) {
 	var limit, offset int
 	limitClause, hasLimit := db.Statement.Clauses["LIMIT"]
 	offsetClause, hasOffset := db.Statement.Clauses["OFFSET"]
+
 	if hasLimit {
 		if l, ok := limitClause.Expression.(clause.Limit); ok {
 			if l.Limit != nil {
@@ -134,17 +138,21 @@ func convertDMLimit(db *gorm.DB) {
 			}
 		}
 	}
+
 	if hasOffset {
 		if o, ok := offsetClause.Expression.(*clause.Limit); ok {
 			offset = o.Offset
 		}
 	}
+
 	if limit == 0 && offset == 0 {
 		return
 	}
+
 	if offset > 0 {
 		originalSQL := db.Statement.SQL.String()
 		orderExpr := "id ASC"
+
 		if orderClause, hasOrder := db.Statement.Clauses["ORDER BY"]; hasOrder {
 			if orderBy, ok := orderClause.Expression.(clause.OrderBy); ok {
 				orderExpr = ""
@@ -159,11 +167,11 @@ func convertDMLimit(db *gorm.DB) {
 			}
 		}
 		newSQL := fmt.Sprintf(`
-            SELECT * FROM (
-                SELECT ROW_NUMBER() OVER (ORDER BY %s) AS rn, t.* 
-                FROM (%s) t
-            ) WHERE rn > %d AND rn <= %d
-        `, orderExpr, originalSQL, offset, offset+limit)
+			SELECT * FROM (
+				SELECT ROW_NUMBER() OVER (ORDER BY %s) AS rn, t.* 
+				FROM (%s) t
+			) WHERE rn > %d AND rn <= %d
+		`, orderExpr, originalSQL, offset, offset+limit)
 		db.Statement.SQL.Reset()
 		db.Statement.SQL.WriteString(newSQL)
 		delete(db.Statement.Clauses, "LIMIT")
@@ -177,6 +185,161 @@ func convertDMLimit(db *gorm.DB) {
 		delete(db.Statement.Clauses, "LIMIT")
 	}
 }
+
+//// 自定义Replacer实现，将驼峰命名转换为小写下划线格式
+//type underscoreReplacer struct{}
+//
+//func (r underscoreReplacer) Replace(name string) string {
+//	// 使用正则表达式将驼峰转换为下划线小写
+//	name = regexp.MustCompile("([a-z0-9])([A-Z])").ReplaceAllString(name, "$1_$2")
+//	name = regexp.MustCompile("([A-Z])([A-Z][a-z])").ReplaceAllString(name, "$1_$2")
+//	return strings.ToLower(name)
+//}
+//
+//type Orm struct {
+//	db *gorm.DB
+//}
+//
+//// NewOrm 创建 ORM 实例
+//func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
+//	glog.Error("NewOrm param:dsn=%s", dsn)
+//	if dsn == "" {
+//		glog.Error("NewOrm param dsn is empty:请检查您的DSN参数")
+//		return nil
+//	}
+//	if dbtype == "" {
+//		glog.Error("您没有输入DBType,默认使用mysql数据源")
+//		dbtype = config.DBTypeMySQL // 默认使用mysql
+//	}
+//	if slowTime <= 0 {
+//		slowTime = 3
+//	}
+//	var dialect gorm.Dialector
+//	switch dbtype {
+//	case config.DBTypeMySQL:
+//		dialect = mysql.Open(dsn)
+//	case config.DBTypePostgres:
+//		dialect = postgres.Open(dsn)
+//	case config.DBTypeSqlserver:
+//		dialect = sqlserver.Open(dsn)
+//	case config.DBTypeSQLite:
+//		dialect = sqlite.Open(dsn)
+//	case config.DBTypeDM:
+//		dialect = dm.Open(dsn)
+//	case config.DBTtypeKingBase:
+//		dialect = postgres.New(postgres.Config{
+//			DriverName: string(config.DBTtypeKingBase),
+//			DSN:        dsn,
+//		})
+//	default:
+//		glog.Error(fmt.Sprintf("unsupported dbType: %s", string(dsn)))
+//	}
+//	// 创建自定义命名策略
+//	namingStrategy := schema.NamingStrategy{
+//		TablePrefix:   "",
+//		SingularTable: true,
+//		NoLowerCase:   false, // 所有数据库都使用小写
+//		// 使用自定义的Replacer实现
+//		NameReplacer: underscoreReplacer{},
+//	}
+//	dbConfig := &gorm.Config{
+//		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
+//			SlowThreshold:             time.Duration(slowTime) * time.Second,
+//			LogLevel:                  logger.Info,
+//			IgnoreRecordNotFoundError: false,
+//			Colorful:                  true,
+//		}).LogMode(logger.Info),
+//		DisableForeignKeyConstraintWhenMigrating: true,
+//		PrepareStmt:                              true,
+//		NamingStrategy:                           namingStrategy,
+//	}
+//	db, err := gorm.Open(dialect, dbConfig)
+//	if err != nil {
+//		log.Fatalf("%s connect failed, %v", dbtype, err)
+//	}
+//	sqlDB, _ := db.DB()
+//	sqlDB.SetMaxIdleConns(10)
+//	sqlDB.SetMaxOpenConns(100)
+//	sqlDB.SetConnMaxLifetime(time.Minute * 3)
+//	orm := &Orm{
+//		db: db,
+//	}
+//	if dbtype == config.DBTypeDM {
+//		orm.registerDMHooks()
+//	} else if dbtype == config.DBTtypeKingBase {
+//		orm.registerKingbaseHooks()
+//	}
+//	return orm
+//}
+//
+//// 注册达梦专用钩子
+//func (o *Orm) registerDMHooks() {
+//	err := o.db.Callback().Query().Before("gorm:query").Register("dm:convert_limit", convertDMLimit)
+//	if err != nil {
+//		log.Fatalf("register DM hooks failed, %v", err)
+//	}
+//}
+//
+//// 注册人大金仓专用钩子
+//func (o *Orm) registerKingbaseHooks() {
+//	// 人大金仓基于 PostgreSQL，通常不需要特殊处理
+//}
+//
+//// 达梦 LIMIT/OFFSET 转换钩子
+//func convertDMLimit(db *gorm.DB) {
+//	var limit, offset int
+//	limitClause, hasLimit := db.Statement.Clauses["LIMIT"]
+//	offsetClause, hasOffset := db.Statement.Clauses["OFFSET"]
+//	if hasLimit {
+//		if l, ok := limitClause.Expression.(clause.Limit); ok {
+//			if l.Limit != nil {
+//				limit = *l.Limit
+//			}
+//		}
+//	}
+//	if hasOffset {
+//		if o, ok := offsetClause.Expression.(*clause.Limit); ok {
+//			offset = o.Offset
+//		}
+//	}
+//	if limit == 0 && offset == 0 {
+//		return
+//	}
+//	if offset > 0 {
+//		originalSQL := db.Statement.SQL.String()
+//		orderExpr := "id ASC"
+//		if orderClause, hasOrder := db.Statement.Clauses["ORDER BY"]; hasOrder {
+//			if orderBy, ok := orderClause.Expression.(clause.OrderBy); ok {
+//				orderExpr = ""
+//				for _, col := range orderBy.Columns {
+//					orderExpr += fmt.Sprintf("%s, ", col.Column)
+//				}
+//				if orderExpr != "" {
+//					orderExpr = strings.TrimSuffix(orderExpr, ", ")
+//				} else {
+//					orderExpr = "id ASC"
+//				}
+//			}
+//		}
+//		newSQL := fmt.Sprintf(`
+//            SELECT * FROM (
+//                SELECT ROW_NUMBER() OVER (ORDER BY %s) AS rn, t.*
+//                FROM (%s) t
+//            ) WHERE rn > %d AND rn <= %d
+//        `, orderExpr, originalSQL, offset, offset+limit)
+//		db.Statement.SQL.Reset()
+//		db.Statement.SQL.WriteString(newSQL)
+//		delete(db.Statement.Clauses, "LIMIT")
+//		delete(db.Statement.Clauses, "OFFSET")
+//	} else if limit > 0 {
+//		originalSQL := db.Statement.SQL.String()
+//		newSQL := strings.Replace(originalSQL, "SELECT", fmt.Sprintf("SELECT TOP %d", limit), 1)
+//
+//		db.Statement.SQL.Reset()
+//		db.Statement.SQL.WriteString(newSQL)
+//		delete(db.Statement.Clauses, "LIMIT")
+//	}
+//}
 
 func (o *Orm) AutoMigrate(ptr interface{}) {
 	err := o.db.AutoMigrate(ptr)
