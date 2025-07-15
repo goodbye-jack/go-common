@@ -23,13 +23,34 @@ import (
 	"time"
 )
 
+// 改进的下划线替换器，正确处理表名和列名
+type underscoreReplacer struct{}
+
+func (r underscoreReplacer) Replace(name string) string {
+	// 特殊情况处理：如果是全大写，直接转小写
+	if strings.ToUpper(name) == name {
+		return strings.ToLower(name)
+	}
+
+	// 处理XxxYyyZzz格式
+	name = regexp.MustCompile("([a-z0-9])([A-Z])").ReplaceAllString(name, "$1_$2")
+
+	// 处理XYZ格式（多个连续大写字母），但保留缩写词的完整性
+	// 例如：ID → id，HTML → html，URL → url
+	name = regexp.MustCompile("([A-Z]+)([A-Z][a-z])").ReplaceAllString(name, "$1_$2")
+	name = regexp.MustCompile("([a-z])([A-Z])").ReplaceAllString(name, "$1_$2")
+
+	// 确保全部小写
+	return strings.ToLower(name)
+}
+
 // 创建达梦专用的命名策略
 func createDMNamingStrategy() schema.NamingStrategy {
 	return schema.NamingStrategy{
-		TablePrefix:   "",
-		SingularTable: false,                // 使用单数表名
+		TablePrefix:   "",                   // 无表前缀
+		SingularTable: false,                // 使用复数表名（LinkNode → link_nodes）
 		NoLowerCase:   false,                // 禁用强制大写
-		NameReplacer:  underscoreReplacer{}, // 使用自定义替换器
+		NameReplacer:  underscoreReplacer{}, // 使用改进的替换器
 	}
 }
 
@@ -41,19 +62,6 @@ func createDefaultNamingStrategy() schema.NamingStrategy {
 		NoLowerCase:   false,
 		// 可以使用其他替换器或默认行为
 	}
-}
-
-// 自定义Replacer实现，将驼峰命名转换为小写下划线格式
-type underscoreReplacer struct{}
-
-func (r underscoreReplacer) Replace(name string) string {
-	// 使用正则表达式将驼峰转换为下划线小写
-	// 处理XxxYyyZzz格式
-	name = regexp.MustCompile("([a-z0-9])([A-Z])").ReplaceAllString(name, "$1_$2")
-	// 处理XYZ格式（多个连续大写字母）
-	name = regexp.MustCompile("([A-Z])([A-Z][a-z])").ReplaceAllString(name, "$1_$2")
-	// 确保全部小写
-	return strings.ToLower(name)
 }
 
 // 强制小写命名策略
@@ -111,7 +119,13 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 	if dbtype == config.DBTypeDM {
 		namingStrategy = createDMNamingStrategy()
 	} else {
-		namingStrategy = createDefaultNamingStrategy()
+		// 使用其他数据库的默认策略或自定义策略
+		namingStrategy = schema.NamingStrategy{
+			TablePrefix:   "",
+			SingularTable: false,
+			NoLowerCase:   false,
+			NameReplacer:  underscoreReplacer{},
+		}
 	}
 	dbConfig := &gorm.Config{ // 配置 GORM
 		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
