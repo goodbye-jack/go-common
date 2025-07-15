@@ -508,14 +508,48 @@ func camelToSnake(s string) string {
 	return strings.ToLower(result.String())
 }
 
+// snakeToCamel 将下划线命名转换为驼峰命名（首字母大写）
+// 例：process_type → ProcessType，link_code → LinkCode
+func snakeToCamel(s string) string {
+	if s == "" {
+		return s
+	}
+	parts := strings.Split(s, "_")
+	var camelParts []string
+	for _, part := range parts {
+		// 每个部分首字母大写（如 "process" → "Process"，"type" → "Type"）
+		camelParts = append(camelParts, strings.Title(strings.ToLower(part)))
+	}
+	return strings.Join(camelParts, "")
+}
+
 // 修改First方法的查询条件处理
 func (o *Orm) First(ctx context.Context, res interface{}, filters ...interface{}) error {
 	db := o.db.WithContext(ctx)
+	//if o.db.Dialector.Name() == "dm" && len(filters) > 0 {
+	//	if where, ok := filters[0].(string); ok {
+	//		// 对于达梦数据库，将查询条件中的列名保持小写下划线格式
+	//		// 不需要转换，因为我们的命名策略已经将数据库列名设置为小写下划线
+	//		filters[0] = where
+	//	}
+	//}
+	// 仅对达梦数据库处理列名转换
 	if o.db.Dialector.Name() == "dm" && len(filters) > 0 {
-		if where, ok := filters[0].(string); ok {
-			// 对于达梦数据库，将查询条件中的列名保持小写下划线格式
-			// 不需要转换，因为我们的命名策略已经将数据库列名设置为小写下划线
-			filters[0] = where
+		// 提取查询条件字符串（如 "process_type = ? and link_code = ?"）
+		if whereStr, ok := filters[0].(string); ok {
+			// 正则匹配下划线格式的列名（如 process_type、link_code）
+			// 匹配规则：包含下划线的单词（避免匹配值或其他语法）
+			re := regexp.MustCompile(`\b[a-z]+(?:_[a-z]+)+\b\s*=`)
+			convertedWhere := re.ReplaceAllStringFunc(whereStr, func(match string) string {
+				// 提取列名（如从 "process_type = " 中提取 "process_type"）
+				colName := strings.TrimSpace(strings.TrimSuffix(match, "="))
+				// 转换为驼峰（如 "process_type" → "ProcessType"）
+				camelCol := snakeToCamel(colName)
+				// 拼接回 "列名 = " 格式（如 "ProcessType = "）
+				return camelCol + " = "
+			})
+			// 替换原条件为转换后的条件
+			filters[0] = convertedWhere
 		}
 	}
 	return db.First(res, filters...).Error
