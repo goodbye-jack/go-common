@@ -177,61 +177,63 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 	default:
 		glog.Error(fmt.Sprintf("unsupported dbType: %s", string(dsn)))
 	}
+	//// 创建基础命名策略
+	//baseNamingStrategy := schema.NamingStrategy{
+	//	TablePrefix:   "",
+	//	SingularTable: false, // 使用单数表名
+	//	NoLowerCase:   false, // 禁用强制大写
+	//	NameReplacer:  underscoreReplacer{},
+	//}
+	//// 包装基础策略，确保全部小写
+	//namingStrategy := forcedLowerCaseNamingStrategy{
+	//	NamingStrategy: baseNamingStrategy,
+	//}
 
-	// 创建基础命名策略
-	baseNamingStrategy := schema.NamingStrategy{
-		TablePrefix:   "",
-		SingularTable: true,  // 使用单数表名
-		NoLowerCase:   false, // 禁用强制大写
-		NameReplacer:  underscoreReplacer{},
-	}
-
-	// 包装基础策略，确保全部小写
-	namingStrategy := forcedLowerCaseNamingStrategy{
-		NamingStrategy: baseNamingStrategy,
-	}
-
-	dbConfig := &gorm.Config{
+	//dbConfig := &gorm.Config{
+	//	Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
+	//		SlowThreshold:             time.Duration(slowTime) * time.Second,
+	//		LogLevel:                  logger.Info,
+	//		IgnoreRecordNotFoundError: false,
+	//		Colorful:                  true,
+	//	}).LogMode(logger.Info),
+	//	DisableForeignKeyConstraintWhenMigrating: true,
+	//	PrepareStmt:                              true,
+	//	NamingStrategy:                           namingStrategy,
+	//}
+	dbConfig := &gorm.Config{ // 配置 GORM
 		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
-			SlowThreshold:             time.Duration(slowTime) * time.Second,
+			SlowThreshold:             time.Duration(slowTime) * time.Second, // 这个最小就是5,后面改成可传入数字
 			LogLevel:                  logger.Info,
 			IgnoreRecordNotFoundError: false,
 			Colorful:                  true,
 		}).LogMode(logger.Info),
 		DisableForeignKeyConstraintWhenMigrating: true,
 		PrepareStmt:                              true,
-		NamingStrategy:                           namingStrategy,
+		NamingStrategy: schema.NamingStrategy{
+			// 对于达梦数据库，使用大写表名和列名
+			TablePrefix: "",
+			//SingularTable: true,
+			SingularTable: false, // 使用单数表名
+			NameReplacer:  nil,
+			NoLowerCase:   dbtype == config.DBTypeDM, // 达梦数据库不使用小写
+		},
 	}
-
 	db, err := gorm.Open(dialect, dbConfig)
 	if err != nil {
 		log.Fatalf("%s connect failed, %v", dbtype, err)
 	}
-
-	// 调试日志
-	log.Printf("DB dialect: %s", db.Dialector.Name())
-	log.Printf("Naming strategy: %+v", db.NamingStrategy)
-
-	// 测试命名转换
-	testName := "UserID"
-	log.Printf("Converted table name for %s: %s", testName, db.NamingStrategy.TableName(testName))
-	log.Printf("Converted column name for %s: %s", testName, db.NamingStrategy.ColumnName("", testName))
-
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Minute * 3)
-
 	orm := &Orm{
 		db: db,
 	}
-
 	if dbtype == config.DBTypeDM {
 		orm.registerDMHooks()
 	} else if dbtype == config.DBTtypeKingBase {
 		orm.registerKingbaseHooks()
 	}
-
 	return orm
 }
 
