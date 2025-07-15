@@ -115,18 +115,18 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 	default:
 		glog.Error(fmt.Sprintf("unsupported dbType: %s", string(dsn)))
 	}
-	var namingStrategy schema.NamingStrategy
-	if dbtype == config.DBTypeDM {
-		namingStrategy = createDMNamingStrategy()
-	} else {
-		// 使用其他数据库的默认策略或自定义策略
-		namingStrategy = schema.NamingStrategy{
-			TablePrefix:   "",
-			SingularTable: false,
-			NoLowerCase:   false,
-			NameReplacer:  underscoreReplacer{},
-		}
-	}
+	//var namingStrategy schema.NamingStrategy
+	//if dbtype == config.DBTypeDM {
+	//	namingStrategy = createDMNamingStrategy()
+	//} else {
+	//	// 使用其他数据库的默认策略或自定义策略
+	//	namingStrategy = schema.NamingStrategy{
+	//		TablePrefix:   "",
+	//		SingularTable: false,
+	//		NoLowerCase:   false,
+	//		NameReplacer:  underscoreReplacer{},
+	//	}
+	//}
 	dbConfig := &gorm.Config{ // 配置 GORM
 		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
 			SlowThreshold:             time.Duration(slowTime) * time.Second, // 这个最小就是5,后面改成可传入数字
@@ -136,7 +136,7 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 		}).LogMode(logger.Info),
 		DisableForeignKeyConstraintWhenMigrating: true,
 		PrepareStmt:                              true,
-		NamingStrategy:                           namingStrategy,
+		//NamingStrategy:                           namingStrategy,
 		//NamingStrategy: schema.NamingStrategy{
 		//	// 对于达梦数据库，使用大写表名和列名
 		//	TablePrefix: "",
@@ -307,24 +307,24 @@ func (o *Orm) First(ctx context.Context, res interface{}, filters ...interface{}
 	//	}
 	//}
 	// 仅对达梦数据库处理列名转换
-	if o.db.Dialector.Name() == "dm" && len(filters) > 0 {
-		// 提取查询条件字符串（如 "process_type = ? and link_code = ?"）
-		if whereStr, ok := filters[0].(string); ok {
-			// 正则匹配下划线格式的列名（如 process_type、link_code）
-			// 匹配规则：包含下划线的单词（避免匹配值或其他语法）
-			re := regexp.MustCompile(`\b[a-z]+(?:_[a-z]+)+\b\s*=`)
-			convertedWhere := re.ReplaceAllStringFunc(whereStr, func(match string) string {
-				// 提取列名（如从 "process_type = " 中提取 "process_type"）
-				colName := strings.TrimSpace(strings.TrimSuffix(match, "="))
-				// 转换为驼峰（如 "process_type" → "ProcessType"）
-				camelCol := snakeToCamel(colName)
-				// 拼接回 "列名 = " 格式（如 "ProcessType = "）
-				return camelCol + " = "
-			})
-			// 替换原条件为转换后的条件
-			filters[0] = convertedWhere
-		}
-	}
+	//if o.db.Dialector.Name() == "dm" && len(filters) > 0 {
+	//	// 提取查询条件字符串（如 "process_type = ? and link_code = ?"）
+	//	if whereStr, ok := filters[0].(string); ok {
+	//		// 正则匹配下划线格式的列名（如 process_type、link_code）
+	//		// 匹配规则：包含下划线的单词（避免匹配值或其他语法）
+	//		re := regexp.MustCompile(`\b[a-z]+(?:_[a-z]+)+\b\s*=`)
+	//		convertedWhere := re.ReplaceAllStringFunc(whereStr, func(match string) string {
+	//			// 提取列名（如从 "process_type = " 中提取 "process_type"）
+	//			colName := strings.TrimSpace(strings.TrimSuffix(match, "="))
+	//			// 转换为驼峰（如 "process_type" → "ProcessType"）
+	//			camelCol := snakeToCamel(colName)
+	//			// 拼接回 "列名 = " 格式（如 "ProcessType = "）
+	//			return camelCol + " = "
+	//		})
+	//		// 替换原条件为转换后的条件
+	//		filters[0] = convertedWhere
+	//	}
+	//}
 	return db.First(res, filters...).Error
 }
 
