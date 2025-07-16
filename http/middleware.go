@@ -36,7 +36,7 @@ func Register(name string, handler SsoHandler) {
 
 func RbacMiddleware(serviceName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if strings.HasPrefix(c.Request.URL.Path, "/static/") ||  strings.HasPrefix(c.Request.URL.Path, "/static/") {
+		if strings.HasPrefix(c.Request.URL.Path, "/static/") || strings.HasPrefix(c.Request.URL.Path, "/static/") {
 			c.Next()
 			return
 		}
@@ -75,44 +75,53 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sso := uniq2sso[fmt.Sprintf("%s_%s", c.Request.URL.Path, c.Request.Method)]
 		token, err := c.Cookie(tokenName)
-		//Cookie not existed
-		if err != nil || token == "" {
-			log.Warn("Cookie/%s not existed, %v", tokenName, err)
-			if sso {
+		if sso { // 需要登录的逻辑
+			if err != nil || token == "" {
 				c.AbortWithStatus(http.StatusUnauthorized)
 			}
+			// ====以下  用于与统一登录对接时，需要每次都回调统一登录token验证====
+			ssoEnabled := config.GetConfigString(utils.SsoEnabledVerify)
+			if sso && ssoEnabled == "true" {
+				nowHandlerName := config.GetConfigString(utils.SsoVerifyHandlerName)
+				for name, handler := range ssoHandlers {
+					if name == nowHandlerName {
+						if !handler.Verify(c) {
+							c.AbortWithStatus(http.StatusUnauthorized)
+							return
+						}
+						break
+					}
+				}
+			}
+			// ====以上  用于与统一登录对接时，需要每次都回调统一登录token验证====
+			uid, errP := utils.ParseJWT(token)
+			if errP != nil {
+				log.Warn("Token(%s) expired, %v", token, errP)
+				if sso {
+					c.AbortWithStatus(http.StatusUnauthorized)
+					return
+				}
+			}
+			log.Info("LoginRequiredMiddleware(), uid=%s", uid)
+			SetUser(c, uid)
 			c.Next()
-			return
-		}
-		//Token expired
-		uid, err := utils.ParseJWT(token)
-		if err != nil {
-			log.Warn("Token(%s) expired, %v", token, err)
-			if sso {
-				c.AbortWithStatus(http.StatusUnauthorized)
-				return
-			}
-		}
-		// ====以下  用于与统一登录对接时，需要每次都回调统一登录token验证====
-		ssoEnabled := config.GetConfigString(utils.SsoEnabledVerify)
-		if sso && ssoEnabled == "true" {
-			nowHandlerName := config.GetConfigString(utils.SsoVerifyHandlerName)
-			for name, handler := range ssoHandlers {
-				if name == nowHandlerName {
-					if !handler.Verify(c) {
+			//return
+		} else { // 不需要登录
+			if err == nil && token != "" { //
+				//Token expired
+				uid, errP := utils.ParseJWT(token)
+				if errP != nil {
+					log.Warn("Token(%s) expired, %v", token, errP)
+					if sso {
 						c.AbortWithStatus(http.StatusUnauthorized)
 						return
 					}
-					break
 				}
+				log.Info("LoginRequiredMiddleware(), uid=%s", uid)
+				SetUser(c, uid)
 			}
+			c.Next()
 		}
-		// ====以上  用于与统一登录对接时，需要每次都回调统一登录token验证====
-		
-		log.Info("LoginRequiredMiddleware(), uid=%s", uid)
-		SetUser(c, uid)
-
-		c.Next()
 	}
 }
 
