@@ -34,9 +34,10 @@ func AddTokenCookie(c *gin.Context, token string, tokenExpired int) {
 		log.Warn("!!!!!!!!!!!token name is empty!!!!!!!")
 		tokenName = "good_token"
 	}
-	log.Info("token name = %s", tokenName)
+	domainName := config.GetConfigString(utils.ConfigNameDomain)
+	log.Info("token name = %s", tokenName, domainName)
 
-	c.SetCookie(tokenName, token, tokenExpired, "/", "", false, true)
+	c.SetCookie(tokenName, token, tokenExpired, "/", domainName, false, true)
 }
 
 func SetTokenCookie(c *gin.Context, token string, tokenExpired int, domain string, secure, httpOnly bool) {

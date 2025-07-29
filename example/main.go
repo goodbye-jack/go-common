@@ -8,6 +8,7 @@ import (
 	"github.com/goodbye-jack/go-common/config"
 	myHttp "github.com/goodbye-jack/go-common/http"
 	"github.com/goodbye-jack/go-common/orm"
+	ormConfig "github.com/goodbye-jack/go-common/orm/config"
 	"github.com/goodbye-jack/go-common/utils"
 )
 
@@ -25,7 +26,7 @@ func main() {
 	service_name := config.GetConfigString("service_name")
 
 	dsn := "host=113.45.4.22 port=4321 user=root password=Qaz0529! dbname=kingbase sslmode=disable TimeZone=Asia/Shanghai"
-	orm.NewOrm(dsn, "kingbase")
+	orm.NewOrm(dsn, ormConfig.DBTypeKingBase, 3600)
 
 	server := myHttp.NewHTTPServer(service_name)
 	server.StaticFs("/static")

@@ -107,7 +107,7 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 		dialect = sqlite.Open(dsn)
 	case config.DBTypeDM:
 		dialect = dm.Open(dsn)
-	case config.DBTtypeKingBase:
+	case config.DBTypeKingBase:
 		dialect = postgres.New(postgres.Config{
 			DriverName: "kingbase",
 			DSN:        dsn,
@@ -138,7 +138,7 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 	}
 	if dbtype == config.DBTypeDM {
 		orm.registerDMHooks()
-	} else if dbtype == config.DBTtypeKingBase {
+	} else if dbtype == config.DBTypeKingBase {
 		orm.registerKingbaseHooks()
 	}
 	return orm
