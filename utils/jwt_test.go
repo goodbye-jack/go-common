@@ -1,8 +1,8 @@
 package utils
 
 import (
-	"time"
 	"testing"
+	"time"
 )
 
 func TestJwt(t *testing.T) {

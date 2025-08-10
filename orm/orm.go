@@ -6,7 +6,7 @@ import (
 	"fmt"
 	_ "gitea.com/kingbase/gokb" // Kingbase 驱动
 	glog "github.com/goodbye-jack/go-common/log"
-	"github.com/goodbye-jack/go-common/orm/config"
+	"github.com/goodbye-jack/go-common/orm/dbconfig"
 	dm "github.com/jasonlabz/gorm-dm-driver"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -82,7 +82,7 @@ type Orm struct {
 }
 
 // NewOrm 创建 ORM 实例
-func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
+func NewOrm(dsn string, dbtype dbconfig.DBType, slowTime int) *Orm {
 	glog.Error("NewOrm param:dsn=%s", dsn)
 	if dsn == "" {
 		glog.Error("NewOrm param dsn is empty:请检查您的DSN参数")
@@ -90,24 +90,24 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 	}
 	if dbtype == "" {
 		glog.Error("您没有输入DBType,默认使用mysql数据源")
-		dbtype = config.DBTypeMySQL // 默认使用mysql
+		dbtype = dbconfig.DBTypeMySQL // 默认使用mysql
 	}
 	if slowTime <= 0 {
 		slowTime = 3
 	}
 	var dialect gorm.Dialector
 	switch dbtype {
-	case config.DBTypeMySQL:
+	case dbconfig.DBTypeMySQL:
 		dialect = mysql.Open(dsn)
-	case config.DBTypePostgres:
+	case dbconfig.DBTypePostgres:
 		dialect = postgres.Open(dsn)
-	case config.DBTypeSqlserver:
+	case dbconfig.DBTypeSqlserver:
 		dialect = sqlserver.Open(dsn)
-	case config.DBTypeSQLite:
+	case dbconfig.DBTypeSQLite:
 		dialect = sqlite.Open(dsn)
-	case config.DBTypeDM:
+	case dbconfig.DBTypeDM:
 		dialect = dm.Open(dsn)
-	case config.DBTypeKingBase:
+	case dbconfig.DBTypeKingBase:
 		dialect = postgres.New(postgres.Config{
 			DriverName: "kingbase",
 			DSN:        dsn,
@@ -136,9 +136,9 @@ func NewOrm(dsn string, dbtype config.DBType, slowTime int) *Orm {
 	orm := &Orm{
 		db: db,
 	}
-	if dbtype == config.DBTypeDM {
+	if dbtype == dbconfig.DBTypeDM {
 		orm.registerDMHooks()
-	} else if dbtype == config.DBTypeKingBase {
+	} else if dbtype == dbconfig.DBTypeKingBase {
 		orm.registerKingbaseHooks()
 	}
 	return orm

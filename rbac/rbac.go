@@ -7,7 +7,9 @@ import (
 	"github.com/casbin/casbin/v2/persist"
 	"github.com/casbin/redis-adapter/v3"
 	rediswatcher "github.com/casbin/redis-watcher/v2"
+	"github.com/goodbye-jack/go-common/config"
 	"github.com/goodbye-jack/go-common/log"
+	"github.com/goodbye-jack/go-common/utils"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -67,38 +69,38 @@ type RolePolicy struct {
 	Role string
 }
 
-type RbacClient struct {
+type RbacPolicy struct {
 	e *casbin.Enforcer
 	w persist.Watcher
 }
 
-var rbacClient *RbacClient = nil
+var RbacClient *RbacPolicy = nil
 
-func NewRbacClient(redisAddr string) *RbacClient {
-	log.Info("NewRbacClient(%s)", redisAddr)
-	if rbacClient != nil {
-		return rbacClient
+// 初始化函数（从原http包的init迁移过来）
+func init() {
+	RbacClient = NewRbacPolicy(config.GetConfigString(utils.CasbinRedisAddrName))
+}
+
+func NewRbacPolicy(redisAddr string) *RbacPolicy {
+	log.Info("NewRbacPolicy(%s)", redisAddr)
+	if RbacClient != nil {
+		return RbacClient
 	}
-
 	m, err := model.NewModelFromString(text)
 	if err != nil {
-		log.Fatalf("NewRbacClient/NewModelFromString error, %v", err)
+		log.Fatalf("NewRbacPolicy/NewModelFromString error, %v", err)
 	}
-
 	adapter, err := redisadapter.NewAdapter("tcp", redisAddr)
 	if err != nil {
-		log.Fatalf("NewRbacClient/NewAdapter error, %v", err)
+		log.Fatalf("NewRbacPolicy/NewAdapter error, %v", err)
 	}
-
 	e, err := casbin.NewEnforcer(m, adapter)
 	if err != nil {
-		log.Fatal("NewRbacClient/NewEnforcer error, %v", err)
+		log.Fatal("NewRbacPolicy/NewEnforcer error, %v", err)
 	}
-
 	if err := e.LoadPolicy(); err != nil {
-		log.Fatal("NewRbacClient/LoadPolicy error, %v", err)
+		log.Fatal("NewRbacPolicy/LoadPolicy error, %v", err)
 	}
-
 	w, err := rediswatcher.NewWatcher(redisAddr, rediswatcher.WatcherOptions{
 		Options: redis.Options{
 			Network: "tcp",
@@ -107,21 +109,17 @@ func NewRbacClient(redisAddr string) *RbacClient {
 		IgnoreSelf: true,
 	})
 	if err != nil {
-		log.Fatalf("NewRbacClient/NewWatcher error, %v", err)
+		log.Fatalf("NewRbacPolicy/NewWatcher error, %v", err)
 	}
-
 	if err := e.SetWatcher(w); err != nil {
-		log.Fatal("NewRbacClient/SetWatcher error, %v", err)
+		log.Fatal("NewRbacPolicy/SetWatcher error, %v", err)
 	}
 	if err := w.SetUpdateCallback(rediswatcher.DefaultUpdateCallback(e)); err != nil {
-		log.Fatal("NewRbacClient/SetUpdateCallback error, %v", err)
+		log.Fatal("NewRbacPolicy/SetUpdateCallback error, %v", err)
 	}
-
-	rbacClient = &RbacClient{
-		w: w,
-		e: e,
-	}
-	return rbacClient
+	//RbacClient = &RbacPolicy{w: w, e: e}
+	//return RbacClient
+	return &RbacPolicy{w: w, e: e}
 }
 
 func NewActionPolicy(dom, sub, obj, act string) Policy {
@@ -165,7 +163,7 @@ func (r Req) ToArr() []string {
 	return []string{r.sub, r.dom, r.obj, r.act}
 }
 
-func (c *RbacClient) GetRolePolicy(sub string) (*RolePolicy, error) {
+func (c *RbacPolicy) GetRolePolicy(sub string) (*RolePolicy, error) {
 	policies, err := c.e.GetFilteredGroupingPolicy(0, sub)
 	if err != nil {
 		log.Error("GetRolePolicy/GetFilteredPolicy(0, %s) error, %v", sub, err)
@@ -185,7 +183,7 @@ func (c *RbacClient) GetRolePolicy(sub string) (*RolePolicy, error) {
 	}, nil
 }
 
-func (c *RbacClient) AddRolePolicy(rp *RolePolicy) error {
+func (c *RbacPolicy) AddRolePolicy(rp *RolePolicy) error {
 	log.Info("AddRolePolicy(%v)", *rp)
 	_rp, err := c.GetRolePolicy(rp.User)
 	if err != nil {
@@ -209,7 +207,7 @@ func (c *RbacClient) AddRolePolicy(rp *RolePolicy) error {
 	return nil
 }
 
-func (c *RbacClient) UpdateRolePolicy(rp *RolePolicy, role string) error {
+func (c *RbacPolicy) UpdateRolePolicy(rp *RolePolicy, role string) error {
 	newRp := &RolePolicy{
 		User: rp.User,
 		Role: role,
@@ -227,7 +225,7 @@ func (c *RbacClient) UpdateRolePolicy(rp *RolePolicy, role string) error {
 	return nil
 }
 
-func (c *RbacClient) DeleteRolePolicy(rp *RolePolicy) error {
+func (c *RbacPolicy) DeleteRolePolicy(rp *RolePolicy) error {
 	removed, err := c.e.RemoveFilteredGroupingPolicy(0, rp.User)
 	if err != nil {
 		return err
@@ -239,7 +237,7 @@ func (c *RbacClient) DeleteRolePolicy(rp *RolePolicy) error {
 	return nil
 }
 
-func (c *RbacClient) save() error {
+func (c *RbacPolicy) save() error {
 	if err := c.e.SavePolicy(); err != nil {
 		log.Errorf("save/SavePolicy, %v", err)
 		return err
@@ -250,7 +248,7 @@ func (c *RbacClient) save() error {
 	return nil
 }
 
-func (c *RbacClient) AddActionPolicies(policies []Policy) error {
+func (c *RbacPolicy) AddActionPolicies(policies []Policy) error {
 	if len(policies) == 0 {
 		return nil
 	}
@@ -274,7 +272,7 @@ func (c *RbacClient) AddActionPolicies(policies []Policy) error {
 	return c.save()
 }
 
-func (c *RbacClient) GetActionPolicies(role string) ([]*ActionPolicy, error) {
+func (c *RbacPolicy) GetActionPolicies(role string) ([]*ActionPolicy, error) {
 	log.Info("GetActionPolicies, role is %s", role)
 	content, err := c.e.GetFilteredPolicy(0, role)
 	if err != nil {
@@ -295,7 +293,7 @@ func (c *RbacClient) GetActionPolicies(role string) ([]*ActionPolicy, error) {
 	return ans, nil
 }
 
-func (c *RbacClient) DeleteActionPolicy(ap *ActionPolicy) error {
+func (c *RbacPolicy) DeleteActionPolicy(ap *ActionPolicy) error {
 	removed, err := c.e.RemovePolicy(ap.ToArr())
 	if err != nil {
 		log.Error("DeleteActionPolicy/RemovePolicy, error %v", err)
@@ -309,7 +307,7 @@ func (c *RbacClient) DeleteActionPolicy(ap *ActionPolicy) error {
 	return nil
 }
 
-func (c *RbacClient) Enforce(r *Req) (bool, error) {
+func (c *RbacPolicy) Enforce(r *Req) (bool, error) {
 	ok, err := c.e.Enforce(r.sub, r.dom, r.obj, r.act)
 	if err != nil {
 		log.Error("Enforce(%v) error, %v", *r, err)
