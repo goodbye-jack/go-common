@@ -1,36 +1,60 @@
 package http
 
 import (
+	"context"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
+	"github.com/goodbye-jack/go-common/approval"
+	"github.com/goodbye-jack/go-common/config"
 	"github.com/goodbye-jack/go-common/log"
-	"github.com/goodbye-jack/go-common/middleware/approval"
-	"github.com/goodbye-jack/go-common/middleware/login"
-	"github.com/goodbye-jack/go-common/middleware/operation"
-	middleRbac "github.com/goodbye-jack/go-common/middleware/rbac"
-	"github.com/goodbye-jack/go-common/middleware/tenant"
 	"github.com/goodbye-jack/go-common/rbac"
-	"github.com/goodbye-jack/go-common/route"
 	"github.com/goodbye-jack/go-common/utils"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"net/http"
+	"time"
 )
+
+var (
+	rbacClient *rbac.RbacClient = nil
+)
+
+type Operation struct {
+	User       string                 `json:"user"`
+	Time       time.Time              `json:"time"`
+	Path       string                 `json:"path"`
+	Method     string                 `json:"method"`
+	ClientIP   string                 `json:"client_ip"`
+	StatusCode int                    `json:"status_code"`
+	Duration   int                    `json:"duration"`
+	Body       map[string]interface{} `json:"body"`
+	Tips       string                 `json:"tips"`
+}
+
+type OpRecordFn func(ctx context.Context, op Operation) error
 
 type HTTPServer struct {
 	service_name    string
-	routes          []*route.Route
+	routes          []*Route
 	router          *gin.Engine
-	opRecordFn      operation.OpRecordFn
+	opRecordFn      OpRecordFn
 	approvalHandler approval.ApprovalHandler
 }
 
+func init() {
+	rbacClient = rbac.NewRbacClient(
+		config.GetConfigString(utils.CasbinRedisAddrName),
+	)
+
+}
+
 func NewHTTPServer(service_name string) *HTTPServer {
-	routes := []*route.Route{
-		route.NewRoute(service_name, "/ping", "健康检查", []string{"GET"}, utils.RoleIdle, false, false, func(c *gin.Context) {
+	routes := []*Route{
+		NewRoute(service_name, "/ping", "健康检查", []string{"GET"}, utils.RoleIdle, false, false, func(c *gin.Context) {
 			c.String(http.StatusOK, "Pong")
 		}),
 	}
+
 	return &HTTPServer{
 		service_name: service_name,
 		routes:       routes,
@@ -38,7 +62,7 @@ func NewHTTPServer(service_name string) *HTTPServer {
 	}
 }
 
-func (s *HTTPServer) GetRoutes() []*route.Route {
+func (s *HTTPServer) GetRoutes() []*Route {
 	return s.routes
 }
 
@@ -52,7 +76,7 @@ func (s *HTTPServer) Route(path string, methods []string, role string, sso bool,
 	if len(methods) == 0 {
 		methods = append(methods, "GET")
 	}
-	s.routes = append(s.routes, route.NewRoute(s.service_name, path, "", methods, role, sso, false, fn))
+	s.routes = append(s.routes, NewRoute(s.service_name, path, "", methods, role, sso, false, fn))
 }
 
 // RouteForRA 鉴定专用router,携带日志记录,明确角色
@@ -60,11 +84,11 @@ func (s *HTTPServer) RouteForRA(path string, tips string, methods []string, role
 	if len(methods) == 0 {
 		methods = append(methods, "GET")
 	}
-	s.routes = append(s.routes, route.NewRouteForRA(s.service_name, path, tips, methods, roles, sso, false, fn))
+	s.routes = append(s.routes, NewRouteForRA(s.service_name, path, tips, methods, roles, sso, false, fn))
 }
 
 func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles []string, sso bool, business_approval bool, fn gin.HandlerFunc) {
-	route := route.NewRouteCommon(s.service_name, path, tips, methods, roles, sso, business_approval, fn)
+	route := NewRouteCommon(s.service_name, path, tips, methods, roles, sso, business_approval, fn)
 	// 添加业务审批中间件(如果需要)
 	if business_approval && s.approvalHandler != nil {
 		aConfig := approval.Config{
@@ -88,39 +112,51 @@ func (s *HTTPServer) SetApprovalHandler(handler approval.ApprovalHandler) {
 	s.approvalHandler = handler
 }
 
-func (s *HTTPServer) SetOpRecordFn(fn operation.OpRecordFn) {
+func (s *HTTPServer) SetOpRecordFn(fn OpRecordFn) {
 	s.opRecordFn = fn
 }
 
 func (s *HTTPServer) Prepare() {
+	//var policies []rbac.Policy
+	//var routeInfos []*gin.RouteInfo
+	//for _, route := range s.routes {
+	//	policies = append(policies, route.ToRbacPolicy()...)
+	//	routeInfos = append(routeInfos, route.ToGinRoute()...)
+	//}
+	//rbacClient.AddActionPolicies(policies)
+	//
+	//recordOperationMiddleware := RecordOperationMiddleware(s.routes, s.opRecordFn)
+	//loginRequiredMiddleware := LoginRequiredMiddleware(s.routes)
+	//rbacMiddleware := RbacMiddleware(s.service_name)
+	//tenantMiddleware := TenantMiddleware()
+	//
+	//// 设置信任的代理IP（例如Nginx的IP）
+	//s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"})
+	//
+	//s.router.Use(loginRequiredMiddleware)
+	//s.router.Use(rbacMiddleware)
+	//s.router.Use(tenantMiddleware)
+	//s.router.Use(recordOperationMiddleware)
+	//
+	//for _, routeInfo := range routeInfos {
+	//	s.router.Handle(routeInfo.Method, routeInfo.Path, routeInfo.HandlerFunc)
+	//}
 	var policies []rbac.Policy
 	// 1. 收集所有路由的RBAC策略和路由信息
 	for _, route := range s.routes {
 		policies = append(policies, route.ToRbacPolicy()...)
 	}
 	// 2. 添加RBAC策略
-	rbac.RbacClient.AddActionPolicies(policies)
+	rbacClient.AddActionPolicies(policies)
 	// 3. 设置全局中间件(注意顺序)
 	s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"})
 	// 4. 全局中间件(作用于所有路由)
 	// 这里其实可以把必须检查的middleware放到这里注册,然后像操作记录还有是否登录的检查可以在每个RouteXXXX方法里实现,但是不想改了
 	s.router.Use(
-		login.LoginRequiredMiddleware(s.routes),   // 登录检查
-		middleRbac.RbacMiddleware(s.service_name), // RBAC鉴权
-		tenant.TenantMiddleware(),                 // 租户隔离
-		// 关键修改：用匿名函数替代s.routes，实现Tips获取（不改变原有中间件顺序和其他逻辑）
-		operation.RecordOperationMiddleware(func(path, method string) string {
-			for _, r := range s.routes {
-				if r.Url == path {
-					for _, m := range r.Methods {
-						if m == method {
-							return r.Tips
-						}
-					}
-				}
-			}
-			return ""
-		}, s.opRecordFn), // 操作记录：仅修改第一个参数，第二个参数s.opRecordFn不变
+		LoginRequiredMiddleware(s.routes),                 // 登录检查
+		RbacMiddleware(s.service_name),                    // RBAC鉴权
+		TenantMiddleware(),                                // 租户隔离
+		RecordOperationMiddleware(s.routes, s.opRecordFn), // 操作记录
 	)
 	// 5. 直接注册路由（不再使用routeInfos）
 	for _, route := range s.routes {
@@ -141,6 +177,8 @@ func (s *HTTPServer) StaticFs(static_dir string) {
 
 func (s *HTTPServer) Run(addr string) {
 	log.Info("server %v is running", addr)
+
 	s.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	s.router.Run(addr)
 }

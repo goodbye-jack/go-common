@@ -1,10 +1,11 @@
-package route
+package http
 
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/rbac"
+	role2 "github.com/goodbye-jack/go-common/role"
 	"github.com/goodbye-jack/go-common/utils"
 )
 
@@ -19,19 +20,6 @@ type Route struct {
 	BusinessApproval bool              // 是否需要业务审批
 	middlewares      []gin.HandlerFunc // 中间件链(新增)
 }
-
-//// 以下为实现routeiface.Route接口的方法
-//func (r *Route) GetUrl() string {
-//	return r.Url
-//}
-//
-//func (r *Route) GetMethods() []string {
-//	return r.Methods
-//}
-//
-//func (r *Route) GetTips() string {
-//	return r.Tips
-//}
 
 var RoleMapping = map[string][]string{}
 var RoleMappingPrecise = map[string]string{}
@@ -83,7 +71,7 @@ func NewRouteForRA(serviceName string, url string, tips string, methods []string
 	}
 	var newRoles []string
 	for _, role := range roles {
-		if _, ok := rbac.GetRoleMapping(role); ok { // 代表权限在初始化的权限角色中,
+		if _, ok := role2.GetRoleMapping(role); ok { // 代表权限在初始化的权限角色中,
 			// 可以进行访问,这块应该是脱离common 的 但是还是等后面重新设计吧 OK
 			newRoles = append(newRoles, role)
 		}
@@ -107,7 +95,7 @@ func NewRouteCommon(serviceName string, url string, tips string, methods []strin
 	}
 	var newRoles []string
 	for _, role := range roles {
-		if _, ok := rbac.GetRoleMapping(role); ok { // 代表权限在初始化的权限角色中,
+		if _, ok := role2.GetRoleMapping(role); ok { // 代表权限在初始化的权限角色中,
 			// 可以进行访问,这块应该是脱离common 的 但是还是等后面重新设计吧 OK
 			newRoles = append(newRoles, role)
 		}

@@ -1,4 +1,4 @@
-package rbac
+package role
 
 import (
 	"fmt"

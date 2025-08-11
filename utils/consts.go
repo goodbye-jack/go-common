@@ -1,24 +1,35 @@
 package utils
 
 const (
-	RoleIdle             = ""
-	RoleManager          = "manager"
+	RoleIdle    = ""
+	RoleManager = "manager"
+	//RoleAdministrator = "administrator"
 	RoleAdministrator    = "ADMINISTRATOR_ROLE"     //管理员角色
 	RoleDefault          = "DEFAULT_ROLE"           //默认角色
 	RoleAppraisalStation = "APPRAISAL_STATION_ROLE" // 鉴定站角色
 	RoleMuseum           = "MUSEUM_ROLE"            // 博物馆角色
 	RoleMuseumOffice     = "MUSEUM_OFFICE_ROLE"     // 博物馆处角色
-	UserAnonymous        = "anonymous"              //not login
-	TenantAnonymous      = ""
+
+	//not login
+	UserAnonymous = "anonymous"
+	// 注视调,改成从引用的项目中传入角色编码,然后使用
+	//UserAdministrator = "administrator"
+
+	TenantAnonymous = ""
+
 	LLDapLoginURL        = "/auth/simple/login"
 	LLDapRefreshTokenURL = "/auth/refresh"
 	LLDapGraphURL        = "/api/graphql"
-	TenantContextName    = "ContextTenant"
-	TenantHeaderName     = "X-Tenant"
-	CasbinRedisAddrName  = "redis_addr"
-	JWTSecret            = "goodbye-jack,comeon"
-	ConfigNameDomain     = "cookie_domain_name"
-	ConfigNameToken      = "cookie_token"
+
+	TenantContextName = "ContextTenant"
+	TenantHeaderName  = "X-Tenant"
+
+	CasbinRedisAddrName = "redis_addr"
+
+	JWTSecret = "goodbye-jack,comeon"
+
+	ConfigNameDomain = "cookie_domain_name"
+	ConfigNameToken  = "cookie_token"
 	// 统一登录校验是否开启
 	SsoEnabledVerify       = "sso_enable_verify"
 	SsoVerifyHandlerName   = "sso_verify_handler_name"

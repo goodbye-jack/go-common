@@ -36,11 +36,13 @@ func NewHTTPClient(tenant, service_name string) *HTTPClient {
 	if client, ok := uniq2client[uniq]; ok {
 		return client
 	}
+
 	service_domain := config.GetConfigString(service_name)
 	service_domain, _ = strings.CutSuffix(service_domain, "/")
 	if !strings.HasPrefix(service_domain, "http://") && !strings.HasPrefix(service_domain, "https://") {
 		service_domain = fmt.Sprintf("http://%s", service_domain)
 	}
+
 	transport := &http.Transport{
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,
@@ -54,9 +56,14 @@ func NewHTTPClient(tenant, service_name string) *HTTPClient {
 			Transport: transport,
 		},
 	}
+
 	log.Infof("the uniq %s create newHTTPClient %+v", uniq, uniq2client[uniq])
 	return uniq2client[uniq]
 }
+
+//func (c *HTTPClient) genAbsUrl(url string) string {
+//	return fmt.Sprintf("%s%s", c.service_domain, url)
+//}
 
 func (c *HTTPClient) genAbsUrl(url string) string {
 	// 如果 url 已经是完整 URL（包含 http:// 或 https://），直接返回

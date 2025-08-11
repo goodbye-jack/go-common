@@ -10,10 +10,12 @@ func init() {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("/opt")
+
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			log.Fatalf("config.yaml not found in /opt/ or current dir")
 		}
+
 		log.Fatalf("ReadInConfig error, %v", err)
 	}
 }

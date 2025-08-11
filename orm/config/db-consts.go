@@ -1,4 +1,4 @@
-package dbconfig
+package config
 
 const (
 	DefaultDBNameMaster = "__default_master__"
