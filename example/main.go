@@ -8,7 +8,7 @@ import (
 	"github.com/goodbye-jack/go-common/config"
 	myHttp "github.com/goodbye-jack/go-common/http"
 	"github.com/goodbye-jack/go-common/orm"
-	ormConfig "github.com/goodbye-jack/go-common/orm/config"
+	ormConfig "github.com/goodbye-jack/go-common/orm/dbconfig"
 	"github.com/goodbye-jack/go-common/utils"
 )
 
