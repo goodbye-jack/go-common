@@ -101,9 +101,9 @@ func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles 
 	//if sso {
 	//	route.AddMiddleware(s.ssoMiddleware)
 	//}
-	//if tips != "" && s.opRecordFn != nil {
-	//	route.AddMiddleware(RecordOperationMiddleware(s.routes,s.opRecordFn))
-	//}
+	if tips != "" && s.opRecordFn != nil {
+		route.AddMiddleware(RecordOperationMiddleware(s.routes, s.opRecordFn))
+	}
 	s.routes = append(s.routes, route)
 }
 
