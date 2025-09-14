@@ -169,7 +169,10 @@ func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
 				}
 			}
 		}
-
+		if tips == "" {
+			c.Next()
+			return
+		}
 		c.Next()
 
 		var bodyMap map[string]interface{}
@@ -201,15 +204,16 @@ func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
 		}
 
 		op := Operation{
-			User:       user,
-			Time:       start,
-			Path:       c.Request.URL.Path,
-			Method:     c.Request.Method,
-			StatusCode: c.Writer.Status(),
-			Duration:   int(time.Since(start).Milliseconds()),
-			Body:       bodyMap,
-			Tips:       tips,
-			ClientIP:   clientIP,
+			User:          user,
+			Time:          start,
+			Path:          c.Request.URL.Path,
+			Method:        c.Request.Method,
+			StatusCode:    c.Writer.Status(),
+			Duration:      int(time.Since(start).Milliseconds()),
+			Body:          bodyMap,
+			Tips:          tips,
+			ClientIP:      clientIP,
+			Authorization: c.GetHeader("Authorization"),
 		}
 		log.Info("RecordOperaionMiddlware callback starting")
 

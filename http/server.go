@@ -20,15 +20,16 @@ var (
 )
 
 type Operation struct {
-	User       string                 `json:"user"`
-	Time       time.Time              `json:"time"`
-	Path       string                 `json:"path"`
-	Method     string                 `json:"method"`
-	ClientIP   string                 `json:"client_ip"`
-	StatusCode int                    `json:"status_code"`
-	Duration   int                    `json:"duration"`
-	Body       map[string]interface{} `json:"body"`
-	Tips       string                 `json:"tips"`
+	User          string                 `json:"user"`
+	Time          time.Time              `json:"time"`
+	Path          string                 `json:"path"`
+	Method        string                 `json:"method"`
+	ClientIP      string                 `json:"client_ip"`
+	StatusCode    int                    `json:"status_code"`
+	Duration      int                    `json:"duration"`
+	Body          map[string]interface{} `json:"body"`
+	Tips          string                 `json:"tips"`
+	Authorization string                 `json:"authorization"` // 门户使用的token,在单独项目里拿不到，通过这里获取
 }
 
 type OpRecordFn func(ctx context.Context, op Operation) error
