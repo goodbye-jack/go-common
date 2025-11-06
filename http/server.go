@@ -40,6 +40,7 @@ type HTTPServer struct {
 	router          *gin.Engine
 	opRecordFn      OpRecordFn
 	approvalHandler approval.ApprovalHandler
+    extraMiddlewares []gin.HandlerFunc
 }
 
 func init() {
@@ -60,6 +61,7 @@ func NewHTTPServer(service_name string) *HTTPServer {
 		service_name: service_name,
 		routes:       routes,
 		router:       gin.Default(),
+        extraMiddlewares: []gin.HandlerFunc{},
 	}
 }
 
@@ -149,11 +151,14 @@ func (s *HTTPServer) Prepare() {
 	}
 	// 2. 添加RBAC策略
 	rbacClient.AddActionPolicies(policies)
-	// 3. 设置全局中间件(注意顺序)
+    // 3. 设置全局中间件(注意顺序)
 	s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"})
-	// 4. 全局中间件(作用于所有路由)
-	// 这里其实可以把必须检查的middleware放到这里注册,然后像操作记录还有是否登录的检查可以在每个RouteXXXX方法里实现,但是不想改了
-	s.router.Use(
+    // 4. 全局中间件(作用于所有路由)
+    // 先注册用户自定义额外中间件，再注册内置中间件，确保用户安全中间件可最早生效
+    if len(s.extraMiddlewares) > 0 {
+        s.router.Use(s.extraMiddlewares...)
+    }
+    s.router.Use(
 		LoginRequiredMiddleware(s.routes),                 // 登录检查
 		RbacMiddleware(s.service_name),                    // RBAC鉴权
 		TenantMiddleware(),                                // 租户隔离
@@ -168,6 +173,14 @@ func (s *HTTPServer) Prepare() {
 			s.router.Handle(method, route.Url, handlers...)
 		}
 	}
+}
+
+// Use 注册额外的全局中间件(将在 Prepare 时最先挂载)
+func (s *HTTPServer) Use(middlewares ...gin.HandlerFunc) {
+    if len(middlewares) == 0 {
+        return
+    }
+    s.extraMiddlewares = append(s.extraMiddlewares, middlewares...)
 }
 
 func (s *HTTPServer) StaticFs(static_dir string) {
