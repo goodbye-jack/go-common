@@ -168,7 +168,7 @@ func SecurityMiddleware(cfg SecurityConfig) gin.HandlerFunc {
 				rawStr := string(raw)
 				if rawStr != "" {
 					if (cfg.EnableSQLi && looksLikeSQLi(rawStr, sqliRegs)) || (cfg.EnableXSS && looksLikeXSS(rawStr, xssRegs)) {
-						c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "message": "bad request"})
+						c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数含有sql注入或xss风险内容，请修改再试"})
 						return
 					}
 				}
