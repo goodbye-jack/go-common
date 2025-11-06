@@ -137,7 +137,7 @@ func SecurityMiddleware(cfg SecurityConfig) gin.HandlerFunc {
 				}
 				for _, v := range vals {
 					if (cfg.EnableSQLi && looksLikeSQLi(v, sqliRegs)) || (cfg.EnableXSS && looksLikeXSS(v, xssRegs)) {
-						c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "message": "bad request"})
+						c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数含有sql注入或xss风险内容，请修改再试"})
 						return
 					}
 				}
@@ -151,7 +151,7 @@ func SecurityMiddleware(cfg SecurityConfig) gin.HandlerFunc {
 					}
 					for _, v := range vals {
 						if (cfg.EnableSQLi && looksLikeSQLi(v, sqliRegs)) || (cfg.EnableXSS && looksLikeXSS(v, xssRegs)) {
-							c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "message": "bad request"})
+							c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数含有sql注入或xss风险内容，请修改再试"})
 							return
 						}
 					}
