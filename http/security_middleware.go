@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -109,22 +110,32 @@ func SecurityMiddleware(cfg SecurityConfig) gin.HandlerFunc {
 		}
 		// 若仅 JSON API，可考虑： Content-Security-Policy: default-src 'none'
 
-		// 2) 限制请求体大小
-		if cfg.MaxBodyBytes > 0 && c.Request.Body != nil {
+		// 判断是否按路径/方法整体放行
+		bypassPath := cfg.BypassPaths != nil && cfg.BypassPaths[path]
+		bypassMethod := false
+		if cfg.BypassPathMethods != nil {
+			if m, ok := cfg.BypassPathMethods[path]; ok && m[strings.ToUpper(c.Request.Method)] {
+				bypassMethod = true
+			}
+		}
+		bypassAll := bypassPath || bypassMethod
+
+		// 2) 限制请求体大小（仅对未放行路径生效）
+		if !bypassAll && cfg.MaxBodyBytes > 0 && c.Request.Body != nil {
+			if cl := c.Request.ContentLength; cl > cfg.MaxBodyBytes && cl > 0 {
+				c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("请求体过大，最大允许 %.2f MB", float64(cfg.MaxBodyBytes)/(1024*1024)),
+				})
+				return
+			}
 			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, cfg.MaxBodyBytes)
 		}
 
-		// 若此路径整体放行，直接进入下一步
-		if cfg.BypassPaths != nil && cfg.BypassPaths[path] {
+		// 若此路径整体放行，直接进入下一步（仍保留安全响应头）
+		if bypassAll {
 			c.Next()
 			return
-		}
-		// 按方法放行
-		if cfg.BypassPathMethods != nil {
-			if m, ok := cfg.BypassPathMethods[path]; ok && m[strings.ToUpper(c.Request.Method)] {
-				c.Next()
-				return
-			}
 		}
 
 		// 3) 进行基础拦截（轻量，避免破坏业务绑定）：只校验可见的 Query 与 Form 字段；
