@@ -52,7 +52,6 @@ var defaultSQLiPatterns = []string{
 	`(?i)\bor\b\s+'.*'\s*=\s*'.*'\b`,
 	`--`,
 	`/\*`,
-	`;`,
 }
 
 var defaultXSSPatterns = []string{
