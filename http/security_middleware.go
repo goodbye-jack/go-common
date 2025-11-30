@@ -50,8 +50,9 @@ var defaultSQLiPatterns = []string{
 	`(?i)\bor\b\s+\b1\s*=\s*1\b`,
 	`(?i)\bor\b\s+\b1\s*=\s*'1'\b`,
 	`(?i)\bor\b\s+'.*'\s*=\s*'.*'\b`,
-	`--`,
-	`/\*`,
+	`--\s`, // SQL 注释：-- 后跟空格或换行（避免误报中文破折号）
+	`--$`,  // SQL 注释：-- 在行尾
+	`/\*`,  // SQL 注释开始
 }
 
 var defaultXSSPatterns = []string{
