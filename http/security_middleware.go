@@ -50,9 +50,32 @@ var defaultSQLiPatterns = []string{
 	`(?i)\bor\b\s+\b1\s*=\s*1\b`,
 	`(?i)\bor\b\s+\b1\s*=\s*'1'\b`,
 	`(?i)\bor\b\s+'.*'\s*=\s*'.*'\b`,
-	`--\s`, // SQL 注释：-- 后跟空格或换行（避免误报中文破折号）
-	`--$`,  // SQL 注释：-- 在行尾
-	`/\*`,  // SQL 注释开始
+	// 增强：检测常见的SQL注入模式
+	`'\d+'\s*=\s*'\d+'`,                        // 检测 '1'='1' 或 '1'='2' 这种模式（数字）
+	`'\d+'\s*(?i)(and|or)\s*'\d+'\s*=\s*'\d+'`, // 检测 '1' AND '1'='1' 这种模式
+	`\d+'\s*(?i)(and|or)\s*'`,                  // 检测数字后跟单引号和AND/OR，如 1' AND
+	`'\s*(?i)(and|or)\s*'`,                     // 检测单引号之间的AND/OR，如 ' AND '
+	`;\s*(?i)(drop|delete|update|insert|select|create|alter|exec|execute)`, // 检测分号后的SQL命令
+	`'\s*(?i)(and|or)\s*\d+\s*=\s*\d+`,                                     // 检测 ' AND 1=1 这种模式
+	`'\s*(?i)(and|or)\s*'\d+'\s*=\s*'\d+'`,                                 // 检测 ' AND '1'='1' 这种模式
+	`--\s`,                                                                 // SQL 注释：-- 后跟空格或换行（避免误报中文破折号）
+	`--$`,                                                                  // SQL 注释：-- 在行尾
+	`/\*`,                                                                  // SQL 注释开始
+	`\*/`,                                                                  // SQL 注释结束
+	`(?i)\bwaitfor\b\s+delay\b`,                                            // SQL Server 时间延迟注入
+	`(?i)\bsleep\s*\(`,                                                     // MySQL 时间延迟注入
+	`(?i)\bpg_sleep\s*\(`,                                                  // PostgreSQL 时间延迟注入
+	`(?i)\bbenchmark\s*\(`,                                                 // MySQL benchmark 注入
+	`(?i)\bload_file\s*\(`,                                                 // MySQL 文件读取
+	`(?i)\binto\s+outfile\b`,                                               // MySQL 文件写入
+	`(?i)\binto\s+dumpfile\b`,                                              // MySQL dumpfile
+	`(?i)\bxp_cmdshell\b`,                                                  // SQL Server 命令执行
+	`(?i)\bconcat\s*\(`,                                                    // 字符串拼接函数（常用于绕过）
+	`(?i)\bchar\s*\(`,                                                      // 字符转换函数
+	`(?i)\bhex\s*\(`,                                                       // 十六进制转换
+	`(?i)\bunhex\s*\(`,                                                     // 十六进制解码
+	`(?i)\bcast\s*\(`,                                                      // 类型转换
+	`(?i)\bconvert\s*\(`,                                                   // 类型转换
 }
 
 var defaultXSSPatterns = []string{
