@@ -35,12 +35,12 @@ type Operation struct {
 type OpRecordFn func(ctx context.Context, op Operation) error
 
 type HTTPServer struct {
-	service_name    string
-	routes          []*Route
-	router          *gin.Engine
-	opRecordFn      OpRecordFn
-	approvalHandler approval.ApprovalHandler
-    extraMiddlewares []gin.HandlerFunc
+	service_name     string
+	routes           []*Route
+	router           *gin.Engine
+	opRecordFn       OpRecordFn
+	approvalHandler  approval.ApprovalHandler
+	extraMiddlewares []gin.HandlerFunc
 }
 
 func init() {
@@ -58,10 +58,10 @@ func NewHTTPServer(service_name string) *HTTPServer {
 	}
 
 	return &HTTPServer{
-		service_name: service_name,
-		routes:       routes,
-		router:       gin.Default(),
-        extraMiddlewares: []gin.HandlerFunc{},
+		service_name:     service_name,
+		routes:           routes,
+		router:           gin.Default(),
+		extraMiddlewares: []gin.HandlerFunc{},
 	}
 }
 
@@ -120,30 +120,6 @@ func (s *HTTPServer) SetOpRecordFn(fn OpRecordFn) {
 }
 
 func (s *HTTPServer) Prepare() {
-	//var policies []rbac.Policy
-	//var routeInfos []*gin.RouteInfo
-	//for _, route := range s.routes {
-	//	policies = append(policies, route.ToRbacPolicy()...)
-	//	routeInfos = append(routeInfos, route.ToGinRoute()...)
-	//}
-	//rbacClient.AddActionPolicies(policies)
-	//
-	//recordOperationMiddleware := RecordOperationMiddleware(s.routes, s.opRecordFn)
-	//loginRequiredMiddleware := LoginRequiredMiddleware(s.routes)
-	//rbacMiddleware := RbacMiddleware(s.service_name)
-	//tenantMiddleware := TenantMiddleware()
-	//
-	//// 设置信任的代理IP（例如Nginx的IP）
-	//s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"})
-	//
-	//s.router.Use(loginRequiredMiddleware)
-	//s.router.Use(rbacMiddleware)
-	//s.router.Use(tenantMiddleware)
-	//s.router.Use(recordOperationMiddleware)
-	//
-	//for _, routeInfo := range routeInfos {
-	//	s.router.Handle(routeInfo.Method, routeInfo.Path, routeInfo.HandlerFunc)
-	//}
 	var policies []rbac.Policy
 	// 1. 收集所有路由的RBAC策略和路由信息
 	for _, route := range s.routes {
@@ -151,14 +127,14 @@ func (s *HTTPServer) Prepare() {
 	}
 	// 2. 添加RBAC策略
 	rbacClient.AddActionPolicies(policies)
-    // 3. 设置全局中间件(注意顺序)
+	// 3. 设置全局中间件(注意顺序)
 	s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"})
-    // 4. 全局中间件(作用于所有路由)
-    // 先注册用户自定义额外中间件，再注册内置中间件，确保用户安全中间件可最早生效
-    if len(s.extraMiddlewares) > 0 {
-        s.router.Use(s.extraMiddlewares...)
-    }
-    s.router.Use(
+	// 4. 全局中间件(作用于所有路由)
+	// 先注册用户自定义额外中间件，再注册内置中间件，确保用户安全中间件可最早生效
+	if len(s.extraMiddlewares) > 0 {
+		s.router.Use(s.extraMiddlewares...)
+	}
+	s.router.Use(
 		LoginRequiredMiddleware(s.routes),                 // 登录检查
 		RbacMiddleware(s.service_name),                    // RBAC鉴权
 		TenantMiddleware(),                                // 租户隔离
@@ -177,10 +153,10 @@ func (s *HTTPServer) Prepare() {
 
 // Use 注册额外的全局中间件(将在 Prepare 时最先挂载)
 func (s *HTTPServer) Use(middlewares ...gin.HandlerFunc) {
-    if len(middlewares) == 0 {
-        return
-    }
-    s.extraMiddlewares = append(s.extraMiddlewares, middlewares...)
+	if len(middlewares) == 0 {
+		return
+	}
+	s.extraMiddlewares = append(s.extraMiddlewares, middlewares...)
 }
 
 func (s *HTTPServer) StaticFs(static_dir string) {

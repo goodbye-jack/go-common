@@ -1,9 +1,9 @@
 package utils
 
 import (
-	"time"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/goodbye-jack/go-common/log"
+	"time"
 )
 
 type payload struct {
@@ -12,7 +12,7 @@ type payload struct {
 }
 
 func GenJWT(data string, expiredSeconds int) (string, error) {
-	claims := payload {
+	claims := payload{
 		data,
 		jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expiredSeconds) * time.Second)),
