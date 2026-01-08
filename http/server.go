@@ -9,15 +9,44 @@ import (
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/rbac"
 	"github.com/goodbye-jack/go-common/utils"
+	"github.com/spf13/viper"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"net/http"
+	"sort"
+	"sync"
 	"time"
 )
 
+// RouteRegisterFunc 业务侧只需实现这个函数类型（替代繁琐的接口）
+type RouteRegisterFunc func(server *HTTPServer)
+
+// GroupRouterEntry 路由组注册项（原simpleRouterEntry，命名更语义化）
+type GroupRouterEntry struct {
+	groupName string            // 路由组名称（配置化用）
+	prefix    string            // 路由组前缀
+	priority  int               // 注册优先级
+	mws       []gin.HandlerFunc // 组专属中间件
+	register  RouteRegisterFunc // 路由注册函数
+	enabled   bool              // 是否启用（默认true）
+}
+
+// 全局路由组注册器（命名同步优化）
 var (
-	rbacClient *rbac.RbacClient = nil
+	rbacClient      *rbac.RbacClient = nil
+	groupRegistry   []GroupRouterEntry
+	groupRegistryMu sync.Mutex
 )
+
+// routeConfig 存储路由组的启用/禁用配置（对应yaml中的routes节点）
+var routeConfig = struct {
+	Routes map[string]RouteConfigItem `yaml:"routes"`
+}{}
+
+// RouteConfigItem 路由组配置项（仅包含启用状态）
+type RouteConfigItem struct {
+	Enabled bool `yaml:"enabled"` // true=启用，false=禁用
+}
 
 type Operation struct {
 	User          string                 `json:"user"`
@@ -41,13 +70,22 @@ type HTTPServer struct {
 	opRecordFn       OpRecordFn
 	approvalHandler  approval.ApprovalHandler
 	extraMiddlewares []gin.HandlerFunc
+	// 新增字段（增量，不影响原有逻辑）
+	globalPrefix string // 路由全局前缀
 }
 
 func init() {
 	rbacClient = rbac.NewRbacClient(
 		config.GetConfigString(utils.CasbinRedisAddrName),
 	)
-
+	// 设置默认值：如果配置文件中没有routes节点，默认所有路由组启用
+	viper.SetDefault("routes", map[string]RouteConfigItem{})
+	// 从配置文件加载routes配置到全局变量
+	if err := viper.UnmarshalKey("routes", &routeConfig.Routes); err != nil {
+		log.Warnf("加载路由组配置失败，将使用默认配置（所有路由组启用）：%v", err)
+		// 初始化空map，避免后续nil指针错误
+		routeConfig.Routes = make(map[string]RouteConfigItem)
+	}
 }
 
 func NewHTTPServer(service_name string) *HTTPServer {
@@ -56,7 +94,6 @@ func NewHTTPServer(service_name string) *HTTPServer {
 			c.String(http.StatusOK, "Pong")
 		}),
 	}
-
 	return &HTTPServer{
 		service_name:     service_name,
 		routes:           routes,
@@ -108,6 +145,80 @@ func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles 
 		route.AddMiddleware(RecordOperationMiddleware(s.routes, s.opRecordFn))
 	}
 	s.routes = append(s.routes, route)
+}
+
+// RouteAutoRegisterAPI 业务侧调用的简化版API（自动拼接前缀、内置优先级）
+// 参数：原有RouteAPI参数 + 组前缀（可选）
+func (s *HTTPServer) RouteAutoRegisterAPI(path string, tips string, methods []string, roles []string,
+	sso bool, businessApproval bool, fn gin.HandlerFunc, prefix ...string, // 可选前缀，不传则用全局前缀
+) {
+	// 拼接前缀（优先级：传入前缀 > 全局前缀）
+	finalPrefix := s.globalPrefix
+	if len(prefix) > 0 && prefix[0] != "" {
+		finalPrefix = prefix[0]
+	}
+	// 处理前缀格式（确保以/结尾）
+	if finalPrefix != "" && finalPrefix[len(finalPrefix)-1] != '/' {
+		finalPrefix += "/"
+	}
+	// 最终路径 = 前缀 + 原始路径
+	finalPath := finalPrefix + path
+	// 复用原有RouteAPI逻辑
+	s.RouteAPI(finalPath, tips, methods, roles, sso, businessApproval, fn)
+}
+
+// RegisterGroupRouter 注册路由组（原RegisterSimpleRouter，命名更直观）
+// 参数：路由组名称、前缀、优先级、中间件、注册函数
+func RegisterGroupRouter(groupName, prefix string, priority int, mws []gin.HandlerFunc, register RouteRegisterFunc) {
+	groupRegistryMu.Lock()
+	defer groupRegistryMu.Unlock()
+	enabled := true // 从配置读取是否启用（默认启用）
+	if item, ok := routeConfig.Routes[groupName]; ok {
+		enabled = item.Enabled
+	}
+	groupRegistry = append(groupRegistry, GroupRouterEntry{
+		groupName: groupName,
+		prefix:    prefix,
+		priority:  priority,
+		mws:       mws,
+		register:  register,
+		enabled:   enabled,
+	})
+	log.Infof("已注册路由组：%s（前缀：%s，优先级：%d）", groupName, prefix, priority)
+}
+
+// -------------------------- 简化版初始化（兼容原有逻辑） --------------------------
+// InitGroupAutoRoutes 初始化所有路由组
+func (s *HTTPServer) InitGroupAutoRoutes() error {
+	groupRegistryMu.Lock()
+	entries := make([]GroupRouterEntry, len(groupRegistry))
+	copy(entries, groupRegistry)
+	groupRegistryMu.Unlock()
+	// 按优先级排序
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].priority > entries[j].priority
+	})
+	registered := 0 // 注册路由
+	for _, entry := range entries {
+		if !entry.enabled {
+			log.Infof("路由组[%s]已被配置禁用", entry.groupName)
+			continue
+		}
+		originPrefix := s.globalPrefix // 1. 设置当前组前缀
+		s.globalPrefix = entry.prefix
+		if s.globalPrefix != "" && s.globalPrefix[len(s.globalPrefix)-1] != '/' {
+			s.globalPrefix += "/"
+		}
+		if len(entry.mws) > 0 { // 2. 添加组中间件
+			s.Use(entry.mws...)
+		}
+		entry.register(s)             // 3. 执行业务侧的路由注册函数
+		s.globalPrefix = originPrefix // 4. 恢复原有前缀
+		registered++
+		log.Infof("已初始化路由组：%s", entry.groupName)
+	}
+	log.Infof("路由组自动初始化完成，共注册%d个路由组", registered)
+	return nil
 }
 
 // SetApprovalHandler 设置审批处理器
@@ -167,8 +278,6 @@ func (s *HTTPServer) StaticFs(static_dir string) {
 
 func (s *HTTPServer) Run(addr string) {
 	log.Info("server %v is running", addr)
-
 	s.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-
 	s.router.Run(addr)
 }
