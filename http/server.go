@@ -5,7 +5,7 @@ import (
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/approval"
-	_ "github.com/goodbye-jack/go-common/autoimport"
+	//_ "github.com/goodbye-jack/go-common/autoimport"
 	"github.com/goodbye-jack/go-common/config"
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/rbac"
