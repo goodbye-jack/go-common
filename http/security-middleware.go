@@ -3,14 +3,13 @@ package http
 import (
 	"bytes"
 	"fmt"
+	"github.com/gin-gonic/gin"
+	"github.com/goodbye-jack/go-common/config"
 	"io"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/gin-gonic/gin"
-	"github.com/goodbye-jack/go-common/config"
 )
 
 // SecurityConfig 用于配置全局 XSS / SQL 注入拦截与放行白名单
