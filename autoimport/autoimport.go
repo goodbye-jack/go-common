@@ -1,11 +1,9 @@
-//go:build ignore
-// +build ignore
-
 // go-common/autoimport/autoimport.go
 package autoimport
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,8 +55,14 @@ func init() {
 
 // isCompileTime 判断是否为编译期（避免运行时重复执行）
 func isCompileTime() bool {
-	// 编译期：os.Args长度为0 或 第一个参数为go build相关
-	return len(os.Args) == 0 || strings.Contains(os.Args[0], "go-build") || strings.Contains(os.Args[0], "compile")
+	// 编译期特征：
+	// 1. os.Args为空（编译期执行init时无参数）
+	// 2. 进程名包含go-build/compile（编译期进程特征）
+	if len(os.Args) == 0 {
+		return true
+	}
+	procName := filepath.Base(os.Args[0])
+	return strings.Contains(procName, "go-build") || strings.Contains(procName, "compile") || strings.Contains(procName, "go")
 }
 
 // getProjectRootDir 精准获取业务项目根目录（排除go-common自身目录）
@@ -380,6 +384,387 @@ func refreshFileState(filePath string) {
 	// 2. 短暂延迟（确保IDE能识别）
 	time.Sleep(10 * time.Millisecond)
 }
+
+//// go-common/autoimport/autoimport.go
+//package autoimport
+//
+//import (
+//	"bytes"
+//	"fmt"
+//	"os"
+//	"os/exec"
+//	"path/filepath"
+//	"runtime"
+//	"strings"
+//	"text/template"
+//	"time"
+//)
+//
+//// 编译期强制优先执行（通过init()链最前置）
+//func init() {
+//	// 1. 安全防护：只在编译期执行，运行时跳过
+//	if !isCompileTime() {
+//		return
+//	}
+//
+//	// 2. 获取业务项目根目录（精准兼容所有场景）
+//	rootDir := getProjectRootDir()
+//	if rootDir == "" {
+//		return
+//	}
+//
+//	// 3. 查找并验证main.go（保证路径绝对正确）
+//	mainGoPath, err := findExactMainGo(rootDir)
+//	if err != nil {
+//		return
+//	}
+//
+//	// 4. 备份原有main.go（防止破坏业务代码）
+//	backupMainGo(mainGoPath)
+//
+//	// 5. 解析module名（精准读取go.mod）
+//	moduleName, err := getExactModuleName(rootDir)
+//	if err != nil {
+//		return
+//	}
+//
+//	// 6. 生成auto_import.go（彻底修复路径错误）
+//	routesDir := filepath.Join(rootDir, "routes")
+//	generateCorrectAutoImport(routesDir, moduleName, rootDir)
+//
+//	// 7. 注入routes到main.go（无损+去重）
+//	injectRoutesToMainSafe(mainGoPath, moduleName, routesDir)
+//
+//	// 8. 强制刷新文件（让IDE识别新生成的文件）
+//	refreshFileState(routesDir)
+//	refreshFileState(mainGoPath)
+//}
+//
+//// isCompileTime 判断是否为编译期（避免运行时重复执行）
+//func isCompileTime() bool {
+//	// 编译期：os.Args长度为0 或 第一个参数为go build相关
+//	return len(os.Args) == 0 || strings.Contains(os.Args[0], "go-build") || strings.Contains(os.Args[0], "compile")
+//}
+//
+//// getProjectRootDir 精准获取业务项目根目录（排除go-common自身目录）
+//func getProjectRootDir() string {
+//	// 优先从GOMODCACHE外的目录查找
+//	wd, err := os.Getwd()
+//	if err != nil {
+//		return ""
+//	}
+//	// 排除go-common自身目录（避免扫描到工具包）
+//	if strings.Contains(wd, "go-common") && !strings.Contains(wd, "pano-material") {
+//		return ""
+//	}
+//	// 向上查找包含go.mod的目录
+//	for {
+//		if _, err := os.Stat(filepath.Join(wd, "go.mod")); err == nil {
+//			return wd
+//		}
+//		parent := filepath.Dir(wd)
+//		if parent == wd {
+//			break
+//		}
+//		wd = parent
+//	}
+//	return ""
+//}
+//
+//// findExactMainGo 精准查找唯一的main.go（排除测试文件）
+//func findExactMainGo(rootDir string) (string, error) {
+//	var mainGoPaths []string
+//	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
+//		if err != nil {
+//			return nil
+//		}
+//		// 只匹配：非测试文件 + 文件名是main.go + 内容包含package main
+//		if !info.IsDir() && filepath.Base(path) == "main.go" && !strings.HasSuffix(path, "_test.go") {
+//			content, err := os.ReadFile(path)
+//			if err == nil && strings.Contains(string(content), "package main") {
+//				mainGoPaths = append(mainGoPaths, path)
+//			}
+//		}
+//		return nil
+//	})
+//	if err != nil {
+//		return "", err
+//	}
+//	// 只处理唯一的main.go（避免多文件冲突）
+//	if len(mainGoPaths) == 1 {
+//		return mainGoPaths[0], nil
+//	}
+//	return "", os.ErrNotExist
+//}
+//
+//// backupMainGo 备份main.go（防止破坏业务代码）
+//func backupMainGo(mainGoPath string) {
+//	content, err := os.ReadFile(mainGoPath)
+//	if err != nil {
+//		return
+//	}
+//	backupPath := mainGoPath + ".bak" + time.Now().Format("20060102150405")
+//	_ = os.WriteFile(backupPath, content, 0644)
+//}
+//
+//// getExactModuleName 精准解析module名（去重+去空格）
+//func getExactModuleName(rootDir string) (string, error) {
+//	modFile := filepath.Join(rootDir, "go.mod")
+//	content, err := os.ReadFile(modFile)
+//	if err != nil {
+//		return "", err
+//	}
+//	lines := strings.Split(string(content), "\n")
+//	for _, line := range lines {
+//		trimLine := strings.TrimSpace(line)
+//		if strings.HasPrefix(trimLine, "module ") {
+//			moduleName := strings.TrimPrefix(trimLine, "module ")
+//			// 去重/去空格/去注释
+//			moduleName = strings.Split(moduleName, "//")[0]
+//			moduleName = strings.TrimSpace(moduleName)
+//			return moduleName, nil
+//		}
+//	}
+//	return "", os.ErrNotExist
+//}
+//
+//// generateCorrectAutoImport 生成正确的auto_import.go（无错误路径+无[]）
+//func generateCorrectAutoImport(routesDir, moduleName, rootDir string) {
+//	// 1. 确保routes目录存在
+//	_ = os.MkdirAll(routesDir, 0755)
+//
+//	// 2. 精准扫描路由包（只扫internal/handler下的有效子包）
+//	validRoutes := scanValidRoutes(rootDir)
+//	if len(validRoutes) == 0 {
+//		return
+//	}
+//
+//	// 3. 正确的模板（无语法错误）
+//	tplContent := `// Code generated by go-common DO NOT EDIT.
+//package routes
+//
+//import (
+//	"fmt"
+//	{{range .}}_ "{{$.ModuleName}}/{{.}}"
+//	{{end}}
+//)
+//
+//func Init() {
+//	fmt.Printf("[go-common] 加载%d个路由包\n", len([]interface{}{{range .}}nil,{{end}}))
+//}
+//`
+//	tpl, err := template.New("autoimport").Parse(tplContent)
+//	if err != nil {
+//		return
+//	}
+//
+//	// 4. 生成文件（覆盖旧文件，确保内容正确）
+//	autoImportPath := filepath.Join(routesDir, "auto_import.go")
+//	var buf bytes.Buffer
+//	err = tpl.Execute(&buf, map[string]interface{}{
+//		"ModuleName": moduleName,
+//		"Routes":     validRoutes,
+//	})
+//	if err != nil {
+//		return
+//	}
+//
+//	// 5. 写入文件（确保内容正确）
+//	_ = os.WriteFile(autoImportPath, buf.Bytes(), 0644)
+//}
+//
+//// scanValidRoutes 精准扫描有效路由包（无错误路径+无[]+无根目录）
+//func scanValidRoutes(rootDir string) []string {
+//	var validRoutes []string
+//	handlerDir := filepath.Join(rootDir, "internal/handler")
+//
+//	// 跳过不存在的目录
+//	if _, err := os.Stat(handlerDir); os.IsNotExist(err) {
+//		return validRoutes
+//	}
+//
+//	// 只扫描一级子目录（避免递归）
+//	entries, err := os.ReadDir(handlerDir)
+//	if err != nil {
+//		return validRoutes
+//	}
+//
+//	for _, entry := range entries {
+//		// 只处理目录+非隐藏+非测试
+//		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") && !strings.HasSuffix(entry.Name(), "_test") {
+//			// 正确的相对路径（无[]）
+//			routePath := filepath.Join("internal/handler", entry.Name())
+//			routePath = filepath.ToSlash(routePath) // 统一分隔符为/
+//			validRoutes = append(validRoutes, routePath)
+//		}
+//	}
+//
+//	return validRoutes
+//}
+//
+//// injectRoutesToMainSafe 安全注入到main.go（无损+去重+不破坏原有代码）
+//func injectRoutesToMainSafe(mainGoPath, moduleName, routesDir string) {
+//	// 1. 读取原始内容（保证业务代码完整）
+//	originalContent, err := os.ReadFile(mainGoPath)
+//	if err != nil {
+//		return
+//	}
+//	lines := strings.Split(string(originalContent), "\n")
+//
+//	// 2. 定义目标导入路径
+//	importPath := fmt.Sprintf("%s/routes", moduleName)
+//
+//	// 3. 第一步：全量去重（先删除所有重复的导入/调用）
+//	lines = removeAllDuplicates(lines, importPath)
+//
+//	// 4. 第二步：安全注入导入（只在import块末尾/包声明后插入，不破坏原有代码）
+//	lines = injectImportSafely(lines, importPath)
+//
+//	// 5. 第三步：安全注入Init()调用（只在main函数第一行插入，不破坏原有代码）
+//	lines = injectInitSafely(lines)
+//
+//	// 6. 写回文件（保证原有代码完整）
+//	_ = os.WriteFile(mainGoPath, []byte(strings.Join(lines, "\n")), 0644)
+//}
+//
+//// removeAllDuplicates 全量去重（删除所有重复的导入/调用）
+//func removeAllDuplicates(lines []string, importPath string) []string {
+//	var newLines []string
+//	importLine := fmt.Sprintf("import \"%s\"", importPath)
+//	initCall := "routes.Init()"
+//
+//	// 标记是否已添加过导入/调用
+//	hasImport := false
+//	hasInit := false
+//	inMainFunc := false
+//
+//	for _, line := range lines {
+//		trimLine := strings.TrimSpace(line)
+//
+//		// 处理导入去重
+//		if (trimLine == importLine || strings.Contains(trimLine, fmt.Sprintf(`"%s"`, importPath))) && hasImport {
+//			continue
+//		}
+//		if trimLine == importLine || strings.Contains(trimLine, fmt.Sprintf(`"%s"`, importPath)) {
+//			hasImport = true
+//		}
+//
+//		// 处理main函数内的Init()去重
+//		if trimLine == "func main() {" {
+//			inMainFunc = true
+//		}
+//		if inMainFunc && trimLine == "}" {
+//			inMainFunc = false
+//		}
+//		if inMainFunc && trimLine == initCall && hasInit {
+//			continue
+//		}
+//		if inMainFunc && trimLine == initCall {
+//			hasInit = true
+//		}
+//
+//		// 保留原有行（保证业务代码无损）
+//		newLines = append(newLines, line)
+//	}
+//
+//	return newLines
+//}
+//
+//// injectImportSafely 安全注入导入（不破坏原有代码）
+//func injectImportSafely(lines []string, importPath string) []string {
+//	// 1. 查找import块末尾
+//	importBlockEnd := -1
+//	packageLine := -1
+//
+//	for i, line := range lines {
+//		trimLine := strings.TrimSpace(line)
+//		if trimLine == "package main" {
+//			packageLine = i
+//		}
+//		// 匹配import块结束
+//		if trimLine == ")" && importBlockEnd == -1 && i > 0 {
+//			prevLine := strings.TrimSpace(lines[i-1])
+//			if strings.HasPrefix(prevLine, "import (") || (prevLine != "" && !strings.HasPrefix(prevLine, "import")) {
+//				importBlockEnd = i
+//			}
+//		}
+//	}
+//
+//	// 2. 注入到import块末尾（优先）
+//	if importBlockEnd > 0 {
+//		newLines := make([]string, 0, len(lines)+1)
+//		newLines = append(newLines, lines[:importBlockEnd]...)
+//		newLines = append(newLines, fmt.Sprintf("\t\"%s\"", importPath))
+//		newLines = append(newLines, lines[importBlockEnd:]...)
+//		return newLines
+//	}
+//
+//	// 3. 注入到package main后（无import块）
+//	if packageLine >= 0 {
+//		newLines := make([]string, 0, len(lines)+1)
+//		newLines = append(newLines, lines[:packageLine+1]...)
+//		newLines = append(newLines, fmt.Sprintf("import \"%s\"", importPath))
+//		newLines = append(newLines, lines[packageLine+1:]...)
+//		return newLines
+//	}
+//
+//	return lines
+//}
+//
+//// injectInitSafely 安全注入Init()调用（不破坏原有代码）
+//func injectInitSafely(lines []string) []string {
+//	var newLines []string
+//	mainFuncStart := -1
+//	inMainFunc := false
+//	initInjected := false
+//
+//	for i, line := range lines {
+//		trimLine := strings.TrimSpace(line)
+//
+//		// 标记main函数开始
+//		if trimLine == "func main() {" {
+//			mainFuncStart = i
+//			inMainFunc = true
+//			newLines = append(newLines, line)
+//			continue
+//		}
+//
+//		// 在main函数第一行注入（只注入一次）
+//		if inMainFunc && mainFuncStart != -1 && !initInjected && trimLine != "" {
+//			// 匹配原有缩进
+//			indent := strings.Repeat("\t", strings.Count(lines[mainFuncStart], "\t"))
+//			newLines = append(newLines, fmt.Sprintf("%sroutes.Init()", indent))
+//			initInjected = true
+//		}
+//
+//		// 保留原有行
+//		newLines = append(newLines, line)
+//
+//		// 标记main函数结束
+//		if inMainFunc && trimLine == "}" {
+//			inMainFunc = false
+//		}
+//	}
+//
+//	return newLines
+//}
+//
+//// refreshFileState 强制刷新文件状态（让IDE识别新文件）
+//func refreshFileState(filePath string) {
+//	// 1. 触发文件系统刷新（不同系统兼容）
+//	switch runtime.GOOS {
+//	case "darwin", "linux":
+//		// macOS/Linux：touch文件
+//		_ = exec.Command("touch", filePath).Run()
+//	case "windows":
+//		// Windows：修改文件时间
+//		now := time.Now()
+//		_ = os.Chtimes(filePath, now, now)
+//	}
+//
+//	// 2. 短暂延迟（确保IDE能识别）
+//	time.Sleep(10 * time.Millisecond)
+//}
 
 //// go-common/autoimport/autoimport.go
 //package autoimport
