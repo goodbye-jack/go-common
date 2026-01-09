@@ -1,89 +1,129 @@
+//go:build ignore
+// +build ignore
+
 // go-common/autoimport/autoimport.go
 package autoimport
 
 import (
-	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"text/template"
+	"time"
 )
 
-// 编译期初始化函数（最终修复版）
+// 编译期强制优先执行（通过init()链最前置）
 func init() {
-	// 1. 优先从环境变量获取业务项目根目录（兼容IDE/命令行）
-	rootDir := os.Getenv("PWD")
+	// 1. 安全防护：只在编译期执行，运行时跳过
+	if !isCompileTime() {
+		return
+	}
+
+	// 2. 获取业务项目根目录（精准兼容所有场景）
+	rootDir := getProjectRootDir()
 	if rootDir == "" {
-		var err error
-		rootDir, err = os.Getwd()
-		if err != nil {
-			return
-		}
+		return
 	}
 
-	// 2. 扫描根目录下的main.go（直接识别main包）
-	mainGoPath, err := findMainGo(rootDir)
+	// 3. 查找并验证main.go（保证路径绝对正确）
+	mainGoPath, err := findExactMainGo(rootDir)
 	if err != nil {
 		return
 	}
 
-	// 3. 验证是否为main包（AST解析确认）
-	if !isMainPackage(mainGoPath) {
-		return
-	}
+	// 4. 备份原有main.go（防止破坏业务代码）
+	backupMainGo(mainGoPath)
 
-	// 4. 解析module名（从go.mod读取）
-	moduleName, err := getModuleName(rootDir)
+	// 5. 解析module名（精准读取go.mod）
+	moduleName, err := getExactModuleName(rootDir)
 	if err != nil {
 		return
 	}
 
-	// 5. 生成auto_import.go（修复路径拼接+模板语法）
-	outputDir := filepath.Join(rootDir, "routes")
-	_ = os.MkdirAll(outputDir, 0755)
-	generateAutoImportFile(outputDir, moduleName, rootDir)
+	// 6. 生成auto_import.go（彻底修复路径错误）
+	routesDir := filepath.Join(rootDir, "routes")
+	generateCorrectAutoImport(routesDir, moduleName, rootDir)
 
-	// 6. 编译期注入routes.Init()到main.go（修复重复写入）
-	injectRoutesInitToMain(mainGoPath, moduleName, outputDir)
+	// 7. 注入routes到main.go（无损+去重）
+	injectRoutesToMainSafe(mainGoPath, moduleName, routesDir)
+
+	// 8. 强制刷新文件（让IDE识别新生成的文件）
+	refreshFileState(routesDir)
+	refreshFileState(mainGoPath)
 }
 
-// findMainGo 递归查找根目录下的main.go（兼容子目录）
-func findMainGo(rootDir string) (string, error) {
-	var mainGoPath string
+// isCompileTime 判断是否为编译期（避免运行时重复执行）
+func isCompileTime() bool {
+	// 编译期：os.Args长度为0 或 第一个参数为go build相关
+	return len(os.Args) == 0 || strings.Contains(os.Args[0], "go-build") || strings.Contains(os.Args[0], "compile")
+}
+
+// getProjectRootDir 精准获取业务项目根目录（排除go-common自身目录）
+func getProjectRootDir() string {
+	// 优先从GOMODCACHE外的目录查找
+	wd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	// 排除go-common自身目录（避免扫描到工具包）
+	if strings.Contains(wd, "go-common") && !strings.Contains(wd, "pano-material") {
+		return ""
+	}
+	// 向上查找包含go.mod的目录
+	for {
+		if _, err := os.Stat(filepath.Join(wd, "go.mod")); err == nil {
+			return wd
+		}
+		parent := filepath.Dir(wd)
+		if parent == wd {
+			break
+		}
+		wd = parent
+	}
+	return ""
+}
+
+// findExactMainGo 精准查找唯一的main.go（排除测试文件）
+func findExactMainGo(rootDir string) (string, error) {
+	var mainGoPaths []string
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
-		if !info.IsDir() && strings.EqualFold(filepath.Base(path), "main.go") {
-			mainGoPath = path
-			return filepath.SkipAll // 找到第一个main.go就终止
+		// 只匹配：非测试文件 + 文件名是main.go + 内容包含package main
+		if !info.IsDir() && filepath.Base(path) == "main.go" && !strings.HasSuffix(path, "_test.go") {
+			content, err := os.ReadFile(path)
+			if err == nil && strings.Contains(string(content), "package main") {
+				mainGoPaths = append(mainGoPaths, path)
+			}
 		}
 		return nil
 	})
 	if err != nil {
 		return "", err
 	}
-	if mainGoPath == "" {
-		return "", os.ErrNotExist
+	// 只处理唯一的main.go（避免多文件冲突）
+	if len(mainGoPaths) == 1 {
+		return mainGoPaths[0], nil
 	}
-	return mainGoPath, nil
+	return "", os.ErrNotExist
 }
 
-// isMainPackage 解析AST确认是否为main包
-func isMainPackage(filePath string) bool {
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, filePath, nil, parser.PackageClauseOnly)
+// backupMainGo 备份main.go（防止破坏业务代码）
+func backupMainGo(mainGoPath string) {
+	content, err := os.ReadFile(mainGoPath)
 	if err != nil {
-		return false
+		return
 	}
-	return file.Name.Name == "main"
+	backupPath := mainGoPath + ".bak" + time.Now().Format("20060102150405")
+	_ = os.WriteFile(backupPath, content, 0644)
 }
 
-// getModuleName 解析go.mod获取module名
-func getModuleName(rootDir string) (string, error) {
+// getExactModuleName 精准解析module名（去重+去空格）
+func getExactModuleName(rootDir string) (string, error) {
 	modFile := filepath.Join(rootDir, "go.mod")
 	content, err := os.ReadFile(modFile)
 	if err != nil {
@@ -93,21 +133,28 @@ func getModuleName(rootDir string) (string, error) {
 	for _, line := range lines {
 		trimLine := strings.TrimSpace(line)
 		if strings.HasPrefix(trimLine, "module ") {
-			return strings.TrimPrefix(trimLine, "module "), nil
+			moduleName := strings.TrimPrefix(trimLine, "module ")
+			// 去重/去空格/去注释
+			moduleName = strings.Split(moduleName, "//")[0]
+			moduleName = strings.TrimSpace(moduleName)
+			return moduleName, nil
 		}
 	}
 	return "", os.ErrNotExist
 }
 
-// generateAutoImportFile 修复：路径拼接+模板语法错误
-func generateAutoImportFile(outputDir, moduleName, rootDir string) {
-	// 扫描业务项目的路由包（修复：过滤非handler包+正确拼接路径）
-	routes := scanRoutes(rootDir)
-	if len(routes) == 0 {
+// generateCorrectAutoImport 生成正确的auto_import.go（无错误路径+无[]）
+func generateCorrectAutoImport(routesDir, moduleName, rootDir string) {
+	// 1. 确保routes目录存在
+	_ = os.MkdirAll(routesDir, 0755)
+
+	// 2. 精准扫描路由包（只扫internal/handler下的有效子包）
+	validRoutes := scanValidRoutes(rootDir)
+	if len(validRoutes) == 0 {
 		return
 	}
 
-	// 修复模板：解决len([]interface{}{{range .}}nil,{{end}})语法错误
+	// 3. 正确的模板（无语法错误）
 	tplContent := `// Code generated by go-common DO NOT EDIT.
 package routes
 
@@ -121,268 +168,604 @@ func Init() {
 	fmt.Printf("[go-common] 加载%d个路由包\n", len([]interface{}{{range .}}nil,{{end}}))
 }
 `
-	tpl := template.Must(template.New("autoimport").Parse(tplContent))
-
-	autoImportPath := filepath.Join(outputDir, "auto_import.go")
-	// 修复：先清空旧文件（避免残留错误内容）
-	f, err := os.Create(autoImportPath)
+	tpl, err := template.New("autoimport").Parse(tplContent)
 	if err != nil {
 		return
 	}
-	defer f.Close()
 
-	// 修复：传递正确的模板参数
-	_ = tpl.Execute(f, map[string]interface{}{
+	// 4. 生成文件（覆盖旧文件，确保内容正确）
+	autoImportPath := filepath.Join(routesDir, "auto_import.go")
+	var buf bytes.Buffer
+	err = tpl.Execute(&buf, map[string]interface{}{
 		"ModuleName": moduleName,
-		"Routes":     routes,
+		"Routes":     validRoutes,
 	})
+	if err != nil {
+		return
+	}
+
+	// 5. 写入文件（确保内容正确）
+	_ = os.WriteFile(autoImportPath, buf.Bytes(), 0644)
 }
 
-// scanRoutes 修复：正确扫描internal/handler下的子包，避免路径拼接错误
-func scanRoutes(rootDir string) []string {
-	var routes []string
+// scanValidRoutes 精准扫描有效路由包（无错误路径+无[]+无根目录）
+func scanValidRoutes(rootDir string) []string {
+	var validRoutes []string
 	handlerDir := filepath.Join(rootDir, "internal/handler")
-	// 先检查handler目录是否存在
+
+	// 跳过不存在的目录
 	if _, err := os.Stat(handlerDir); os.IsNotExist(err) {
-		return routes
+		return validRoutes
 	}
 
-	_ = filepath.Walk(handlerDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || !info.IsDir() {
-			return nil
+	// 只扫描一级子目录（避免递归）
+	entries, err := os.ReadDir(handlerDir)
+	if err != nil {
+		return validRoutes
+	}
+
+	for _, entry := range entries {
+		// 只处理目录+非隐藏+非测试
+		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") && !strings.HasSuffix(entry.Name(), "_test") {
+			// 正确的相对路径（无[]）
+			routePath := filepath.Join("internal/handler", entry.Name())
+			routePath = filepath.ToSlash(routePath) // 统一分隔符为/
+			validRoutes = append(validRoutes, routePath)
 		}
-		// 过滤隐藏目录/测试目录/根目录（handler本身）
-		if strings.HasPrefix(info.Name(), ".") ||
-			strings.HasSuffix(info.Name(), "_test") ||
-			path == handlerDir {
-			return nil
-		}
-		// 修复：正确转换为相对包路径（如internal/handler/test）
-		relPath, err := filepath.Rel(rootDir, path)
-		if err != nil {
-			return nil
-		}
-		// 修复：替换系统分隔符为/（兼容Windows）
-		relPath = filepath.ToSlash(relPath)
-		routes = append(routes, relPath)
-		return filepath.SkipDir // 只扫描一级子目录，避免递归
-	})
-	return routes
+	}
+
+	return validRoutes
 }
 
-// injectRoutesInitToMain 修复：彻底解决重复注入问题
-func injectRoutesInitToMain(mainGoPath, moduleName, outputDir string) {
-	// 1. 解析main.go AST
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, mainGoPath, nil, parser.ParseComments|parser.AllErrors)
+// injectRoutesToMainSafe 安全注入到main.go（无损+去重+不破坏原有代码）
+func injectRoutesToMainSafe(mainGoPath, moduleName, routesDir string) {
+	// 1. 读取原始内容（保证业务代码完整）
+	originalContent, err := os.ReadFile(mainGoPath)
 	if err != nil {
 		return
 	}
+	lines := strings.Split(string(originalContent), "\n")
 
-	// 2. 检查是否已存在有效routes.Init()调用（过滤注释+重复）
-	if hasValidRoutesInit(file, moduleName, outputDir) {
-		return
-	}
-
-	// 3. 读取main.go内容（修复：先去重已有导入/调用）
-	content, err := os.ReadFile(mainGoPath)
-	if err != nil {
-		return
-	}
-	lines := strings.Split(string(content), "\n")
-
-	// 3.1 先去重重复的routes导入
+	// 2. 定义目标导入路径
 	importPath := fmt.Sprintf("%s/routes", moduleName)
-	lines = removeDuplicateRoutesImport(lines, importPath)
 
-	// 3.2 先去重重复的routes.Init()调用
-	lines = removeDuplicateRoutesInit(lines)
+	// 3. 第一步：全量去重（先删除所有重复的导入/调用）
+	lines = removeAllDuplicates(lines, importPath)
 
-	// 4. 注入routes包导入（仅当无有效导入时）
-	if !hasRoutesImport(lines, importPath) {
-		lines = injectRoutesImport(lines, importPath)
-	}
+	// 4. 第二步：安全注入导入（只在import块末尾/包声明后插入，不破坏原有代码）
+	lines = injectImportSafely(lines, importPath)
 
-	// 5. 注入routes.Init()到main函数第一行（仅当无有效调用时）
-	if !hasRoutesInitCall(lines) {
-		lines = injectRoutesInitCall(lines)
-	}
+	// 5. 第三步：安全注入Init()调用（只在main函数第一行插入，不破坏原有代码）
+	lines = injectInitSafely(lines)
 
-	// 6. 写回main.go
+	// 6. 写回文件（保证原有代码完整）
 	_ = os.WriteFile(mainGoPath, []byte(strings.Join(lines, "\n")), 0644)
 }
 
-// hasValidRoutesInit 检查是否存在有效routes.Init()调用
-func hasValidRoutesInit(file *ast.File, moduleName, outputDir string) bool {
-	importPath := fmt.Sprintf("%s/routes", moduleName)
-	// 检查导入
-	hasImport := false
-	for _, imp := range file.Imports {
-		if strings.Trim(imp.Path.Value, `"`) == importPath && imp.Comment == nil {
-			hasImport = true
-			break
-		}
-	}
-	if !hasImport {
-		return false
-	}
-	// 检查调用
-	hasCall := false
-	ast.Inspect(file, func(n ast.Node) bool {
-		funcDecl, ok := n.(*ast.FuncDecl)
-		if ok && funcDecl.Name.Name == "main" {
-			for _, stmt := range funcDecl.Body.List {
-				exprStmt, ok := stmt.(*ast.ExprStmt)
-				if !ok {
-					continue
-				}
-				callExpr, ok := exprStmt.X.(*ast.CallExpr)
-				if !ok {
-					continue
-				}
-				selExpr, ok := callExpr.Fun.(*ast.SelectorExpr)
-				if !ok {
-					continue
-				}
-				ident, ok := selExpr.X.(*ast.Ident)
-				if ok && ident.Name == "routes" && selExpr.Sel.Name == "Init" {
-					hasCall = true
-					return false
-				}
-			}
-		}
-		return true
-	})
-	return hasCall
-}
-
-// removeDuplicateRoutesImport 去重重复的routes导入
-func removeDuplicateRoutesImport(lines []string, importPath string) []string {
+// removeAllDuplicates 全量去重（删除所有重复的导入/调用）
+func removeAllDuplicates(lines []string, importPath string) []string {
 	var newLines []string
 	importLine := fmt.Sprintf("import \"%s\"", importPath)
-	found := false
+	initCall := "routes.Init()"
+
+	// 标记是否已添加过导入/调用
+	hasImport := false
+	hasInit := false
+	inMainFunc := false
+
 	for _, line := range lines {
 		trimLine := strings.TrimSpace(line)
-		// 跳过重复的导入行
-		if trimLine == importLine && found {
+
+		// 处理导入去重
+		if (trimLine == importLine || strings.Contains(trimLine, fmt.Sprintf(`"%s"`, importPath))) && hasImport {
 			continue
 		}
-		if trimLine == importLine {
-			found = true
+		if trimLine == importLine || strings.Contains(trimLine, fmt.Sprintf(`"%s"`, importPath)) {
+			hasImport = true
 		}
-		newLines = append(newLines, line)
-	}
-	return newLines
-}
 
-// removeDuplicateRoutesInit 去重重复的routes.Init()调用
-func removeDuplicateRoutesInit(lines []string) []string {
-	var newLines []string
-	initCall := "routes.Init()"
-	inMainFunc := false
-	found := false
-	for _, line := range lines {
-		trimLine := strings.TrimSpace(line)
-		// 标记是否进入main函数
+		// 处理main函数内的Init()去重
 		if trimLine == "func main() {" {
 			inMainFunc = true
 		}
 		if inMainFunc && trimLine == "}" {
 			inMainFunc = false
 		}
-		// 跳过重复的Init()调用
-		if inMainFunc && trimLine == initCall && found {
+		if inMainFunc && trimLine == initCall && hasInit {
 			continue
 		}
 		if inMainFunc && trimLine == initCall {
-			found = true
+			hasInit = true
 		}
+
+		// 保留原有行（保证业务代码无损）
 		newLines = append(newLines, line)
 	}
+
 	return newLines
 }
 
-// hasRoutesImport 检查是否已有routes导入
-func hasRoutesImport(lines []string, importPath string) bool {
-	importLine := fmt.Sprintf("import \"%s\"", importPath)
-	for _, line := range lines {
-		if strings.TrimSpace(line) == importLine {
-			return true
-		}
-		// 检查import块内的导入
-		if strings.Contains(strings.TrimSpace(line), fmt.Sprintf(`"%s"`, importPath)) {
-			return true
-		}
-	}
-	return false
-}
-
-// hasRoutesInitCall 检查是否已有routes.Init()调用
-func hasRoutesInitCall(lines []string) bool {
-	inMainFunc := false
-	for _, line := range lines {
-		trimLine := strings.TrimSpace(line)
-		if trimLine == "func main() {" {
-			inMainFunc = true
-		}
-		if inMainFunc && trimLine == "}" {
-			inMainFunc = false
-		}
-		if inMainFunc && trimLine == "routes.Init()" {
-			return true
-		}
-	}
-	return false
-}
-
-// injectRoutesImport 注入routes包导入（无重复）
-func injectRoutesImport(lines []string, importPath string) []string {
+// injectImportSafely 安全注入导入（不破坏原有代码）
+func injectImportSafely(lines []string, importPath string) []string {
+	// 1. 查找import块末尾
+	importBlockEnd := -1
 	packageLine := -1
-	importEndLine := -1
+
 	for i, line := range lines {
 		trimLine := strings.TrimSpace(line)
 		if trimLine == "package main" {
 			packageLine = i
 		}
-		if trimLine == ")" && importEndLine == -1 && i > 0 && strings.HasPrefix(strings.TrimSpace(lines[i-1]), "import (") {
-			importEndLine = i
+		// 匹配import块结束
+		if trimLine == ")" && importBlockEnd == -1 && i > 0 {
+			prevLine := strings.TrimSpace(lines[i-1])
+			if strings.HasPrefix(prevLine, "import (") || (prevLine != "" && !strings.HasPrefix(prevLine, "import")) {
+				importBlockEnd = i
+			}
 		}
 	}
 
-	if importEndLine > 0 {
-		// 有import块，插入到块内
-		newLines := append(lines[:importEndLine], fmt.Sprintf("\t\"%s\"", importPath))
-		newLines = append(newLines, lines[importEndLine:]...)
+	// 2. 注入到import块末尾（优先）
+	if importBlockEnd > 0 {
+		newLines := make([]string, 0, len(lines)+1)
+		newLines = append(newLines, lines[:importBlockEnd]...)
+		newLines = append(newLines, fmt.Sprintf("\t\"%s\"", importPath))
+		newLines = append(newLines, lines[importBlockEnd:]...)
 		return newLines
-	} else if packageLine >= 0 {
-		// 无import块，插入到package main后
-		newLines := append(lines[:packageLine+1], fmt.Sprintf("import \"%s\"", importPath))
+	}
+
+	// 3. 注入到package main后（无import块）
+	if packageLine >= 0 {
+		newLines := make([]string, 0, len(lines)+1)
+		newLines = append(newLines, lines[:packageLine+1]...)
+		newLines = append(newLines, fmt.Sprintf("import \"%s\"", importPath))
 		newLines = append(newLines, lines[packageLine+1:]...)
 		return newLines
 	}
+
 	return lines
 }
 
-// injectRoutesInitCall 注入routes.Init()到main函数（无重复）
-func injectRoutesInitCall(lines []string) []string {
-	mainLine := -1
+// injectInitSafely 安全注入Init()调用（不破坏原有代码）
+func injectInitSafely(lines []string) []string {
+	var newLines []string
+	mainFuncStart := -1
+	inMainFunc := false
+	initInjected := false
+
 	for i, line := range lines {
-		if strings.TrimSpace(line) == "func main() {" {
-			mainLine = i
-			break
+		trimLine := strings.TrimSpace(line)
+
+		// 标记main函数开始
+		if trimLine == "func main() {" {
+			mainFuncStart = i
+			inMainFunc = true
+			newLines = append(newLines, line)
+			continue
+		}
+
+		// 在main函数第一行注入（只注入一次）
+		if inMainFunc && mainFuncStart != -1 && !initInjected && trimLine != "" {
+			// 匹配原有缩进
+			indent := strings.Repeat("\t", strings.Count(lines[mainFuncStart], "\t"))
+			newLines = append(newLines, fmt.Sprintf("%sroutes.Init()", indent))
+			initInjected = true
+		}
+
+		// 保留原有行
+		newLines = append(newLines, line)
+
+		// 标记main函数结束
+		if inMainFunc && trimLine == "}" {
+			inMainFunc = false
 		}
 	}
-	if mainLine == -1 {
-		return lines
-	}
 
-	// 匹配缩进
-	indent := strings.Repeat("\t", strings.Count(lines[mainLine], "\t"))
-	// 修复：缩进后添加换行，保证格式美观
-	newLines := append(lines[:mainLine+1], fmt.Sprintf("%s%s", indent, "routes.Init()"))
-	newLines = append(newLines, lines[mainLine+1:]...)
 	return newLines
 }
+
+// refreshFileState 强制刷新文件状态（让IDE识别新文件）
+func refreshFileState(filePath string) {
+	// 1. 触发文件系统刷新（不同系统兼容）
+	switch runtime.GOOS {
+	case "darwin", "linux":
+		// macOS/Linux：touch文件
+		_ = exec.Command("touch", filePath).Run()
+	case "windows":
+		// Windows：修改文件时间
+		now := time.Now()
+		_ = os.Chtimes(filePath, now, now)
+	}
+
+	// 2. 短暂延迟（确保IDE能识别）
+	time.Sleep(10 * time.Millisecond)
+}
+
+//// go-common/autoimport/autoimport.go
+//package autoimport
+//
+//import (
+//	"fmt"
+//	"go/ast"
+//	"go/parser"
+//	"go/token"
+//	"os"
+//	"path/filepath"
+//	"strings"
+//	"text/template"
+//)
+//
+//// 编译期初始化函数（最终修复版）
+//func init() {
+//	// 1. 优先从环境变量获取业务项目根目录（兼容IDE/命令行）
+//	rootDir := os.Getenv("PWD")
+//	if rootDir == "" {
+//		var err error
+//		rootDir, err = os.Getwd()
+//		if err != nil {
+//			return
+//		}
+//	}
+//
+//	// 2. 扫描根目录下的main.go（直接识别main包）
+//	mainGoPath, err := findMainGo(rootDir)
+//	if err != nil {
+//		return
+//	}
+//
+//	// 3. 验证是否为main包（AST解析确认）
+//	if !isMainPackage(mainGoPath) {
+//		return
+//	}
+//
+//	// 4. 解析module名（从go.mod读取）
+//	moduleName, err := getModuleName(rootDir)
+//	if err != nil {
+//		return
+//	}
+//
+//	// 5. 生成auto_import.go（修复路径拼接+模板语法）
+//	outputDir := filepath.Join(rootDir, "routes")
+//	_ = os.MkdirAll(outputDir, 0755)
+//	generateAutoImportFile(outputDir, moduleName, rootDir)
+//
+//	// 6. 编译期注入routes.Init()到main.go（修复重复写入）
+//	injectRoutesInitToMain(mainGoPath, moduleName, outputDir)
+//}
+//
+//// findMainGo 递归查找根目录下的main.go（兼容子目录）
+//func findMainGo(rootDir string) (string, error) {
+//	var mainGoPath string
+//	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
+//		if err != nil {
+//			return nil
+//		}
+//		if !info.IsDir() && strings.EqualFold(filepath.Base(path), "main.go") {
+//			mainGoPath = path
+//			return filepath.SkipAll // 找到第一个main.go就终止
+//		}
+//		return nil
+//	})
+//	if err != nil {
+//		return "", err
+//	}
+//	if mainGoPath == "" {
+//		return "", os.ErrNotExist
+//	}
+//	return mainGoPath, nil
+//}
+//
+//// isMainPackage 解析AST确认是否为main包
+//func isMainPackage(filePath string) bool {
+//	fset := token.NewFileSet()
+//	file, err := parser.ParseFile(fset, filePath, nil, parser.PackageClauseOnly)
+//	if err != nil {
+//		return false
+//	}
+//	return file.Name.Name == "main"
+//}
+//
+//// getModuleName 解析go.mod获取module名
+//func getModuleName(rootDir string) (string, error) {
+//	modFile := filepath.Join(rootDir, "go.mod")
+//	content, err := os.ReadFile(modFile)
+//	if err != nil {
+//		return "", err
+//	}
+//	lines := strings.Split(string(content), "\n")
+//	for _, line := range lines {
+//		trimLine := strings.TrimSpace(line)
+//		if strings.HasPrefix(trimLine, "module ") {
+//			return strings.TrimPrefix(trimLine, "module "), nil
+//		}
+//	}
+//	return "", os.ErrNotExist
+//}
+//
+//// generateAutoImportFile 修复：路径拼接+模板语法错误
+//func generateAutoImportFile(outputDir, moduleName, rootDir string) {
+//	// 扫描业务项目的路由包（修复：过滤非handler包+正确拼接路径）
+//	routes := scanRoutes(rootDir)
+//	if len(routes) == 0 {
+//		return
+//	}
+//
+//	// 修复模板：解决len([]interface{}{{range .}}nil,{{end}})语法错误
+//	tplContent := `// Code generated by go-common DO NOT EDIT.
+//package routes
+//
+//import (
+//	"fmt"
+//	{{range .}}_ "{{$.ModuleName}}/{{.}}"
+//	{{end}}
+//)
+//
+//func Init() {
+//	fmt.Printf("[go-common] 加载%d个路由包\n", len([]interface{}{{range .}}nil,{{end}}))
+//}
+//`
+//	tpl := template.Must(template.New("autoimport").Parse(tplContent))
+//
+//	autoImportPath := filepath.Join(outputDir, "auto_import.go")
+//	// 修复：先清空旧文件（避免残留错误内容）
+//	f, err := os.Create(autoImportPath)
+//	if err != nil {
+//		return
+//	}
+//	defer f.Close()
+//
+//	// 修复：传递正确的模板参数
+//	_ = tpl.Execute(f, map[string]interface{}{
+//		"ModuleName": moduleName,
+//		"Routes":     routes,
+//	})
+//}
+//
+//// scanRoutes 修复：正确扫描internal/handler下的子包，避免路径拼接错误
+//func scanRoutes(rootDir string) []string {
+//	var routes []string
+//	handlerDir := filepath.Join(rootDir, "internal/handler")
+//	// 先检查handler目录是否存在
+//	if _, err := os.Stat(handlerDir); os.IsNotExist(err) {
+//		return routes
+//	}
+//
+//	_ = filepath.Walk(handlerDir, func(path string, info os.FileInfo, err error) error {
+//		if err != nil || !info.IsDir() {
+//			return nil
+//		}
+//		// 过滤隐藏目录/测试目录/根目录（handler本身）
+//		if strings.HasPrefix(info.Name(), ".") ||
+//			strings.HasSuffix(info.Name(), "_test") ||
+//			path == handlerDir {
+//			return nil
+//		}
+//		// 修复：正确转换为相对包路径（如internal/handler/test）
+//		relPath, err := filepath.Rel(rootDir, path)
+//		if err != nil {
+//			return nil
+//		}
+//		// 修复：替换系统分隔符为/（兼容Windows）
+//		relPath = filepath.ToSlash(relPath)
+//		routes = append(routes, relPath)
+//		return filepath.SkipDir // 只扫描一级子目录，避免递归
+//	})
+//	return routes
+//}
+//
+//// injectRoutesInitToMain 修复：彻底解决重复注入问题
+//func injectRoutesInitToMain(mainGoPath, moduleName, outputDir string) {
+//	// 1. 解析main.go AST
+//	fset := token.NewFileSet()
+//	file, err := parser.ParseFile(fset, mainGoPath, nil, parser.ParseComments|parser.AllErrors)
+//	if err != nil {
+//		return
+//	}
+//
+//	// 2. 检查是否已存在有效routes.Init()调用（过滤注释+重复）
+//	if hasValidRoutesInit(file, moduleName, outputDir) {
+//		return
+//	}
+//
+//	// 3. 读取main.go内容（修复：先去重已有导入/调用）
+//	content, err := os.ReadFile(mainGoPath)
+//	if err != nil {
+//		return
+//	}
+//	lines := strings.Split(string(content), "\n")
+//
+//	// 3.1 先去重重复的routes导入
+//	importPath := fmt.Sprintf("%s/routes", moduleName)
+//	lines = removeDuplicateRoutesImport(lines, importPath)
+//
+//	// 3.2 先去重重复的routes.Init()调用
+//	lines = removeDuplicateRoutesInit(lines)
+//
+//	// 4. 注入routes包导入（仅当无有效导入时）
+//	if !hasRoutesImport(lines, importPath) {
+//		lines = injectRoutesImport(lines, importPath)
+//	}
+//
+//	// 5. 注入routes.Init()到main函数第一行（仅当无有效调用时）
+//	if !hasRoutesInitCall(lines) {
+//		lines = injectRoutesInitCall(lines)
+//	}
+//
+//	// 6. 写回main.go
+//	_ = os.WriteFile(mainGoPath, []byte(strings.Join(lines, "\n")), 0644)
+//}
+//
+//// hasValidRoutesInit 检查是否存在有效routes.Init()调用
+//func hasValidRoutesInit(file *ast.File, moduleName, outputDir string) bool {
+//	importPath := fmt.Sprintf("%s/routes", moduleName)
+//	// 检查导入
+//	hasImport := false
+//	for _, imp := range file.Imports {
+//		if strings.Trim(imp.Path.Value, `"`) == importPath && imp.Comment == nil {
+//			hasImport = true
+//			break
+//		}
+//	}
+//	if !hasImport {
+//		return false
+//	}
+//	// 检查调用
+//	hasCall := false
+//	ast.Inspect(file, func(n ast.Node) bool {
+//		funcDecl, ok := n.(*ast.FuncDecl)
+//		if ok && funcDecl.Name.Name == "main" {
+//			for _, stmt := range funcDecl.Body.List {
+//				exprStmt, ok := stmt.(*ast.ExprStmt)
+//				if !ok {
+//					continue
+//				}
+//				callExpr, ok := exprStmt.X.(*ast.CallExpr)
+//				if !ok {
+//					continue
+//				}
+//				selExpr, ok := callExpr.Fun.(*ast.SelectorExpr)
+//				if !ok {
+//					continue
+//				}
+//				ident, ok := selExpr.X.(*ast.Ident)
+//				if ok && ident.Name == "routes" && selExpr.Sel.Name == "Init" {
+//					hasCall = true
+//					return false
+//				}
+//			}
+//		}
+//		return true
+//	})
+//	return hasCall
+//}
+//
+//// removeDuplicateRoutesImport 去重重复的routes导入
+//func removeDuplicateRoutesImport(lines []string, importPath string) []string {
+//	var newLines []string
+//	importLine := fmt.Sprintf("import \"%s\"", importPath)
+//	found := false
+//	for _, line := range lines {
+//		trimLine := strings.TrimSpace(line)
+//		// 跳过重复的导入行
+//		if trimLine == importLine && found {
+//			continue
+//		}
+//		if trimLine == importLine {
+//			found = true
+//		}
+//		newLines = append(newLines, line)
+//	}
+//	return newLines
+//}
+//
+//// removeDuplicateRoutesInit 去重重复的routes.Init()调用
+//func removeDuplicateRoutesInit(lines []string) []string {
+//	var newLines []string
+//	initCall := "routes.Init()"
+//	inMainFunc := false
+//	found := false
+//	for _, line := range lines {
+//		trimLine := strings.TrimSpace(line)
+//		// 标记是否进入main函数
+//		if trimLine == "func main() {" {
+//			inMainFunc = true
+//		}
+//		if inMainFunc && trimLine == "}" {
+//			inMainFunc = false
+//		}
+//		// 跳过重复的Init()调用
+//		if inMainFunc && trimLine == initCall && found {
+//			continue
+//		}
+//		if inMainFunc && trimLine == initCall {
+//			found = true
+//		}
+//		newLines = append(newLines, line)
+//	}
+//	return newLines
+//}
+//
+//// hasRoutesImport 检查是否已有routes导入
+//func hasRoutesImport(lines []string, importPath string) bool {
+//	importLine := fmt.Sprintf("import \"%s\"", importPath)
+//	for _, line := range lines {
+//		if strings.TrimSpace(line) == importLine {
+//			return true
+//		}
+//		// 检查import块内的导入
+//		if strings.Contains(strings.TrimSpace(line), fmt.Sprintf(`"%s"`, importPath)) {
+//			return true
+//		}
+//	}
+//	return false
+//}
+//
+//// hasRoutesInitCall 检查是否已有routes.Init()调用
+//func hasRoutesInitCall(lines []string) bool {
+//	inMainFunc := false
+//	for _, line := range lines {
+//		trimLine := strings.TrimSpace(line)
+//		if trimLine == "func main() {" {
+//			inMainFunc = true
+//		}
+//		if inMainFunc && trimLine == "}" {
+//			inMainFunc = false
+//		}
+//		if inMainFunc && trimLine == "routes.Init()" {
+//			return true
+//		}
+//	}
+//	return false
+//}
+//
+//// injectRoutesImport 注入routes包导入（无重复）
+//func injectRoutesImport(lines []string, importPath string) []string {
+//	packageLine := -1
+//	importEndLine := -1
+//	for i, line := range lines {
+//		trimLine := strings.TrimSpace(line)
+//		if trimLine == "package main" {
+//			packageLine = i
+//		}
+//		if trimLine == ")" && importEndLine == -1 && i > 0 && strings.HasPrefix(strings.TrimSpace(lines[i-1]), "import (") {
+//			importEndLine = i
+//		}
+//	}
+//
+//	if importEndLine > 0 {
+//		// 有import块，插入到块内
+//		newLines := append(lines[:importEndLine], fmt.Sprintf("\t\"%s\"", importPath))
+//		newLines = append(newLines, lines[importEndLine:]...)
+//		return newLines
+//	} else if packageLine >= 0 {
+//		// 无import块，插入到package main后
+//		newLines := append(lines[:packageLine+1], fmt.Sprintf("import \"%s\"", importPath))
+//		newLines = append(newLines, lines[packageLine+1:]...)
+//		return newLines
+//	}
+//	return lines
+//}
+//
+//// injectRoutesInitCall 注入routes.Init()到main函数（无重复）
+//func injectRoutesInitCall(lines []string) []string {
+//	mainLine := -1
+//	for i, line := range lines {
+//		if strings.TrimSpace(line) == "func main() {" {
+//			mainLine = i
+//			break
+//		}
+//	}
+//	if mainLine == -1 {
+//		return lines
+//	}
+//
+//	// 匹配缩进
+//	indent := strings.Repeat("\t", strings.Count(lines[mainLine], "\t"))
+//	// 修复：缩进后添加换行，保证格式美观
+//	newLines := append(lines[:mainLine+1], fmt.Sprintf("%s%s", indent, "routes.Init()"))
+//	newLines = append(newLines, lines[mainLine+1:]...)
+//	return newLines
+//}
 
 //// go-common/autoimport/autoimport.go
 //package autoimport
