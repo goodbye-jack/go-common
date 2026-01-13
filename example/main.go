@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/config"
 	myHttp "github.com/goodbye-jack/go-common/http"
+	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/orm"
 	ormConfig "github.com/goodbye-jack/go-common/orm/dbconfig"
 	"github.com/goodbye-jack/go-common/utils"
@@ -24,7 +25,7 @@ func recordOp(ctx context.Context, op myHttp.Operation) error {
 func main() {
 	addr := config.GetConfigString("addr")
 	service_name := config.GetConfigString("service_name")
-
+	log.Init("go-common")
 	dsn := "host=113.45.4.22 port=4321 user=root password=Qaz0529! dbname=kingbase sslmode=disable TimeZone=Asia/Shanghai"
 	orm.NewOrm(dsn, ormConfig.DBTypeKingBase, 3600)
 

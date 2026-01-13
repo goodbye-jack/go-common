@@ -25,6 +25,8 @@ require (
 	gorm.io/gorm v1.30.0
 )
 
+require github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
+
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect

@@ -8,6 +8,9 @@ import (
 
 var configPaths = []string{".", "./config", "/opt"} // config配置读取顺序
 
+// 这是测试值,
+//var configPaths = []string{".", "./config", "/opt", "./example"}
+
 func init() {
 	globalViper := viper.New() // 1. 初始化全局Viper
 	baseViper := viper.New()   // 2. 先读基础配置（可选）
@@ -47,35 +50,12 @@ func init() {
 	for _, key := range globalViper.AllKeys() { // 5. 将全局Viper的配置同步到默认Viper
 		viper.Set(key, globalViper.Get(key))
 	}
+	if globalViper.IsSet("service_name") { // 读取service_name的值并传给log.Init()
+		serviceName := globalViper.GetString("service_name")
+		log.Init(serviceName) // 把项目名传给日志初始化函数
+	}
 }
 
 // 保留原有读取方法
 func GetConfigString(name string) string { return viper.GetString(name) }
 func GetConfigInt(name string) int       { return viper.GetInt(name) }
-
-//import (
-//	"github.com/goodbye-jack/go-common/log"
-//	"github.com/spf13/viper"
-//)
-//
-//func init() {
-//	viper.SetConfigName("config")
-//	viper.SetConfigType("yaml")
-//	viper.AddConfigPath(".")
-//	viper.AddConfigPath("/opt")
-//	//viper.AddConfigPath("./example")
-//	if err := viper.ReadInConfig(); err != nil {
-//		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-//			log.Fatalf("config.yaml not found in /opt/ or current dir")
-//		}
-//		log.Fatalf("ReadInConfig error, %v", err)
-//	}
-//}
-//
-//func GetConfigString(name string) string {
-//	return viper.GetString(name)
-//}
-//
-//func GetConfigInt(name string) int {
-//	return viper.GetInt(name)
-//}
