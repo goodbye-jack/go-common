@@ -14,15 +14,14 @@ var defaultConfig = &Config{
 
 // Config DB configuration
 type Config struct {
-	DBName   string `json:"db_name"` // 数据库名称（要求唯一）
-	DSN      string `json:"dsn"`     // 数据库连接串
-	DBType   DBType `json:"db_type"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	Database string `json:"database"`
-
+	DBName          string        `json:"db_name"` // 数据库名称（要求唯一）
+	DSN             string        `json:"dsn"`     // 数据库连接串
+	DBType          DBType        `json:"db_type"`
+	Host            string        `json:"host"`
+	Port            int           `json:"port"`
+	User            string        `json:"user"`
+	Password        string        `json:"password"`
+	Database        string        `json:"database"`
 	MaxOpenConn     int           `json:"max_open_conn"`      // 最大连接数
 	MaxIdleConn     int           `json:"max_idle_conn"`      // 最大空闲连接数
 	ConnMaxLifeTime time.Duration `json:"conn_max_life_time"` // 连接最大存活时间

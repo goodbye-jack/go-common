@@ -39,7 +39,7 @@ func init() {
 			for _, key := range envViper.AllKeys() {
 				globalViper.Set(key, envViper.Get(key))
 			}
-			log.Infof("读取并覆盖环境配置：%s", envViper.ConfigFileUsed())
+			log.Infof("读取%s环境配置：%s", env, envViper.ConfigFileUsed())
 		} else if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			log.Warnf("读取环境配置失败：%v", err)
 		}
