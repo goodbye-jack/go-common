@@ -37,8 +37,8 @@ var (
 	groupRegistry   []GroupRouterEntry
 	groupRegistryMu sync.Mutex
 	// 新增：标记路由组是否已经执行过
+	groupExecutedMu sync.Mutex
 	groupExecuted   = make(map[string]bool)
-	groupExecutedMu sync.RWMutex
 )
 
 // routeConfig 存储路由组的启用/禁用配置（对应yaml中的routes节点）
@@ -186,14 +186,45 @@ func RegisterGroupRouter(groupName, prefix string, priority int, mws []gin.Handl
 	log.Infof("已注册路由组：%s（前缀：%s，优先级：%d）", groupName, prefix, priority)
 }
 
-// 新增：执行所有已注册的路由组
+// SetApprovalHandler 设置审批处理器
+func (s *HTTPServer) SetApprovalHandler(handler approval.ApprovalHandler) {
+	s.approvalHandler = handler
+}
+
+func (s *HTTPServer) SetOpRecordFn(fn OpRecordFn) {
+	s.opRecordFn = fn
+}
+
+// isRoutesInitialized 判断路由是否已经初始化
+func (s *HTTPServer) isRoutesInitialized() bool {
+	// 如果只有默认的 /ping 路由，认为没有初始化
+	if len(s.routes) <= 1 {
+		return false
+	}
+
+	// 检查是否有自定义路由（非 /ping）
+	for _, route := range s.routes {
+		if route.Url != "/ping" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// executeAllRouteGroups 执行所有已注册的路由组
 func executeAllRouteGroups(server *HTTPServer) {
 	groupRegistryMu.Lock()
 	entries := make([]GroupRouterEntry, len(groupRegistry))
 	copy(entries, groupRegistry)
 	groupRegistryMu.Unlock()
 
-	// 按优先级排序（原有逻辑）
+	if len(entries) == 0 {
+		log.Info("没有注册的路由组需要执行")
+		return
+	}
+
+	// 按优先级排序
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].priority > entries[j].priority
 	})
@@ -206,9 +237,12 @@ func executeAllRouteGroups(server *HTTPServer) {
 		}
 
 		// 检查是否已经执行过
-		groupExecutedMu.RLock()
+		groupExecutedMu.Lock()
 		alreadyExecuted := groupExecuted[entry.groupName]
-		groupExecutedMu.RUnlock()
+		if !alreadyExecuted {
+			groupExecuted[entry.groupName] = true
+		}
+		groupExecutedMu.Unlock()
 
 		if alreadyExecuted {
 			log.Debugf("路由组[%s]已经执行过，跳过", entry.groupName)
@@ -229,15 +263,11 @@ func executeAllRouteGroups(server *HTTPServer) {
 		}
 
 		// 关键：直接调用注册函数，路由会自动添加到 server.routes
+		log.Infof("开始执行路由组：%s", entry.groupName)
 		entry.register(server)
 
 		// 恢复全局前缀
 		server.globalPrefix = originPrefix
-
-		// 标记为已执行
-		groupExecutedMu.Lock()
-		groupExecuted[entry.groupName] = true
-		groupExecutedMu.Unlock()
 
 		executed++
 		routesAdded := len(server.routes) - routesBefore
@@ -247,72 +277,68 @@ func executeAllRouteGroups(server *HTTPServer) {
 	log.Infof("路由组执行完成，共执行[%d]个路由组，总计 %d 个路由", executed, len(server.routes))
 }
 
-// SetApprovalHandler 设置审批处理器
-func (s *HTTPServer) SetApprovalHandler(handler approval.ApprovalHandler) {
-	s.approvalHandler = handler
-}
-
-func (s *HTTPServer) SetOpRecordFn(fn OpRecordFn) {
-	s.opRecordFn = fn
-}
-
-// isRoutesInitialized 判断路由是否已经初始化
-func (s *HTTPServer) isRoutesInitialized() bool {
-	// 如果只有默认的 /ping 路由，认为没有初始化
-	if len(s.routes) <= 1 {
-		return false
-	}
-	for _, route := range s.routes { // 检查是否有自定义路由（非 /ping）
-		if route.Url != "/ping" {
-			return true
-		}
-	}
-	return false
-}
-
 func (s *HTTPServer) Prepare() {
-	// 新增：执行所有已注册的路由组
+	log.Info("开始准备服务器，当前路由数：%d", len(s.routes))
+
+	// 第一步：执行所有已注册的路由组
 	executeAllRouteGroups(s)
 
-	// 如果执行路由组后仍然没有自定义路由，尝试自动发现
+	// 第二步：如果仍然没有自定义路由，尝试自动发现
 	if !s.isRoutesInitialized() {
+		log.Info("没有找到自定义路由，开始自动发现...")
 		err := s.InitAutoDiscoverRoutes()
 		if err != nil {
 			log.Warnf("自动发现路由失败，将继续使用已有路由: %v", err)
 		}
+
+		// 自动发现后再次执行路由组
+		executeAllRouteGroups(s)
 	}
 
+	// 第三步：收集和注册所有路由
 	var policies []rbac.Policy
 	// 1. 收集所有路由的RBAC策略和路由信息
 	for _, route := range s.routes {
 		policies = append(policies, route.ToRbacPolicy()...)
 	}
+
 	// 2. 添加RBAC策略
-	rbacClient.AddActionPolicies(policies)
+	if len(policies) > 0 {
+		rbacClient.AddActionPolicies(policies)
+		log.Infof("已添加 %d 个RBAC策略", len(policies))
+	} else {
+		log.Warn("没有找到任何路由RBAC策略")
+	}
+
 	// 3. 设置全局中间件(注意顺序)
 	s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"})
+
 	// 4. 全局中间件(作用于所有路由)
 	// 先注册用户自定义额外中间件，再注册内置中间件，确保用户安全中间件可最早生效
 	if len(s.extraMiddlewares) > 0 {
 		s.router.Use(s.extraMiddlewares...)
 	}
+
 	s.router.Use(
 		LoginRequiredMiddleware(s.routes),                 // 登录检查
 		RbacMiddleware(s.service_name),                    // RBAC鉴权
 		TenantMiddleware(),                                // 租户隔离
 		RecordOperationMiddleware(s.routes, s.opRecordFn), // 操作记录
 	)
+
 	// 5. 直接注册路由（不再使用routeInfos）
+	registeredRoutes := 0
 	for _, route := range s.routes {
 		// 获取该路由的完整处理链（中间件+主处理函数）
 		handlers := route.GetHandlersChain()
 		// 为每个HTTP方法注册路由
 		for _, method := range route.Methods {
 			s.router.Handle(method, route.Url, handlers...)
+			registeredRoutes++
 		}
 	}
 
-	log.Infof("服务器准备完成，共注册 %d 个路由", len(s.routes))
+	log.Infof("服务器准备完成，共注册 %d 个路由，%d 个路由处理器", len(s.routes), registeredRoutes)
 }
 
 // Use 注册额外的全局中间件(将在 Prepare 时最先挂载)
@@ -324,8 +350,6 @@ func (s *HTTPServer) Use(middlewares ...gin.HandlerFunc) {
 }
 
 func (s *HTTPServer) StaticFs(static_dir string) {
-	//s.router.Use(static.Serve("/static", static.LocalFile(static_dir, true)))
-	// 禁用/static访问,必须要有参数才能访问
 	s.router.Use(static.Serve("/static", static.LocalFile(static_dir, false)))
 }
 
