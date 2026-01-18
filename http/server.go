@@ -39,6 +39,9 @@ var (
 	// 新增：标记路由组是否已经执行过
 	groupExecutedMu sync.Mutex
 	groupExecuted   = make(map[string]bool)
+
+	globalRouteFuncs []RouteRegisterFunc
+	routeFuncsMu     sync.Mutex
 )
 
 // routeConfig 存储路由组的启用/禁用配置（对应yaml中的routes节点）
@@ -212,6 +215,33 @@ func (s *HTTPServer) isRoutesInitialized() bool {
 	return false
 }
 
+// AutoRegisterRoutes 让业务模块自动注册路由
+func AutoRegisterRoutes(fn RouteRegisterFunc) {
+	routeFuncsMu.Lock()
+	defer routeFuncsMu.Unlock()
+	globalRouteFuncs = append(globalRouteFuncs, fn)
+	log.Debugf("路由函数已注册，总数: %d", len(globalRouteFuncs))
+}
+
+// ExecuteAllRouteGroups 执行所有已注册的路由函数
+func ExecuteAllRouteGroups(server *HTTPServer) {
+	routeFuncsMu.Lock() // 获取所有注册的函数
+	funcs := make([]RouteRegisterFunc, len(globalRouteFuncs))
+	copy(funcs, globalRouteFuncs)
+	routeFuncsMu.Unlock()
+	if len(funcs) == 0 {
+		log.Info("没有需要执行的路由函数")
+		return
+	}
+	log.Infof("开始执行 %d 个路由组", len(funcs))
+	// 执行每个路由注册函数
+	for i, fn := range funcs {
+		log.Debugf("执行路由组[%d/%d]", i+1, len(funcs))
+		fn(server) // ⬅️ 关键：这里会把路由添加到server.routes
+	}
+	log.Infof("路由执行完成，当前路由总数: %d", len(server.routes))
+}
+
 // executeAllRouteGroups 执行所有已注册的路由组
 func executeAllRouteGroups(server *HTTPServer) {
 	groupRegistryMu.Lock()
@@ -279,10 +309,8 @@ func executeAllRouteGroups(server *HTTPServer) {
 
 func (s *HTTPServer) Prepare() {
 	log.Info("开始准备服务器，当前路由数：%d", len(s.routes))
-
 	// 第一步：执行所有已注册的路由组
-	executeAllRouteGroups(s)
-
+	ExecuteAllRouteGroups(s)
 	// 第二步：如果仍然没有自定义路由，尝试自动发现
 	if !s.isRoutesInitialized() {
 		log.Info("没有找到自定义路由，开始自动发现...")
@@ -290,18 +318,15 @@ func (s *HTTPServer) Prepare() {
 		if err != nil {
 			log.Warnf("自动发现路由失败，将继续使用已有路由: %v", err)
 		}
-
 		// 自动发现后再次执行路由组
-		executeAllRouteGroups(s)
+		ExecuteAllRouteGroups(s)
 	}
-
 	// 第三步：收集和注册所有路由
 	var policies []rbac.Policy
 	// 1. 收集所有路由的RBAC策略和路由信息
 	for _, route := range s.routes {
 		policies = append(policies, route.ToRbacPolicy()...)
 	}
-
 	// 2. 添加RBAC策略
 	if len(policies) > 0 {
 		rbacClient.AddActionPolicies(policies)
@@ -309,23 +334,19 @@ func (s *HTTPServer) Prepare() {
 	} else {
 		log.Warn("没有找到任何路由RBAC策略")
 	}
-
 	// 3. 设置全局中间件(注意顺序)
 	s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"})
-
 	// 4. 全局中间件(作用于所有路由)
 	// 先注册用户自定义额外中间件，再注册内置中间件，确保用户安全中间件可最早生效
 	if len(s.extraMiddlewares) > 0 {
 		s.router.Use(s.extraMiddlewares...)
 	}
-
 	s.router.Use(
 		LoginRequiredMiddleware(s.routes),                 // 登录检查
 		RbacMiddleware(s.service_name),                    // RBAC鉴权
 		TenantMiddleware(),                                // 租户隔离
 		RecordOperationMiddleware(s.routes, s.opRecordFn), // 操作记录
 	)
-
 	// 5. 直接注册路由（不再使用routeInfos）
 	registeredRoutes := 0
 	for _, route := range s.routes {
@@ -337,7 +358,6 @@ func (s *HTTPServer) Prepare() {
 			registeredRoutes++
 		}
 	}
-
 	log.Infof("服务器准备完成，共注册 %d 个路由，%d 个路由处理器", len(s.routes), registeredRoutes)
 }
 
