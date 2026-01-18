@@ -14,7 +14,6 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"net/http"
-	"sort"
 	"sync"
 	"time"
 )
@@ -138,10 +137,6 @@ func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles 
 		}
 		route.AddMiddleware(approval.ApprovalMiddleware(aConfig))
 	}
-	//// 添加SSO中间件(如果需要)
-	//if sso {
-	//	route.AddMiddleware(s.ssoMiddleware)
-	//}
 	if tips != "" && s.opRecordFn != nil {
 		route.AddMiddleware(RecordOperationMiddleware(s.routes, s.opRecordFn))
 	}
@@ -188,40 +183,6 @@ func RegisterGroupRouter(groupName, prefix string, priority int, mws []gin.Handl
 	log.Infof("已注册路由组：%s（前缀：%s，优先级：%d）", groupName, prefix, priority)
 }
 
-// -------------------------- 简化版初始化（兼容原有逻辑） --------------------------
-// InitGroupAutoRoutes 初始化所有路由组
-func (s *HTTPServer) InitGroupAutoRoutes() error {
-	groupRegistryMu.Lock()
-	entries := make([]GroupRouterEntry, len(groupRegistry))
-	copy(entries, groupRegistry)
-	groupRegistryMu.Unlock()
-	// 按优先级排序
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].priority > entries[j].priority
-	})
-	registered := 0 // 注册路由
-	for _, entry := range entries {
-		if !entry.enabled {
-			log.Infof("路由组[%s]已被配置禁用", entry.groupName)
-			continue
-		}
-		originPrefix := s.globalPrefix // 1. 设置当前组前缀
-		s.globalPrefix = entry.prefix
-		if s.globalPrefix != "" && s.globalPrefix[len(s.globalPrefix)-1] != '/' {
-			s.globalPrefix += "/"
-		}
-		if len(entry.mws) > 0 { // 2. 添加组中间件
-			s.Use(entry.mws...)
-		}
-		entry.register(s)             // 3. 执行业务侧的路由注册函数
-		s.globalPrefix = originPrefix // 4. 恢复原有前缀
-		registered++
-		log.Infof("已初始化路由组：%s", entry.groupName)
-	}
-	log.Infof("路由组自动初始化完成，共注册%d个路由组", registered)
-	return nil
-}
-
 // SetApprovalHandler 设置审批处理器
 func (s *HTTPServer) SetApprovalHandler(handler approval.ApprovalHandler) {
 	s.approvalHandler = handler
@@ -231,7 +192,26 @@ func (s *HTTPServer) SetOpRecordFn(fn OpRecordFn) {
 	s.opRecordFn = fn
 }
 
+// isRoutesInitialized 判断路由是否已经初始化
+func (s *HTTPServer) isRoutesInitialized() bool {
+	// 如果只有默认的 /ping 路由，认为没有初始化
+	if len(s.routes) <= 1 {
+		return false
+	}
+	for _, route := range s.routes { // 检查是否有自定义路由（非 /ping）
+		if route.Url != "/ping" {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *HTTPServer) Prepare() {
+	// 新增：自动发现和注册路由（如果还没初始化）
+	err := s.InitAutoDiscoverRoutes()
+	if err != nil {
+		log.Warnf("自动发现路由失败，将继续使用已有路由: %v", err)
+	}
 	var policies []rbac.Policy
 	// 1. 收集所有路由的RBAC策略和路由信息
 	for _, route := range s.routes {

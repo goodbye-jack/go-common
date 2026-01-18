@@ -51,13 +51,12 @@ func NewRoute(service_name string, url string, tips string, methods []string, ro
 		log.Fatalf("the role %v is invalid", role)
 	}
 	return &Route{
-		ServiceName:  service_name,
-		Tips:         tips,
-		Sso:          sso,
-		Url:          url,
-		Methods:      methods,
-		DefaultRoles: RoleMapping[role],
-		//DefaultRoles:     newRoles,
+		ServiceName:      service_name,
+		Tips:             tips,
+		Sso:              sso,
+		Url:              url,
+		Methods:          methods,
+		DefaultRoles:     RoleMapping[role],
 		handlerFunc:      handlerFunc,
 		BusinessApproval: business_approval,
 		middlewares:      []gin.HandlerFunc{}, // 初始化空中间件链
