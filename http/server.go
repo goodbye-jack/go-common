@@ -13,6 +13,7 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 )
@@ -35,8 +36,9 @@ var (
 	rbacClient      *rbac.RbacClient = nil
 	groupRegistry   []GroupRouterEntry
 	groupRegistryMu sync.Mutex
-	// 新增：路由自动发现标志
-	autoDiscoverOnce sync.Once
+	// 新增：标记路由组是否已经执行过
+	groupExecuted   = make(map[string]bool)
+	groupExecutedMu sync.RWMutex
 )
 
 // routeConfig 存储路由组的启用/禁用配置（对应yaml中的routes节点）
@@ -73,8 +75,6 @@ type HTTPServer struct {
 	extraMiddlewares []gin.HandlerFunc
 	// 新增字段（增量，不影响原有逻辑）
 	globalPrefix string // 路由全局前缀
-	// 新增：标记是否已自动发现路由
-	routesAutoDiscovered bool
 }
 
 func init() {
@@ -98,11 +98,10 @@ func NewHTTPServer(service_name string) *HTTPServer {
 		}),
 	}
 	return &HTTPServer{
-		service_name:         service_name,
-		routes:               routes,
-		router:               gin.Default(),
-		extraMiddlewares:     []gin.HandlerFunc{},
-		routesAutoDiscovered: false,
+		service_name:     service_name,
+		routes:           routes,
+		router:           gin.Default(),
+		extraMiddlewares: []gin.HandlerFunc{},
 	}
 }
 
@@ -187,21 +186,65 @@ func RegisterGroupRouter(groupName, prefix string, priority int, mws []gin.Handl
 	log.Infof("已注册路由组：%s（前缀：%s，优先级：%d）", groupName, prefix, priority)
 }
 
-// 新增：自动注册助手函数（向后兼容）
-func AutoRegisterRoute(groupName string, registerFunc RouteRegisterFunc) {
-	// 默认注册到全局路由注册表
-	RegisterGroupRouter(
-		groupName,
-		"/"+groupName, // 默认前缀
-		10,            // 默认优先级
-		nil,           // 无中间件
-		registerFunc,
-	)
-}
+// 新增：执行所有已注册的路由组
+func executeAllRouteGroups(server *HTTPServer) {
+	groupRegistryMu.Lock()
+	entries := make([]GroupRouterEntry, len(groupRegistry))
+	copy(entries, groupRegistry)
+	groupRegistryMu.Unlock()
 
-// 新增：自动注册助手函数（带配置）
-func AutoRegisterRouteWithConfig(groupName, prefix string, priority int, mws []gin.HandlerFunc, registerFunc RouteRegisterFunc) {
-	RegisterGroupRouter(groupName, prefix, priority, mws, registerFunc)
+	// 按优先级排序（原有逻辑）
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].priority > entries[j].priority
+	})
+
+	executed := 0
+	for _, entry := range entries {
+		if !entry.enabled {
+			log.Infof("路由组[%s]已被配置禁用", entry.groupName)
+			continue
+		}
+
+		// 检查是否已经执行过
+		groupExecutedMu.RLock()
+		alreadyExecuted := groupExecuted[entry.groupName]
+		groupExecutedMu.RUnlock()
+
+		if alreadyExecuted {
+			log.Debugf("路由组[%s]已经执行过，跳过", entry.groupName)
+			continue
+		}
+
+		// 记录当前路由数量，用于统计该组新增的路由
+		routesBefore := len(server.routes)
+
+		// 原有前缀/中间件逻辑（完全兼容）
+		originPrefix := server.globalPrefix
+		server.globalPrefix = entry.prefix
+		if server.globalPrefix != "" && server.globalPrefix[len(server.globalPrefix)-1] != '/' {
+			server.globalPrefix += "/"
+		}
+		if len(entry.mws) > 0 {
+			server.Use(entry.mws...)
+		}
+
+		// 关键：直接调用注册函数，路由会自动添加到 server.routes
+		entry.register(server)
+
+		// 恢复全局前缀
+		server.globalPrefix = originPrefix
+
+		// 标记为已执行
+		groupExecutedMu.Lock()
+		groupExecuted[entry.groupName] = true
+		groupExecutedMu.Unlock()
+
+		executed++
+		routesAdded := len(server.routes) - routesBefore
+		log.Infof("已执行路由组：%s，添加 %d 个路由", entry.groupName, routesAdded)
+	}
+
+	log.Infof("路由组执行完成，共执行[%d]个路由组，总计 %d 个路由", executed, len(server.routes))
 }
 
 // SetApprovalHandler 设置审批处理器
@@ -228,18 +271,16 @@ func (s *HTTPServer) isRoutesInitialized() bool {
 }
 
 func (s *HTTPServer) Prepare() {
-	// 优化：使用 sync.Once 确保只自动发现一次
-	autoDiscoverOnce.Do(func() {
-		// 只在没有自定义路由时才自动发现
-		if !s.isRoutesInitialized() {
-			err := s.InitAutoDiscoverRoutes()
-			if err != nil {
-				log.Warnf("自动发现路由失败，将继续使用已有路由: %v", err)
-			} else {
-				s.routesAutoDiscovered = true
-			}
+	// 新增：执行所有已注册的路由组
+	executeAllRouteGroups(s)
+
+	// 如果执行路由组后仍然没有自定义路由，尝试自动发现
+	if !s.isRoutesInitialized() {
+		err := s.InitAutoDiscoverRoutes()
+		if err != nil {
+			log.Warnf("自动发现路由失败，将继续使用已有路由: %v", err)
 		}
-	})
+	}
 
 	var policies []rbac.Policy
 	// 1. 收集所有路由的RBAC策略和路由信息
@@ -270,6 +311,8 @@ func (s *HTTPServer) Prepare() {
 			s.router.Handle(method, route.Url, handlers...)
 		}
 	}
+
+	log.Infof("服务器准备完成，共注册 %d 个路由", len(s.routes))
 }
 
 // Use 注册额外的全局中间件(将在 Prepare 时最先挂载)
