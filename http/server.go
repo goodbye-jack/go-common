@@ -19,6 +19,8 @@ import (
 // 全局路由组注册器（命名同步优化）
 var (
 	rbacClient *rbac.RbacClient = nil
+	// 全局HTTPServer单例（核心：业务侧所有文件可直接访问）
+	GlobalServer *HTTPServer // 全局变量，首字母大写暴露
 )
 
 // routeConfig 存储路由组的启用/禁用配置（对应yaml中的routes节点）
@@ -66,6 +68,13 @@ func init() {
 		log.Warnf("加载路由组配置失败，将使用默认配置（所有路由组启用）：%v", err)
 		// 初始化空map，避免后续nil指针错误
 		routeConfig.Routes = make(map[string]RouteConfigItem)
+	}
+}
+
+// 可选：提供初始化全局Server的方法（也可直接在main中赋值）
+func InitServer(serviceName string) {
+	if GlobalServer == nil {
+		GlobalServer = NewHTTPServer(serviceName)
 	}
 }
 
@@ -153,30 +162,14 @@ func (s *HTTPServer) SetOpRecordFn(fn OpRecordFn) {
 	s.opRecordFn = fn
 }
 
-//// isRoutesInitialized 判断路由是否已经初始化
-//func (s *HTTPServer) isRoutesInitialized() bool {
-//	// 如果只有默认的 /ping 路由，认为没有初始化
-//	if len(s.routes) <= 1 {
-//		return false
-//	}
-//	for _, route := range s.routes { // 检查是否有自定义路由（非 /ping）
-//		if route.Url != "/ping" {
-//			return true
-//		}
-//	}
-//	return false
-//}
-
 func (s *HTTPServer) Prepare() {
 	var policies []rbac.Policy
-	// 1. 收集所有路由的RBAC策略和路由信息
-	for _, route := range s.routes {
+	for i, route := range s.routes { // 1. 收集所有路由的RBAC策略和路由信息
+		log.Infof("路由%d：path=%s, methods=%v, roles=%v", i+1, route.Url, route.Methods, route.DefaultRoles)
 		policies = append(policies, route.ToRbacPolicy()...)
 	}
-	// 2. 添加RBAC策略
-	rbacClient.AddActionPolicies(policies)
-	// 3. 设置全局中间件(注意顺序)
-	s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"})
+	rbacClient.AddActionPolicies(policies)                              // 2. 添加RBAC策略
+	s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"}) // 3. 设置全局中间件(注意顺序)
 	// 4. 全局中间件(作用于所有路由)
 	// 先注册用户自定义额外中间件，再注册内置中间件，确保用户安全中间件可最早生效
 	if len(s.extraMiddlewares) > 0 {
@@ -190,10 +183,8 @@ func (s *HTTPServer) Prepare() {
 	)
 	// 5. 直接注册路由（不再使用routeInfos）
 	for _, route := range s.routes {
-		// 获取该路由的完整处理链（中间件+主处理函数）
-		handlers := route.GetHandlersChain()
-		// 为每个HTTP方法注册路由
-		for _, method := range route.Methods {
+		handlers := route.GetHandlersChain()   // 获取该路由的完整处理链（中间件+主处理函数）
+		for _, method := range route.Methods { // 为每个HTTP方法注册路由
 			s.router.Handle(method, route.Url, handlers...)
 		}
 	}

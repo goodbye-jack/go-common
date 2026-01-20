@@ -41,37 +41,30 @@ func ScanRoutes() error {
 		visitedPkgs = make(map[string]bool) // 避免重复加载同一个包
 		mu          sync.Mutex
 	)
-
 	err = filepath.Walk(scanDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
-
-		// 过滤规则：排除vendor、.git、test文件（可自定义）
-		if info.IsDir() {
+		if info.IsDir() { // 过滤规则：排除vendor、.git、test文件（可自定义）
 			if strings.Contains(path, "vendor") || strings.Contains(path, ".git") || strings.HasSuffix(path, "_test") {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-
 		// 只处理.go文件（兼容任意文件名，如TestRoutes.go、test-routes.go）
 		if !strings.HasSuffix(path, ".go") {
 			return nil
 		}
-
 		// 步骤3：解析当前文件的AST，判断是否包含路由注册方法调用
 		hasRouteRegister, pkgPath, err := hasRouteRegisterMethod(path, modName)
 		if err != nil {
 			log.Warnf("解析文件[%s]失败：%v", path, err)
 			return nil
 		}
-
 		// 不是路由注册文件，跳过
 		if !hasRouteRegister {
 			return nil
 		}
-
 		// 避免重复加载同一个包
 		mu.Lock()
 		if visitedPkgs[pkgPath] {
@@ -80,9 +73,7 @@ func ScanRoutes() error {
 		}
 		visitedPkgs[pkgPath] = true
 		mu.Unlock()
-
-		// 步骤4：异步加载包并触发init（执行路由注册）
-		wg.Add(1)
+		wg.Add(1) // 步骤4：异步加载包并触发init（执行路由注册）
 		go func(pkg string) {
 			defer wg.Done()
 			if err := loadAndInitPkg(pkg); err != nil {
@@ -91,15 +82,12 @@ func ScanRoutes() error {
 			}
 			log.Infof("成功初始化路由包：%s", pkg)
 		}(pkgPath)
-
 		return nil
 	})
-
 	wg.Wait()
 	if err != nil {
 		return err
 	}
-
 	log.Info("所有路由包扫描并初始化完成")
 	return nil
 }
