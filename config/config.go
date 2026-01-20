@@ -53,7 +53,7 @@ func init() {
 	}
 	if globalViper.IsSet("service_name") { // 读取service_name的值并传给log.Init()
 		serviceName := globalViper.GetString("service_name")
-		log.Init(serviceName) // 把项目名传给日志初始化函数
+		log.LoadPrintProjectName(serviceName) // 把项目名传给日志初始化函数
 	}
 	// ========== 新增：自动初始化数据库 ==========
 	if err := orm.Init(globalViper); err != nil {

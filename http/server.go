@@ -18,7 +18,7 @@ import (
 
 // 全局路由组注册器（命名同步优化）
 var (
-	rbacClient *rbac.RbacClient = nil
+	RbacClient *rbac.RbacClient = nil
 	// 全局HTTPServer单例（核心：业务侧所有文件可直接访问）
 	GlobalServer *HTTPServer // 全局变量，首字母大写暴露
 )
@@ -60,7 +60,7 @@ type HTTPServer struct {
 }
 
 func init() {
-	rbacClient = rbac.NewRbacClient(config.GetConfigString(utils.CasbinRedisAddrName))
+	RbacClient = rbac.NewRbacClient(config.GetConfigString(utils.CasbinRedisAddrName))
 	// 设置默认值：如果配置文件中没有routes节点，默认所有路由组启用
 	viper.SetDefault("routes", map[string]RouteConfigItem{})
 	// 从配置文件加载routes配置到全局变量
@@ -168,7 +168,7 @@ func (s *HTTPServer) Prepare() {
 		log.Infof("路由%d：path=%s, methods=%v, roles=%v", i+1, route.Url, route.Methods, route.DefaultRoles)
 		policies = append(policies, route.ToRbacPolicy()...)
 	}
-	rbacClient.AddActionPolicies(policies)                              // 2. 添加RBAC策略
+	RbacClient.AddActionPolicies(policies)                              // 2. 添加RBAC策略
 	s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"}) // 3. 设置全局中间件(注意顺序)
 	// 4. 全局中间件(作用于所有路由)
 	// 先注册用户自定义额外中间件，再注册内置中间件，确保用户安全中间件可最早生效
