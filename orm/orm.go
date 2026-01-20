@@ -2,11 +2,11 @@ package orm
 
 import (
 	"context"
-	_ "database/sql"
+	"database/sql"
 	"fmt"
 	_ "gitea.com/kingbase/gokb" // Kingbase 驱动
 	glog "github.com/goodbye-jack/go-common/log"
-	"github.com/goodbye-jack/go-common/orm/dbconfig"
+	"github.com/goodbye-jack/go-common/utils"
 	dm "github.com/jasonlabz/gorm-dm-driver"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -78,8 +78,18 @@ type Orm struct {
 	db *gorm.DB
 }
 
+// 新增：DB 暴露底层的*sql.DB，用于外部调整连接池参数
+func (o *Orm) DB() (*sql.DB, error) {
+	return o.db.DB()
+}
+
+// 新增：GetDB 暴露底层的*gorm.DB（可选，兼容特殊场景）
+func (o *Orm) GetDB() *gorm.DB {
+	return o.db
+}
+
 // NewOrm 创建 ORM 实例
-func NewOrm(dsn string, dbtype dbconfig.DBType, slowTime int) *Orm {
+func NewOrm(dsn string, dbtype utils.DBType, slowTime int) *Orm {
 	glog.Error("NewOrm param:dsn=%s", dsn)
 	if dsn == "" {
 		glog.Error("NewOrm param dsn is empty:请检查您的DSN参数")
@@ -87,24 +97,24 @@ func NewOrm(dsn string, dbtype dbconfig.DBType, slowTime int) *Orm {
 	}
 	if dbtype == "" {
 		glog.Error("您没有输入DBType,默认使用mysql数据源")
-		dbtype = dbconfig.DBTypeMySQL // 默认使用mysql
+		dbtype = utils.DBTypeMySQL // 默认使用mysql
 	}
 	if slowTime <= 0 {
 		slowTime = 3
 	}
 	var dialect gorm.Dialector
 	switch dbtype {
-	case dbconfig.DBTypeMySQL:
+	case utils.DBTypeMySQL:
 		dialect = mysql.Open(dsn)
-	case dbconfig.DBTypePostgres:
+	case utils.DBTypePostgres:
 		dialect = postgres.Open(dsn)
-	case dbconfig.DBTypeSqlserver:
+	case utils.DBTypeSqlserver:
 		dialect = sqlserver.Open(dsn)
-	case dbconfig.DBTypeSQLite:
+	case utils.DBTypeSQLite:
 		dialect = sqlite.Open(dsn)
-	case dbconfig.DBTypeDM:
+	case utils.DBTypeDM:
 		dialect = dm.Open(dsn)
-	case dbconfig.DBTypeKingBase:
+	case utils.DBTypeKingBase:
 		dialect = postgres.New(postgres.Config{
 			DriverName: "kingbase",
 			DSN:        dsn,
@@ -124,7 +134,7 @@ func NewOrm(dsn string, dbtype dbconfig.DBType, slowTime int) *Orm {
 	}
 	db, err := gorm.Open(dialect, dbConfig)
 	if err != nil {
-		log.Fatalf("%s connect failed, %v", dbtype, err)
+		glog.Error(fmt.Sprintf("%s connect failed, %v", dbtype, err))
 	}
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxIdleConns(10)
@@ -133,9 +143,9 @@ func NewOrm(dsn string, dbtype dbconfig.DBType, slowTime int) *Orm {
 	orm := &Orm{
 		db: db,
 	}
-	if dbtype == dbconfig.DBTypeDM {
+	if dbtype == utils.DBTypeDM {
 		orm.registerDMHooks()
-	} else if dbtype == dbconfig.DBTypeKingBase {
+	} else if dbtype == utils.DBTypeKingBase {
 		orm.registerKingbaseHooks()
 	}
 	return orm

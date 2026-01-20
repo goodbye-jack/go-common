@@ -42,7 +42,6 @@ type DMMigrator struct {
 func (m DMMigrator) HasTable(value interface{}) bool {
 	var count int64
 	var tableName string
-
 	if name, ok := value.(string); ok {
 		tableName = name
 	} else {
@@ -57,7 +56,6 @@ func (m DMMigrator) HasTable(value interface{}) bool {
 	err := m.DB.Raw(`SELECT COUNT(*) FROM USER_TABLES WHERE TABLE_NAME = ?`,
 		strings.ToUpper(tableName),
 	).Row().Scan(&count)
-
 	return err == nil && count > 0
 }
 

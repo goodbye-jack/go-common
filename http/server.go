@@ -58,9 +58,7 @@ type HTTPServer struct {
 }
 
 func init() {
-	rbacClient = rbac.NewRbacClient(
-		config.GetConfigString(utils.CasbinRedisAddrName),
-	)
+	rbacClient = rbac.NewRbacClient(config.GetConfigString(utils.CasbinRedisAddrName))
 	// 设置默认值：如果配置文件中没有routes节点，默认所有路由组启用
 	viper.SetDefault("routes", map[string]RouteConfigItem{})
 	// 从配置文件加载routes配置到全局变量
@@ -155,19 +153,19 @@ func (s *HTTPServer) SetOpRecordFn(fn OpRecordFn) {
 	s.opRecordFn = fn
 }
 
-// isRoutesInitialized 判断路由是否已经初始化
-func (s *HTTPServer) isRoutesInitialized() bool {
-	// 如果只有默认的 /ping 路由，认为没有初始化
-	if len(s.routes) <= 1 {
-		return false
-	}
-	for _, route := range s.routes { // 检查是否有自定义路由（非 /ping）
-		if route.Url != "/ping" {
-			return true
-		}
-	}
-	return false
-}
+//// isRoutesInitialized 判断路由是否已经初始化
+//func (s *HTTPServer) isRoutesInitialized() bool {
+//	// 如果只有默认的 /ping 路由，认为没有初始化
+//	if len(s.routes) <= 1 {
+//		return false
+//	}
+//	for _, route := range s.routes { // 检查是否有自定义路由（非 /ping）
+//		if route.Url != "/ping" {
+//			return true
+//		}
+//	}
+//	return false
+//}
 
 func (s *HTTPServer) Prepare() {
 	var policies []rbac.Policy
