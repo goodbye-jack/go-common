@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"plugin"
 	_ "reflect"
 	"strings"
 	"sync"
@@ -47,6 +48,15 @@ func ScanRoutes() error {
 	)
 	err = filepath.Walk(modRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
+			// 只扫描handler目录（核心：路由文件只在handler下）
+			if info.IsDir() {
+				// 保留handler目录，排除其他非路由目录
+				if strings.Contains(path, "internal/handler") {
+					return nil // 继续遍历handler子目录
+				}
+				// 排除所有非handler目录
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		// 过滤规则
@@ -78,7 +88,7 @@ func ScanRoutes() error {
 		wg.Add(1)
 		go func(pkg string) {
 			defer wg.Done()
-			if err := loadPkg(pkg); err != nil {
+			if err := loadPkgPlugin(pkg); err != nil {
 				log.Warnf("加载包[%s]失败：%v", pkg, err)
 				return
 			}
@@ -198,13 +208,39 @@ func loadPkg(pkgPath string) error {
 	return nil
 }
 
-// getModuleName 从go.mod中提取当前模块名（适配go mod模式）
+// loadPkg 强制加载包并执行init（使用plugin模式）
+func loadPkgPlugin(pkgPath string) error {
+	// 构建包的临时编译路径
+	cmd := exec.Command("go", "build", "-buildmode=plugin", "-o", "/tmp/"+pkgPath+".so", pkgPath)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("编译包[%s]失败：%v，错误详情：%s", pkgPath, err, stderr.String())
+	}
+	// 加载插件（强制执行init）
+	//plug, err := plugin.Open("/tmp/" + pkgPath + ".so")
+	//if err != nil {
+	//	return fmt.Errorf("加载插件[%s]失败：%v", pkgPath, err)
+	//}
+	//log.Infof("包[%s]已强制加载并执行init", pkgPath)
+	// 加载插件（强制执行init）
+	plug, err := plugin.Open("/tmp/" + pkgPath + ".so")
+	if err != nil {
+		return fmt.Errorf("加载插件[%s]失败：%v", pkgPath, err)
+	}
+	// 可选：验证插件是否加载成功（比如检查是否有导出的变量/函数）
+	log.Infof("插件[%s]加载成功，指针地址：%p", pkgPath, plug)
+	return nil
+}
+
+// getModuleName 从go.mod中提取模块名
 func getModuleName() (string, error) {
 	// 查找go.mod文件（从当前目录向上遍历）
 	wd, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
+
 	var modPath string
 	curDir := wd
 	for {
@@ -220,22 +256,73 @@ func getModuleName() (string, error) {
 		}
 		curDir = parent
 	}
+
 	// 解析go.mod内容
 	modContent, err := os.ReadFile(modPath)
 	if err != nil {
 		return "", err
 	}
+
 	// 提取module名
 	modFile, err := modfile.Parse(modPath, modContent, nil)
 	if err != nil {
 		return "", err
 	}
 	if modFile.Module == nil || modFile.Module.Mod.Path == "" {
-		return "", os.ErrInvalid
+		return "", errors.New("go.mod中未找到module声明")
 	}
 
-	return modFile.Module.Mod.Path, nil
+	modName := modFile.Module.Mod.Path
+	// 新增：清理模块名中的多余符号（如中括号、空格）
+	modName = strings.Trim(modName, "[] ")
+	if modName == "" {
+		return "", errors.New("模块名解析为空")
+	}
+	log.Infof("解析到纯净模块名：%s", modName)
+	return modName, nil
 }
+
+//// getModuleName 从go.mod中提取当前模块名（适配go mod模式）
+//func getModuleName() (string, error) {
+//	// 查找go.mod文件（从当前目录向上遍历）
+//	wd, err := os.Getwd()
+//	if err != nil {
+//		return "", err
+//	}
+//
+//	var modPath string
+//	curDir := wd
+//	for {
+//		mp := filepath.Join(curDir, "go.mod")
+//		if _, err := os.Stat(mp); err == nil {
+//			modPath = mp
+//			break
+//		}
+//		// 到根目录仍未找到
+//		parent := filepath.Dir(curDir)
+//		if parent == curDir {
+//			return "", os.ErrNotExist
+//		}
+//		curDir = parent
+//	}
+//
+//	// 解析go.mod内容
+//	modContent, err := os.ReadFile(modPath)
+//	if err != nil {
+//		return "", err
+//	}
+//
+//	// 提取module名
+//	modFile, err := modfile.Parse(modPath, modContent, nil)
+//	if err != nil {
+//		return "", err
+//	}
+//	if modFile.Module == nil || modFile.Module.Mod.Path == "" {
+//		return "", os.ErrInvalid
+//	}
+//
+//	return modFile.Module.Mod.Path, nil
+//}
 
 // hasRouteRegisterMethod 解析文件AST，判断是否包含路由注册方法调用
 func hasRouteRegisterMethod(filePath string, moduleName string) (bool, string, error) {

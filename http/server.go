@@ -36,11 +36,17 @@ func RegisterRoute(fn RouteRegisterFunc) {
 func (s *HTTPServer) ExecuteRouteRegisters() {
 	routeRegMu.Lock()
 	defer routeRegMu.Unlock()
-
+	log.Infof("当前收集到%d个路由注册函数", len(routeRegisters)) // 关键日志
+	if len(routeRegisters) == 0 {
+		log.Warn("未收集到任何路由注册函数！请检查业务包是否调用RegisterRoute")
+		return
+	}
 	for i, fn := range routeRegisters {
 		log.Infof("执行第%d个路由注册函数", i+1)
-		fn(s) // 传入GlobalServer，执行路由注册
+		fn(s)
 	}
+	// 执行完成后打印路由总数
+	log.Infof("路由注册完成，GlobalServer.routes总数：%d", len(s.routes))
 }
 
 // 全局路由组注册器（命名同步优化）
