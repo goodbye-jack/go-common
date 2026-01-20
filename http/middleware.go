@@ -47,11 +47,10 @@ func RbacMiddleware(serviceName string) gin.HandlerFunc {
 			c.Request.URL.Path,
 			c.Request.Method,
 		)
-		ok, err := rbacClient.Enforce(req)
+		ok, err := RbacClient.Enforce(req)
 		if err != nil {
 			log.Errorf("RbacMiddleware/Enforce(%v), %v", *req, err)
 		}
-
 		if !ok {
 			c.AbortWithStatus(http.StatusForbidden)
 			return

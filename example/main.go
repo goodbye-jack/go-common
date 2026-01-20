@@ -25,7 +25,7 @@ func recordOp(ctx context.Context, op myHttp.Operation) error {
 func main() {
 	addr := config.GetConfigString("addr")
 	service_name := config.GetConfigString("service_name")
-	log.Init("go-common")
+	log.LoadPrintProjectName("go-common")
 	//dsn := "host=113.45.4.22 port=4321 user=root password=Qaz0529! dbname=kingbase sslmode=disable TimeZone=Asia/Shanghai"
 	//orm.NewOrm(dsn, ormConfig.DBTypeKingBase, 3600)
 	server := myHttp.NewHTTPServer(service_name)
