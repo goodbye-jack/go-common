@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/goodbye-jack/go-common/log"
 	"go/ast"
@@ -25,70 +26,175 @@ var routeRegisterMethods = map[string]bool{
 	"RouteAutoRegisterAPI": true, // 补充你可能用到的其他路由方法
 }
 
-// ScanRoutes 基于go.mod+AST的智能路由扫描（无路径/文件名约定）
+// ScanRoutes 简化：只需加载业务包，触发init（收集RegisterRoute函数）
 func ScanRoutes() error {
-	// 步骤1：从go.mod中提取当前模块名（自动定位业务根路径）
+	// 步骤1：获取模块名和根目录
 	modName, err := getModuleName()
 	if err != nil {
 		return err
 	}
-	log.Infof("从go.mod识别到模块名：%s，开始扫描路由", modName)
+	modRoot, err := getModuleRoot()
+	if err != nil {
+		return err
+	}
+	log.Infof("从go.mod识别到模块名：[%s]，开始扫描路由", modName)
 
-	// 步骤2：遍历当前项目所有.go文件（排除vendor、test文件）
+	// 步骤2：遍历所有.go文件
 	var (
-		wg          sync.WaitGroup
-		scanDir     = "."                   // 从当前目录开始扫描（go.mod所在目录）
-		visitedPkgs = make(map[string]bool) // 避免重复加载同一个包
-		mu          sync.Mutex
+		wg         sync.WaitGroup
+		visitedPkg = make(map[string]bool)
+		mu         sync.Mutex
 	)
-	err = filepath.Walk(scanDir, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(modRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		// 过滤规则
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		if strings.Contains(path, "vendor/") || strings.Contains(path, ".git/") {
+			return nil
+		}
+
+		// 提取包路径
+		relPath, err := filepath.Rel(modRoot, path)
 		if err != nil {
 			return nil
 		}
-		if info.IsDir() { // 过滤规则：排除vendor、.git、test文件（可自定义）
-			if strings.Contains(path, "vendor") || strings.Contains(path, ".git") || strings.HasSuffix(path, "_test") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		// 只处理.go文件（兼容任意文件名，如TestRoutes.go、test-routes.go）
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		// 步骤3：解析当前文件的AST，判断是否包含路由注册方法调用
-		hasRouteRegister, pkgPath, err := hasRouteRegisterMethod(path, modName)
-		if err != nil {
-			log.Warnf("解析文件[%s]失败：%v", path, err)
-			return nil
-		}
-		// 不是路由注册文件，跳过
-		if !hasRouteRegister {
-			return nil
-		}
-		// 避免重复加载同一个包
+		pkgDir := filepath.Dir(relPath)
+		pkgPath := strings.ReplaceAll(filepath.Join(modName, pkgDir), string(os.PathSeparator), "/")
+
+		// 避免重复加载包
 		mu.Lock()
-		if visitedPkgs[pkgPath] {
+		if visitedPkg[pkgPath] {
 			mu.Unlock()
 			return nil
 		}
-		visitedPkgs[pkgPath] = true
+		visitedPkg[pkgPath] = true
 		mu.Unlock()
-		wg.Add(1) // 步骤4：异步加载包并触发init（执行路由注册）
+
+		// 加载包（触发init，收集RegisterRoute函数）
+		wg.Add(1)
 		go func(pkg string) {
 			defer wg.Done()
-			if err := loadAndInitPkg(pkg); err != nil {
-				log.Warnf("初始化路由包[%s]失败：%v", pkg, err)
+			if err := loadPkg(pkg); err != nil {
+				log.Warnf("加载包[%s]失败：%v", pkg, err)
 				return
 			}
-			log.Infof("成功初始化路由包：%s", pkg)
+			log.Infof("成功初始化路由包：[%s]", pkg)
 		}(pkgPath)
+
 		return nil
 	})
 	wg.Wait()
 	if err != nil {
 		return err
 	}
-	log.Info("所有路由包扫描并初始化完成")
+
+	log.Info("[所有路由包扫描并初始化完成]")
+	return nil
+}
+
+//// ScanRoutes 基于go.mod+AST的智能路由扫描（无路径/文件名约定）
+//func ScanRoutes() error {
+//	// 步骤1：从go.mod中提取当前模块名（自动定位业务根路径）
+//	modName, err := getModuleName()
+//	if err != nil {
+//		return err
+//	}
+//	log.Infof("从go.mod识别到模块名：%s，开始扫描路由", modName)
+//
+//	// 步骤2：遍历当前项目所有.go文件（排除vendor、test文件）
+//	var (
+//		wg          sync.WaitGroup
+//		scanDir     = "."                   // 从当前目录开始扫描（go.mod所在目录）
+//		visitedPkgs = make(map[string]bool) // 避免重复加载同一个包
+//		mu          sync.Mutex
+//	)
+//	err = filepath.Walk(scanDir, func(path string, info os.FileInfo, err error) error {
+//		if err != nil {
+//			return nil
+//		}
+//		if info.IsDir() { // 过滤规则：排除vendor、.git、test文件（可自定义）
+//			if strings.Contains(path, "vendor") || strings.Contains(path, ".git") || strings.HasSuffix(path, "_test") {
+//				return filepath.SkipDir
+//			}
+//			return nil
+//		}
+//		// 只处理.go文件（兼容任意文件名，如TestRoutes.go、test-routes.go）
+//		if !strings.HasSuffix(path, ".go") {
+//			return nil
+//		}
+//		// 步骤3：解析当前文件的AST，判断是否包含路由注册方法调用
+//		hasRouteRegister, pkgPath, err := hasRouteRegisterMethod(path, modName)
+//		if err != nil {
+//			log.Warnf("解析文件[%s]失败：%v", path, err)
+//			return nil
+//		}
+//		// 不是路由注册文件，跳过
+//		if !hasRouteRegister {
+//			return nil
+//		}
+//		// 避免重复加载同一个包
+//		mu.Lock()
+//		if visitedPkgs[pkgPath] {
+//			mu.Unlock()
+//			return nil
+//		}
+//		visitedPkgs[pkgPath] = true
+//		mu.Unlock()
+//		wg.Add(1) // 步骤4：异步加载包并触发init（执行路由注册）
+//		go func(pkg string) {
+//			defer wg.Done()
+//			if err := loadAndInitPkg(pkg); err != nil {
+//				log.Warnf("初始化路由包[%s]失败：%v", pkg, err)
+//				return
+//			}
+//			log.Infof("成功初始化路由包：%s", pkg)
+//		}(pkgPath)
+//		return nil
+//	})
+//	wg.Wait()
+//	if err != nil {
+//		return err
+//	}
+//	log.Info("所有路由包扫描并初始化完成")
+//	return nil
+//}
+
+// getModuleRoot 获取项目根目录（基于go mod）
+func getModuleRoot() (string, error) {
+	// 执行go list -m -f '{{.Dir}}'获取模块根目录
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("获取模块根目录失败：%v", err)
+	}
+	root := strings.TrimSpace(string(output))
+	if root == "" {
+		return "", errors.New("模块根目录为空")
+	}
+	log.Infof("识别到项目根目录：%s", root)
+	return root, nil
+}
+
+// loadPkg 加载包并触发init函数执行
+func loadPkg(pkgPath string) error {
+	// 使用golang.org/x/tools/go/packages加载包（更可靠）
+	cfg := &packages.Config{
+		Mode: packages.LoadAllSyntax, // 加载包的所有信息，触发init
+	}
+	pkgs, err := packages.Load(cfg, pkgPath)
+	if err != nil {
+		return fmt.Errorf("加载包[%s]失败：%v", pkgPath, err)
+	}
+	// 检查包加载错误
+	for _, pkg := range pkgs {
+		if len(pkg.Errors) > 0 {
+			return fmt.Errorf("包[%s]加载错误：%v", pkgPath, pkg.Errors)
+		}
+	}
 	return nil
 }
 
@@ -99,7 +205,6 @@ func getModuleName() (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	var modPath string
 	curDir := wd
 	for {
@@ -115,13 +220,11 @@ func getModuleName() (string, error) {
 		}
 		curDir = parent
 	}
-
 	// 解析go.mod内容
 	modContent, err := os.ReadFile(modPath)
 	if err != nil {
 		return "", err
 	}
-
 	// 提取module名
 	modFile, err := modfile.Parse(modPath, modContent, nil)
 	if err != nil {

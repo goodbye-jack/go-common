@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/approval"
@@ -13,8 +14,34 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"net/http"
+	"sync"
 	"time"
 )
+
+// RouteRegisterFunc 路由注册函数类型（入参是GlobalServer）
+type RouteRegisterFunc func(server *HTTPServer)
+
+// routeRegisters 全局路由注册函数列表（收集所有业务侧的注册函数）
+var routeRegisters []RouteRegisterFunc
+var routeRegMu sync.Mutex
+
+// RegisterRoute 供业务侧注册路由函数（替代直接在init中调用GlobalServer）
+func RegisterRoute(fn RouteRegisterFunc) {
+	routeRegMu.Lock()
+	defer routeRegMu.Unlock()
+	routeRegisters = append(routeRegisters, fn)
+}
+
+// ExecuteRouteRegisters 执行所有注册的路由函数（在GlobalServer初始化后调用）
+func (s *HTTPServer) ExecuteRouteRegisters() {
+	routeRegMu.Lock()
+	defer routeRegMu.Unlock()
+
+	for i, fn := range routeRegisters {
+		log.Infof("执行第%d个路由注册函数", i+1)
+		fn(s) // 传入GlobalServer，执行路由注册
+	}
+}
 
 // 全局路由组注册器（命名同步优化）
 var (
@@ -76,6 +103,18 @@ func InitServer(serviceName string) {
 	if GlobalServer == nil {
 		GlobalServer = NewHTTPServer(serviceName)
 	}
+}
+
+func InitServerAndRoutes(serviceName string) error {
+	InitServer(serviceName) // 步骤1：初始化GlobalServer
+	if GlobalServer == nil {
+		return errors.New("GlobalServer初始化失败")
+	}
+	if err := ScanRoutes(); err != nil { // 步骤2：扫描路由包
+		return err
+	}
+	GlobalServer.ExecuteRouteRegisters() // 步骤3：执行路由注册
+	return nil
 }
 
 func NewHTTPServer(service_name string) *HTTPServer {
