@@ -12,8 +12,8 @@ import (
 	"strings"
 )
 
-// Init 总初始化入口（逻辑不变，仅替换Redis/Mongo的初始化函数）
-func Init(v *viper.Viper) error {
+// InitAllDB 总初始化入口（逻辑不变，仅替换Redis/Mongo的初始化函数）
+func InitAllDB(v *viper.Viper) error {
 	if !v.IsSet("databases") {
 		log.Info("【数据库初始化】未配置databases节点，跳过所有数据库初始化")
 		return nil

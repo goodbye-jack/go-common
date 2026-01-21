@@ -7,10 +7,10 @@ import (
 	"os"
 )
 
-//var configPaths = []string{".", "./config", "/opt"} // config配置读取顺序
+var configPaths = []string{".", "./config", "/opt"} // config配置读取顺序
 
 // 这是测试值,
-var configPaths = []string{".", "./config", "/opt", "./example"}
+//var configPaths = []string{".", "./config", "/opt", "./example"}
 
 func init() {
 	globalViper := viper.New() // 1. 初始化全局Viper
@@ -56,7 +56,7 @@ func init() {
 		log.LoadPrintProjectName(serviceName) // 把项目名传给日志初始化函数
 	}
 	// ========== 新增：自动初始化数据库 ==========
-	if err := orm.Init(globalViper); err != nil {
+	if err := orm.InitAllDB(globalViper); err != nil {
 		log.Fatalf("数据库自动初始化失败：%v", err)
 	}
 }

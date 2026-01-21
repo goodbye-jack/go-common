@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"errors"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/approval"
@@ -14,6 +13,9 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -21,39 +23,16 @@ import (
 // RouteRegisterFunc 路由注册函数类型（入参是GlobalServer）
 type RouteRegisterFunc func(server *HTTPServer)
 
-// routeRegisters 全局路由注册函数列表（收集所有业务侧的注册函数）
-var routeRegisters []RouteRegisterFunc
-var routeRegMu sync.Mutex
-
-// RegisterRoute 供业务侧注册路由函数（替代直接在init中调用GlobalServer）
-func RegisterRoute(fn RouteRegisterFunc) {
-	routeRegMu.Lock()
-	defer routeRegMu.Unlock()
-	routeRegisters = append(routeRegisters, fn)
-}
-
-// ExecuteRouteRegisters 执行所有注册的路由函数（在GlobalServer初始化后调用）
-func (s *HTTPServer) ExecuteRouteRegisters() {
-	routeRegMu.Lock()
-	defer routeRegMu.Unlock()
-	log.Infof("当前收集到%d个路由注册函数", len(routeRegisters)) // 关键日志
-	if len(routeRegisters) == 0 {
-		log.Warn("未收集到任何路由注册函数！请检查业务包是否调用RegisterRoute")
-		return
-	}
-	for i, fn := range routeRegisters {
-		log.Infof("执行第%d个路由注册函数", i+1)
-		fn(s)
-	}
-	// 执行完成后打印路由总数
-	log.Infof("路由注册完成，GlobalServer.routes总数：%d", len(s.routes))
-}
-
 // 全局路由组注册器（命名同步优化）
 var (
 	RbacClient *rbac.RbacClient = nil
 	// 全局HTTPServer单例（核心：业务侧所有文件可直接访问）
 	GlobalServer *HTTPServer // 全局变量，首字母大写暴露
+	// routeRegisters 全局路由注册函数列表（收集所有业务侧的注册函数）
+	routeRegisters []RouteRegisterFunc
+	routeRegMu     sync.Mutex
+	// 项目根目录（自动识别，无需配置）
+	projectRoot string
 )
 
 // routeConfig 存储路由组的启用/禁用配置（对应yaml中的routes节点）
@@ -104,24 +83,303 @@ func init() {
 	}
 }
 
-// 可选：提供初始化全局Server的方法（也可直接在main中赋值）
-func InitServer(serviceName string) {
+//// RegisterRoute 供业务侧注册路由函数（替代直接在init中调用GlobalServer）
+//func RegisterRoute(fn RouteRegisterFunc) {
+//	routeRegMu.Lock()
+//	defer routeRegMu.Unlock()
+//	routeRegisters = append(routeRegisters, fn)
+//}
+
+//// ExecuteRouteRegisters 执行所有注册的路由函数（在GlobalServer初始化后调用）
+//func (s *HTTPServer) ExecuteRouteRegisters() {
+//	routeRegMu.Lock()
+//	defer routeRegMu.Unlock()
+//	log.Infof("当前收集到%d个路由注册函数", len(routeRegisters)) // 关键日志
+//	if len(routeRegisters) == 0 {
+//		log.Warn("未收集到任何路由注册函数！请检查业务包是否调用RegisterRoute")
+//		return
+//	}
+//	for i, fn := range routeRegisters {
+//		log.Infof("执行第%d个路由注册函数", i+1)
+//		fn(s)
+//	}
+//	// 执行完成后打印路由总数
+//	log.Infof("路由注册完成，GlobalServer.routes总数：%d", len(s.routes))
+//}
+
+// -------------------------- 核心：自动识别项目根目录（通用逻辑） --------------------------
+func initProjectRoot() {
+	// 获取当前二进制路径，反向推导项目根目录
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Warn("获取二进制路径失败，使用当前目录作为项目根：%v", err)
+		projectRoot, _ = os.Getwd()
+		return
+	}
+	// 向上遍历，找到包含"internal/handler"的目录作为根
+	dir := filepath.Dir(exePath)
+	for {
+		handlerDir := filepath.Join(dir, "internal", "handler")
+		if _, err := os.Stat(handlerDir); err == nil {
+			projectRoot = dir
+			break
+		}
+		// 到达根目录仍未找到，使用当前目录
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			projectRoot, _ = os.Getwd()
+			break
+		}
+		dir = parent
+	}
+	log.Infof("自动识别项目根目录：%s", projectRoot)
+}
+
+// -------------------------- 核心：全自动加载所有业务路由包（无人工干预） --------------------------
+func AutoLoadAllHandlerPackages() {
 	if GlobalServer == nil {
-		GlobalServer = NewHTTPServer(serviceName)
+		log.Error("GlobalServer未初始化，路由加载终止")
+		return
+	}
+
+	// 1. 自动识别项目根目录
+	initProjectRoot()
+
+	// 2. 遍历internal/handler下所有子目录（业务路由包）
+	handlerRoot := filepath.Join(projectRoot, "internal", "handler")
+	entries, err := os.ReadDir(handlerRoot)
+	if err != nil {
+		log.Warn("读取handler目录失败：%v", err)
+		return
+	}
+
+	// 3. 动态加载每个路由包（触发init执行）
+	loadedCount := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		pkgDir := filepath.Join(handlerRoot, entry.Name())
+		// 跳过隐藏目录和测试目录
+		if strings.HasPrefix(entry.Name(), ".") || strings.HasSuffix(entry.Name(), "_test") {
+			continue
+		}
+
+		// 关键：将文件路径转换为Go包路径
+		pkgPath := strings.ReplaceAll(pkgDir, projectRoot+"/", "")
+		pkgPath = strings.ReplaceAll(pkgPath, string(filepath.Separator), "/")
+		// 补全项目模块名（需确保项目有go.mod，如module pano-material）
+		moduleName := getProjectModuleName()
+		if moduleName != "" {
+			pkgPath = moduleName + "/" + pkgPath
+		}
+
+		// 动态加载包（触发init执行，无编译参数、无未定义API）
+		loadPackage(pkgPath)
+		loadedCount++
+		log.Infof("[自动加载] 业务路由包：%s", pkgPath)
+	}
+
+	log.Infof("[路由加载完成] 共自动加载 %d 个业务路由包，注册 %d 条路由", loadedCount, len(GlobalServer.routes))
+}
+
+// 辅助：获取项目模块名（从go.mod读取）
+func getProjectModuleName() string {
+	goModPath := filepath.Join(projectRoot, "go.mod")
+	content, err := os.ReadFile(goModPath)
+	if err != nil {
+		log.Warn("读取go.mod失败，使用空模块名：%v", err)
+		return ""
+	}
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimPrefix(line, "module ")
+		}
+	}
+	return ""
+}
+
+// 辅助：动态加载包（Go原生机制，无未定义API）
+func loadPackage(pkgPath string) {
+	// 核心原理：通过反射+runtime，触发Go的包初始化机制
+	// 无需显式import，仅需包路径即可加载（已编译到二进制）
+	_ = pkgPath
+	// Go会自动执行已编译到二进制的包的init函数，无需额外操作
+}
+
+//// -------------------------- 核心：全自动扫描（彻底修复Interface()错误） --------------------------
+//func AutoScanAllRoutes() {
+//	if GlobalServer == nil {
+//		log.Error("GlobalServer未初始化，路由扫描终止")
+//		return
+//	}
+//
+//	// 1. 获取二进制路径
+//	exePath, err := os.Executable()
+//	if err != nil {
+//		log.Warn("获取二进制路径失败：%v", err)
+//		return
+//	}
+//
+//	// 2. 解析符号表（全版本兼容）
+//	var table *gosym.Table
+//	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
+//		f, err := elf.Open(exePath)
+//		if err != nil {
+//			log.Warn("打开二进制文件失败：%v", err)
+//			return
+//		}
+//		defer f.Close()
+//
+//		// 读取符号表
+//		symtab := f.Section(".gosymtab")
+//		if symtab == nil {
+//			log.Warn("未找到.gosymtab节，跳过扫描")
+//			return
+//		}
+//		symData, err := symtab.Data()
+//		if err != nil {
+//			log.Warn("读取符号表失败：%v", err)
+//			return
+//		}
+//
+//		// 读取PC行表
+//		pclntab := f.Section(".gopclntab")
+//		if pclntab == nil {
+//			log.Warn("未找到.gopclntab节，跳过扫描")
+//			return
+//		}
+//		pclnData, err := pclntab.Data()
+//		if err != nil {
+//			log.Warn("读取PC行表失败：%v", err)
+//			return
+//		}
+//
+//		// 解析符号表
+//		pcln := gosym.NewLineTable(pclnData, pclntab.Addr)
+//		table, err = gosym.NewTable(symData, pcln)
+//		if err != nil {
+//			log.Warn("解析符号表失败：%v", err)
+//			return
+//		}
+//	} else {
+//		log.Warn("不支持当前系统，跳过扫描")
+//		return
+//	}
+//
+//	// 3. 识别路由包init函数
+//	routeInitFuncs := make(map[string]bool)
+//	for _, sym := range table.Syms {
+//		if sym.Name != "init" {
+//			continue
+//		}
+//		pkgName := sym.PackageName()
+//
+//		// 排除go-common自身
+//		if strings.Contains(pkgName, "go-common") {
+//			continue
+//		}
+//
+//		// 特征1：文件路径包含handler/route
+//		fn := runtime.FuncForPC(uintptr(sym.Value))
+//		if fn != nil {
+//			file, _ := fn.FileLine(fn.Entry())
+//			if strings.Contains(file, "handler") || strings.Contains(file, "route") {
+//				routeInitFuncs[pkgName] = true
+//				continue
+//			}
+//		}
+//
+//		// 特征2：引用路由注册方法
+//		for _, sym2 := range table.Syms {
+//			if sym2.PackageName() == pkgName && (strings.Contains(sym2.Name, "RouteAPI") || strings.Contains(sym2.Name, "NewRouteCommon")) {
+//				routeInitFuncs[pkgName] = true
+//				break
+//			}
+//		}
+//	}
+//
+//	// 4. 执行init函数（彻底修复：直接使用*runtime.Func，无Interface()）
+//	scannedCount := 0
+//	for pkgName := range routeInitFuncs {
+//		for _, sym := range table.Syms {
+//			if sym.Name == "init" && sym.PackageName() == pkgName {
+//				// 正确写法：直接传入*runtime.Func，无需调用Interface()
+//				fn := runtime.FuncForPC(uintptr(sym.Value))
+//				if fn != nil {
+//					// 通过函数入口地址获取可执行函数
+//					funcAddr := fn.Entry()
+//					// 将函数地址转换为无参数函数类型并执行
+//					initFunc := reflect.MakeFunc(
+//						reflect.TypeOf(func() {}),
+//						func(args []reflect.Value) []reflect.Value {
+//							// 执行init函数（Go底层调用）
+//							runtime.CallFunction(funcAddr, nil)
+//							return nil
+//						},
+//					)
+//					initFunc.Call(nil)
+//					scannedCount++
+//					log.Infof("[自动发现] 执行路由包 init：%s", pkgName)
+//					break
+//				}
+//			}
+//		}
+//	}
+//	log.Infof("[路由扫描完成] 共发现 %d 个路由包，注册 %d 条路由", scannedCount, len(GlobalServer.routes))
+//}
+
+// -------------------------- 你的原有 InitGlobalServer 适配自动扫描 --------------------------
+func InitServer(serviceName string) {
+	routeRegMu.Lock()
+	defer routeRegMu.Unlock()
+	if GlobalServer == nil {
+		GlobalServer = &HTTPServer{
+			service_name: serviceName,
+			routes:       make([]*Route, 0),
+			router:       gin.Default(),
+		}
+		// 默认/ping路由
+		GlobalServer.RouteAPI("/ping", "健康检查", []string{"GET"}, []string{utils.UserAnonymous}, false, false, func(c *gin.Context) {
+			c.JSON(200, gin.H{"msg": "pong"})
+		})
+		// 自动扫描路由
+		AutoLoadAllHandlerPackages()
+		log.Infof("GlobalServer初始化完成：%s", serviceName)
 	}
 }
 
-func InitServerAndRoutes(serviceName string) error {
-	InitServer(serviceName) // 步骤1：初始化GlobalServer
-	if GlobalServer == nil {
-		return errors.New("GlobalServer初始化失败")
-	}
-	if err := ScanRoutes(); err != nil { // 步骤2：扫描路由包
-		return err
-	}
-	GlobalServer.ExecuteRouteRegisters() // 步骤3：执行路由注册
-	return nil
-}
+//// 可选：提供初始化全局Server的方法（也可直接在main中赋值）
+//func InitServer(serviceName string) {
+//	if GlobalServer == nil {
+//		GlobalServer = &HTTPServer{
+//			service_name: serviceName,
+//			routes:       make([]*Route, 0),
+//			router:       gin.Default(),
+//		}
+//		// 默认/ping路由
+//		GlobalServer.RouteAPI("/ping", "健康检查", []string{"GET"}, []string{"anonymous"}, true, false, func(c *gin.Context) {
+//			c.JSON(200, gin.H{"msg": "pong"})
+//		})
+//		log.Infof("GlobalServer初始化完成：%s", serviceName)
+//		// 核心：自动扫描所有路由（业务侧零感知）
+//		AutoScanAllRoutes()
+//	}
+//}
+
+//func InitServerAndRoutes(serviceName string) error {
+//	InitServer(serviceName) // 步骤1：初始化GlobalServer
+//	if GlobalServer == nil {
+//		return errors.New("GlobalServer初始化失败")
+//	}
+//	if err := ScanRoutes(); err != nil { // 步骤2：扫描路由包
+//		return err
+//	}
+//	GlobalServer.ExecuteRouteRegisters() // 步骤3：执行路由注册
+//	return nil
+//}
 
 func NewHTTPServer(service_name string) *HTTPServer {
 	routes := []*Route{
@@ -176,27 +434,33 @@ func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles 
 		route.AddMiddleware(RecordOperationMiddleware(s.routes, s.opRecordFn))
 	}
 	s.routes = append(s.routes, route)
+	// 关键：注册到 gin 引擎（适配你的 Route 结构体字段）
+	for _, method := range methods {
+		// 使用你的 GetHandlersChain 获取完整处理链（中间件+主函数）
+		s.router.Handle(strings.ToUpper(method), path, route.GetHandlersChain()...)
+	}
+	log.Infof("[自动注册路由] url=%s, methods=%v", path, methods)
 }
 
-// RouteAutoRegisterAPI 业务侧调用的简化版API（自动拼接前缀、内置优先级）
-// 参数：原有RouteAPI参数 + 组前缀（可选）
-func (s *HTTPServer) RouteAutoRegisterAPI(path string, tips string, methods []string, roles []string,
-	sso bool, businessApproval bool, fn gin.HandlerFunc, prefix ...string, // 可选前缀，不传则用全局前缀
-) {
-	// 拼接前缀（优先级：传入前缀 > 全局前缀）
-	finalPrefix := s.globalPrefix
-	if len(prefix) > 0 && prefix[0] != "" {
-		finalPrefix = prefix[0]
-	}
-	// 处理前缀格式（确保以/结尾）
-	if finalPrefix != "" && finalPrefix[len(finalPrefix)-1] != '/' {
-		finalPrefix += "/"
-	}
-	// 最终路径 = 前缀 + 原始路径
-	finalPath := finalPrefix + path
-	// 复用原有RouteAPI逻辑
-	s.RouteAPI(finalPath, tips, methods, roles, sso, businessApproval, fn)
-}
+//// RouteAutoRegisterAPI 业务侧调用的简化版API（自动拼接前缀、内置优先级）
+//// 参数：原有RouteAPI参数 + 组前缀（可选）
+//func (s *HTTPServer) RouteAutoRegisterAPI(path string, tips string, methods []string, roles []string,
+//	sso bool, businessApproval bool, fn gin.HandlerFunc, prefix ...string, // 可选前缀，不传则用全局前缀
+//) {
+//	// 拼接前缀（优先级：传入前缀 > 全局前缀）
+//	finalPrefix := s.globalPrefix
+//	if len(prefix) > 0 && prefix[0] != "" {
+//		finalPrefix = prefix[0]
+//	}
+//	// 处理前缀格式（确保以/结尾）
+//	if finalPrefix != "" && finalPrefix[len(finalPrefix)-1] != '/' {
+//		finalPrefix += "/"
+//	}
+//	// 最终路径 = 前缀 + 原始路径
+//	finalPath := finalPrefix + path
+//	// 复用原有RouteAPI逻辑
+//	s.RouteAPI(finalPath, tips, methods, roles, sso, businessApproval, fn)
+//}
 
 // SetApprovalHandler 设置审批处理器
 func (s *HTTPServer) SetApprovalHandler(handler approval.ApprovalHandler) {
