@@ -9,7 +9,6 @@ import (
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/rbac"
 	"github.com/goodbye-jack/go-common/utils"
-	"github.com/spf13/viper"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"net/http"
@@ -20,30 +19,31 @@ import (
 	"time"
 )
 
-// RouteRegisterFunc 路由注册函数类型（入参是GlobalServer）
-type RouteRegisterFunc func(server *HTTPServer)
+//// RouteRegisterFunc 路由注册函数类型（入参是GlobalServer）
+//type RouteRegisterFunc func(server *HTTPServer)
 
 // 全局路由组注册器（命名同步优化）
 var (
-	RbacClient *rbac.RbacClient = nil
-	// 全局HTTPServer单例（核心：业务侧所有文件可直接访问）
-	GlobalServer *HTTPServer // 全局变量，首字母大写暴露
+	routeCache   []Route          // 路由缓存
+	routeCacheMu sync.Mutex       // 缓存锁
+	RbacClient   *rbac.RbacClient = nil
+	GlobalServer *HTTPServer      // 全局变量，首字母大写暴露 全局HTTPServer单例（核心：业务侧所有文件可直接访问）
 	// routeRegisters 全局路由注册函数列表（收集所有业务侧的注册函数）
-	routeRegisters []RouteRegisterFunc
-	routeRegMu     sync.Mutex
+	//routeRegisters []RouteRegisterFunc
+	routeRegMu sync.Mutex
 	// 项目根目录（自动识别，无需配置）
 	projectRoot string
 )
 
-// routeConfig 存储路由组的启用/禁用配置（对应yaml中的routes节点）
-var routeConfig = struct {
-	Routes map[string]RouteConfigItem `yaml:"routes"`
-}{}
-
-// RouteConfigItem 路由组配置项（仅包含启用状态）
-type RouteConfigItem struct {
-	Enabled bool `yaml:"enabled"` // true=启用，false=禁用
-}
+//// routeConfig 存储路由组的启用/禁用配置（对应yaml中的routes节点）
+//var routeConfig = struct {
+//	Routes map[string]RouteConfigItem `yaml:"routes"`
+//}{}
+//
+//// RouteConfigItem 路由组配置项（仅包含启用状态）
+//type RouteConfigItem struct {
+//	Enabled bool `yaml:"enabled"` // true=启用，false=禁用
+//}
 
 type Operation struct {
 	User          string                 `json:"user"`
@@ -73,14 +73,14 @@ type HTTPServer struct {
 
 func init() {
 	RbacClient = rbac.NewRbacClient(config.GetConfigString(utils.CasbinRedisAddrName))
-	// 设置默认值：如果配置文件中没有routes节点，默认所有路由组启用
-	viper.SetDefault("routes", map[string]RouteConfigItem{})
-	// 从配置文件加载routes配置到全局变量
-	if err := viper.UnmarshalKey("routes", &routeConfig.Routes); err != nil {
-		log.Warnf("加载路由组配置失败，将使用默认配置（所有路由组启用）：%v", err)
-		// 初始化空map，避免后续nil指针错误
-		routeConfig.Routes = make(map[string]RouteConfigItem)
-	}
+	//// 设置默认值：如果配置文件中没有routes节点，默认所有路由组启用
+	//viper.SetDefault("routes", map[string]RouteConfigItem{})
+	//// 从配置文件加载routes配置到全局变量
+	//if err := viper.UnmarshalKey("routes", &routeConfig.Routes); err != nil {
+	//	log.Warnf("加载路由组配置失败，将使用默认配置（所有路由组启用）：%v", err)
+	//	// 初始化空map，避免后续nil指针错误
+	//	routeConfig.Routes = make(map[string]RouteConfigItem)
+	//}
 }
 
 //// RegisterRoute 供业务侧注册路由函数（替代直接在init中调用GlobalServer）
@@ -164,7 +164,6 @@ func AutoLoadAllHandlerPackages() {
 		if strings.HasPrefix(entry.Name(), ".") || strings.HasSuffix(entry.Name(), "_test") {
 			continue
 		}
-
 		// 关键：将文件路径转换为Go包路径
 		pkgPath := strings.ReplaceAll(pkgDir, projectRoot+"/", "")
 		pkgPath = strings.ReplaceAll(pkgPath, string(filepath.Separator), "/")
@@ -173,7 +172,6 @@ func AutoLoadAllHandlerPackages() {
 		if moduleName != "" {
 			pkgPath = moduleName + "/" + pkgPath
 		}
-
 		// 动态加载包（触发init执行，无编译参数、无未定义API）
 		loadPackage(pkgPath)
 		loadedCount++
@@ -345,7 +343,9 @@ func InitServer(serviceName string) {
 		GlobalServer.RouteAPI("/ping", "健康检查", []string{"GET"}, []string{utils.UserAnonymous}, false, false, func(c *gin.Context) {
 			c.JSON(200, gin.H{"msg": "pong"})
 		})
-		// 自动扫描路由
+		// 核心1：先注册缓存的路由（解决init时序问题）
+		registerCachedRoutes()
+		// 核心2：自动加载所有路由包
 		AutoLoadAllHandlerPackages()
 		log.Infof("GlobalServer初始化完成：%s", serviceName)
 	}
@@ -421,9 +421,24 @@ func (s *HTTPServer) RouteForRA(path string, tips string, methods []string, role
 }
 
 func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles []string, sso bool, business_approval bool, fn gin.HandlerFunc) {
+	// 如果GlobalServer还未初始化，先缓存路由信息
+	routeCacheMu.Lock()
+	defer routeCacheMu.Unlock()
+	if GlobalServer == nil {
+		log.Debugf("GlobalServer未初始化，缓存路由：%s", path)
+		routeCache = append(routeCache, Route{
+			Url:              path,
+			Tips:             tips,
+			Methods:          methods,
+			DefaultRoles:     roles,
+			Sso:              sso,
+			BusinessApproval: business_approval,
+			handlerFunc:      fn,
+		})
+		return
+	}
 	route := NewRouteCommon(s.service_name, path, tips, methods, roles, sso, business_approval, fn)
-	// 添加业务审批中间件(如果需要)
-	if business_approval && s.approvalHandler != nil {
+	if business_approval && s.approvalHandler != nil { // 添加业务审批中间件(如果需要)
 		aConfig := approval.Config{
 			BusinessApproval: business_approval,
 			Handler:          s.approvalHandler,
@@ -461,6 +476,30 @@ func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles 
 //	// 复用原有RouteAPI逻辑
 //	s.RouteAPI(finalPath, tips, methods, roles, sso, businessApproval, fn)
 //}
+
+// -------------------------- 新增：批量注册缓存的路由 --------------------------
+func registerCachedRoutes() {
+	routeCacheMu.Lock()
+	defer routeCacheMu.Unlock()
+	if GlobalServer == nil || len(routeCache) == 0 {
+		return
+	}
+	log.Infof("开始注册缓存的路由，共 %d 条", len(routeCache))
+	for _, item := range routeCache {
+		GlobalServer.RouteAPI(
+			item.Url,
+			item.Tips,
+			item.Methods,
+			item.DefaultRoles,
+			item.Sso,
+			item.BusinessApproval,
+			item.handlerFunc,
+		)
+	}
+	// 清空缓存
+	routeCache = nil
+	log.Infof("缓存路由注册完成")
+}
 
 // SetApprovalHandler 设置审批处理器
 func (s *HTTPServer) SetApprovalHandler(handler approval.ApprovalHandler) {
