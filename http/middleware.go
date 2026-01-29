@@ -107,19 +107,6 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 			c.Next()
 			//return
 		} else { // 不需要登录
-			if err == nil && token != "" { //
-				//Token expired
-				uid, errP := utils.ParseJWT(token)
-				if errP != nil {
-					log.Warn("Token(%s) expired, %v", token, errP)
-					if sso {
-						c.AbortWithStatus(http.StatusUnauthorized)
-						return
-					}
-				}
-				log.Info("LoginRequiredMiddleware(), uid=%s", uid)
-				SetUser(c, uid)
-			}
 			c.Next()
 		}
 	}
