@@ -1,7 +1,160 @@
 server_name: go-common
 addr: ":8088"
-
 #middleware
-redis_addr: "0.0.0.0:6379"
-
+#redis_addr: "0.0.0.0:6379"
 lldap: "0.0.0.0:32780"
+
+databases:
+  mysql:
+    default:
+      db_name: default_mysql
+      mode: single
+      host: 127.0.0.1
+      port: 3306
+      user: root
+      password: 12345678
+      database: warmcity
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5 # 慢查询阈值5秒（可选，默认3秒）
+      log_mode: info
+  redis:
+    default:
+      db_name: default_redis
+      mode: single       # 单点模式
+      host: 127.0.0.1
+      port: 6379
+      password: 
+      database: 0        # Redis DB索引
+      timeout: 5         # 初始化超时5秒
+      max_pool_size: 100
+      min_pool_size: 10
+  mongo:
+    default:
+      db_name: default_mongo
+      mode: single       # 单点
+      host: 127.0.0.1
+      port: 27017
+      user:
+      password:
+      database: startup_log
+      auth_db:      # 认证库
+      ssl:
+      timeout: 5
+      max_pool_size: 100
+      min_pool_size: 10
+#  redis:
+#    default:
+#      db_name: cluster_redis
+#      mode: cluster      # 集群模式
+#      host: 127.0.0.1:6379,127.0.0.2:6379,127.0.0.3:6379 # 集群节点
+#      password: 123456
+#      database: 0
+#      timeout: 5
+
+
+
+
+
+
+
+
+
+
+
+# 数据库总配置（按类型分层，支持多实例）
+#databases:
+#  # 关系型数据库（MySQL/Postgres/达梦等）
+#  mysql:
+#    master: # 主库实例
+#      db_name: master_mysql
+#      dsn: "" # 优先级最高，为空则自动拼接
+#      mode: single # 新增：single(单点)/cluster(集群)
+#      host: 127.0.0.1
+#      port: 3306
+#      user: root
+#      password: 123456
+#      database: test_db
+#      max_open_conn: 100
+#      max_idle_conn: 10
+#      conn_max_life_time: 300s
+#      log_mode: info
+#      ssl_mode: disable
+#      time_zone: Asia/Shanghai
+#      charset: utf8mb4
+#    slave: # 从库实例（可选）
+#      db_name: slave_mysql
+#      dsn: ""
+#      mode: single
+#      host: 127.0.0.2
+#      port: 3306
+#      user: root
+#      password: 123456
+#      database: test_db
+#      max_open_conn: 50
+#      max_idle_conn: 5
+#      conn_max_life_time: 300s
+#
+#  # MongoDB（支持单点/集群）
+#  mongo:
+#    cluster: # 集群实例
+#      db_name: mongo_cluster
+#      dsn: "mongodb://root:123456@192.168.1.10:27017,192.168.1.11:27017,192.168.1.12:27017/admin?replicaSet=rs0&authSource=admin"
+#      mode: cluster # 明确标识集群
+#      host: "" # 集群场景下可留空
+#      port: 0
+#      user: root
+#      password: 123456
+#      database: test_mongo
+#      max_pool_size: 20
+#      min_pool_size: 5
+#      connect_timeout: 5s
+#      auth_db: admin
+#      ssl_mode: disable
+#    single: # 单点实例
+#      db_name: mongo_single
+#      dsn: ""
+#      mode: single
+#      host: 127.0.0.1
+#      port: 27017
+#      user: root
+#      password: 123456
+#      database: test_mongo
+#      max_pool_size: 10
+#      min_pool_size: 2
+#      connect_timeout: 5s
+#      auth_db: admin
+#
+#  # Redis（支持单点/集群）
+#  redis:
+#    cluster: # 集群实例
+#      db_name: redis_cluster
+#      dsn: "redis://:123456@192.168.1.20:6379,192.168.1.21:6379,192.168.1.22:6379/0?cluster=true"
+#      mode: cluster # 明确标识集群
+#      host: ""
+#      port: 0
+#      user: ""
+#      password: 123456
+#      database: 0 # Redis DB索引
+#      max_pool_size: 20
+#      min_pool_size: 5
+#      connect_timeout: 5s
+#      read_timeout: 3s
+#      write_timeout: 3s
+#      db_index: 0
+#    single: # 单点实例
+#      db_name: redis_single
+#      dsn: ""
+#      mode: single
+#      host: 127.0.0.1
+#      port: 6379
+#      user: ""
+#      password: 123456
+#      database: 0
+#      max_pool_size: 10
+#      min_pool_size: 2
+#      connect_timeout: 5s
+#      read_timeout: 3s
+#      write_timeout: 3s
+#      db_index: 0

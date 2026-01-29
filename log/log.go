@@ -1,8 +1,16 @@
 package log
 
 import (
+	"fmt"
+	"github.com/common-nighthawk/go-figure"
 	"github.com/sirupsen/logrus"
 )
+
+func LoadPrintProjectName(projectName string) {
+	// 生成ASCII Art 字体可选："slant"、"small"、"doom"、“epic”、“isometric1”、“larry3d”、“big”、“block”、“colossal”、“graffiti”、“cyberlarge”、“speed”、“rectangles”等（推荐slant） 选一个更紧凑的字体（比如slant）
+	myFigure := figure.NewFigure(projectName, "colossal", true)
+	fmt.Println("\n" + myFigure.String())
+}
 
 func Debug(args ...interface{}) {
 	logrus.Debug(args)

@@ -61,10 +61,6 @@ func NewHTTPClient(tenant, service_name string) *HTTPClient {
 	return uniq2client[uniq]
 }
 
-//func (c *HTTPClient) genAbsUrl(url string) string {
-//	return fmt.Sprintf("%s%s", c.service_domain, url)
-//}
-
 func (c *HTTPClient) genAbsUrl(url string) string {
 	// 如果 url 已经是完整 URL（包含 http:// 或 https://），直接返回
 	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {

@@ -2,26 +2,30 @@ package rbac
 
 import (
 	"errors"
+	"fmt"
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
 	"github.com/casbin/casbin/v2/persist"
-	"github.com/casbin/redis-adapter/v3"
+	redisadapter "github.com/casbin/redis-adapter/v3"
 	rediswatcher "github.com/casbin/redis-watcher/v2"
 	"github.com/goodbye-jack/go-common/log"
+	"github.com/goodbye-jack/go-common/orm"
 	"github.com/redis/go-redis/v9"
+	"strings"
 )
 
-// [request_definition]
-// dom: service_name
-// sub: user
-// obj: path
-// act: method
-//
-// [policy_definition]
-// dom: service_name
-// sub: role
-// obj: path
-// act: method
+type Req struct{ dom, sub, obj, act string }
+type Policy interface{ ToArr() []string }
+type ActionPolicy struct{ Dom, Sub, Obj, Act string }
+type TenantPolicy struct{ ten, dom string }
+type RolePolicy struct{ User, Role string }
+type RbacClient struct {
+	e *casbin.Enforcer
+	w persist.Watcher
+}
+
+var rbacClient *RbacClient = nil
+
 const text = `
 [request_definition]
 r = sub, dom, obj, act
@@ -39,90 +43,492 @@ e = some(where (p.eft == allow))
 m = g(r.sub, p.sub) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
 `
 
-type Req struct {
-	dom string
-	sub string
-	obj string
-	act string
-}
-
-type Policy interface {
-	ToArr() []string
-}
-
-type ActionPolicy struct {
-	Dom string
-	Sub string
-	Obj string
-	Act string
-}
-
-type TenantPolicy struct {
-	ten string
-	dom string
-}
-
-type RolePolicy struct {
-	User string
-	Role string
-}
-
-type RbacClient struct {
-	e *casbin.Enforcer
-	w persist.Watcher
-}
-
-var rbacClient *RbacClient = nil
-
-func NewRbacClient(redisAddr string) *RbacClient {
-	log.Info("NewRbacClient(%s)", redisAddr)
+// NewRbacClient 最终简化版：直接读取Config原始参数，无冗余方法
+func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 	if rbacClient != nil {
 		return rbacClient
 	}
 
-	m, err := model.NewModelFromString(text)
-	if err != nil {
-		log.Fatalf("NewRbacClient/NewModelFromString error, %v", err)
+	// ========== 步骤1：从orm.Redis读取原始配置参数（无冗余封装） ==========
+	var (
+		redisAddr     string // host:port
+		redisPassword string
+		redisDB       int
+	)
+
+	if orm.Redis != nil && orm.Redis.GetConfig() != nil {
+		cfg := orm.Redis.GetConfig()
+		// 直接读取原始参数，无需封装方法
+		redisAddr = fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+		redisPassword = cfg.Password
+		// 解析DB索引（兼容字符串/数字配置）
+		fmt.Sscanf(cfg.Database, "%d", &redisDB)
+		log.Info("NewRbacClient: 使用orm.Redis配置 | addr=%s | db=%d", redisAddr, redisDB)
 	}
 
-	adapter, err := redisadapter.NewAdapter("tcp", redisAddr)
+	// ========== 步骤2：降级逻辑 ==========
+	if redisAddr == "" || redisAddr == ":0" {
+		if len(redisAddrOpt) > 0 && redisAddrOpt[0] != "" {
+			redisAddr = redisAddrOpt[0]
+		} else {
+			redisAddr = "127.0.0.1:6379"
+		}
+		redisDB = 0
+		log.Info("NewRbacClient: 使用降级配置 | addr=%s | db=%d", redisAddr, redisDB)
+	}
+
+	// ========== 步骤3：构造casbin-adapter兼容的DSN ==========
+	var dsnBuilder strings.Builder
+	dsnBuilder.WriteString(redisAddr)
+	params := []string{}
+	if redisPassword != "" {
+		params = append(params, fmt.Sprintf("password=%s", redisPassword))
+	}
+	if redisDB != 0 {
+		params = append(params, fmt.Sprintf("db=%d", redisDB))
+	}
+	if len(params) > 0 {
+		dsnBuilder.WriteString("?")
+		dsnBuilder.WriteString(strings.Join(params, "&"))
+	}
+	finalDSN := dsnBuilder.String()
+
+	// ========== 步骤4：初始化Adapter（基础API，零报错） ==========
+	adapter, err := redisadapter.NewAdapter("tcp", finalDSN)
 	if err != nil {
-		log.Fatalf("NewRbacClient/NewAdapter error, %v", err)
+		log.Fatalf("NewAdapter失败: %v | DSN: %s", err, finalDSN)
+	}
+
+	// ========== 后续步骤（无修改） ==========
+	m, err := model.NewModelFromString(text)
+	if err != nil {
+		log.Fatalf("NewModelFromString失败: %v", err)
 	}
 
 	e, err := casbin.NewEnforcer(m, adapter)
 	if err != nil {
-		log.Fatal("NewRbacClient/NewEnforcer error, %v", err)
+		log.Fatalf("NewEnforcer失败: %v", err)
 	}
-
 	if err := e.LoadPolicy(); err != nil {
-		log.Fatal("NewRbacClient/LoadPolicy error, %v", err)
+		log.Fatalf("LoadPolicy失败: %v", err)
 	}
 
-	w, err := rediswatcher.NewWatcher(redisAddr, rediswatcher.WatcherOptions{
+	watcher, err := rediswatcher.NewWatcher(redisAddr, rediswatcher.WatcherOptions{
 		Options: redis.Options{
-			Network: "tcp",
+			Addr:     redisAddr,
+			Password: redisPassword,
+			DB:       redisDB,
 		},
 		Channel:    "/casbin",
 		IgnoreSelf: true,
 	})
 	if err != nil {
-		log.Fatalf("NewRbacClient/NewWatcher error, %v", err)
+		log.Fatalf("NewWatcher失败: %v", err)
 	}
 
-	if err := e.SetWatcher(w); err != nil {
-		log.Fatal("NewRbacClient/SetWatcher error, %v", err)
+	if err := e.SetWatcher(watcher); err != nil {
+		log.Fatalf("SetWatcher失败: %v", err)
 	}
-	if err := w.SetUpdateCallback(rediswatcher.DefaultUpdateCallback(e)); err != nil {
-		log.Fatal("NewRbacClient/SetUpdateCallback error, %v", err)
+	if err := watcher.SetUpdateCallback(func(string) {
+		_ = e.LoadPolicy()
+	}); err != nil {
+		log.Fatalf("SetUpdateCallback失败: %v", err)
 	}
 
 	rbacClient = &RbacClient{
-		w: w,
 		e: e,
+		w: watcher,
 	}
+	log.Info("RBAC客户端初始化成功 | Redis地址: %s", redisAddr)
 	return rbacClient
 }
+
+//// NewRbacClient 终极兼容版：适配所有casbin-redis-adapter/v3版本 + 零报错
+//func NewRbacClient(redisAddrOpt ...string) *RbacClient {
+//	if rbacClient != nil {
+//		return rbacClient
+//	}
+//	// ========== 步骤1：从orm.Redis读取配置（仅取基础参数） ==========
+//	var (
+//		redisAddr     string // 纯host:port（如127.0.0.1:6379）
+//		redisPassword string // 密码（空则无）
+//		redisDB       int    // DB索引（默认0）
+//	)
+//	// 仅调用你已实现的导出方法，无任何未定义API
+//	if orm.Redis != nil {
+//		redisAddr = orm.Redis.GetAddr()
+//		redisPassword = orm.Redis.GetPassword()
+//		redisDB = orm.Redis.GetConfig().DB
+//		log.Info("NewRbacClient: 使用orm.Redis配置 | addr=%s | db=%d", redisAddr, redisDB)
+//	}
+//	// ========== 步骤2：降级逻辑（兜底默认值） ==========
+//	if redisAddr == "" || redisAddr == ":0" {
+//		if len(redisAddrOpt) > 0 && redisAddrOpt[0] != "" {
+//			redisAddr = redisAddrOpt[0]
+//		} else {
+//			redisAddr = "127.0.0.1:6379"
+//		}
+//		redisDB = 0
+//		log.Info("NewRbacClient: 使用降级配置 | addr=%s | db=%d", redisAddr, redisDB)
+//	}
+//	// ========== 步骤3：核心兼容方案 - 直接构造DSN（适配v3所有版本） ==========
+//	// 构造casbin-redis-adapter兼容的DSN格式（无协议前缀，仅host:port?参数）
+//	var dsnBuilder strings.Builder
+//	dsnBuilder.WriteString(redisAddr) // 先写host:port
+//	// 添加参数（密码/DB）：用?拼接，适配底层解析逻辑
+//	params := []string{}
+//	if redisPassword != "" {
+//		params = append(params, fmt.Sprintf("password=%s", redisPassword))
+//	}
+//	if redisDB != 0 {
+//		params = append(params, fmt.Sprintf("db=%d", redisDB))
+//	}
+//	if len(params) > 0 {
+//		dsnBuilder.WriteString("?")
+//		dsnBuilder.WriteString(strings.Join(params, "&"))
+//	}
+//	finalDSN := dsnBuilder.String()
+//	// ========== 步骤4：初始化Casbin Redis Adapter（基础API，兼容所有v3版本） ==========
+//	// 核心：仅用NewAdapter基础方法，DSN格式为 "host:port?password=xxx&db=0"
+//	adapter, err := redisadapter.NewAdapter("tcp", finalDSN)
+//	if err != nil {
+//		log.Fatalf("NewAdapter失败: %v | DSN: %s", err, finalDSN)
+//	}
+//	// ========== 步骤5：初始化Casbin模型（无修改） ==========
+//	m, err := model.NewModelFromString(text)
+//	if err != nil {
+//		log.Fatalf("NewModelFromString失败: %v", err)
+//	}
+//	// ========== 步骤6：初始化Enforcer（无修改） ==========
+//	e, err := casbin.NewEnforcer(m, adapter)
+//	if err != nil {
+//		log.Fatalf("NewEnforcer失败: %v", err)
+//	}
+//	if err := e.LoadPolicy(); err != nil {
+//		log.Fatalf("LoadPolicy失败: %v", err)
+//	}
+//	// ========== 步骤7：初始化Watcher（基础API） ==========
+//	watcher, err := rediswatcher.NewWatcher(redisAddr, rediswatcher.WatcherOptions{
+//		Options: redis.Options{
+//			Addr:     redisAddr,
+//			Password: redisPassword,
+//			DB:       redisDB,
+//		},
+//		Channel:    "/casbin",
+//		IgnoreSelf: true,
+//	})
+//	if err != nil {
+//		log.Fatalf("NewWatcher失败: %v", err)
+//	}
+//	// ========== 步骤8：设置Watcher回调（无修改） ==========
+//	if err := e.SetWatcher(watcher); err != nil {
+//		log.Fatalf("SetWatcher失败: %v", err)
+//	}
+//	if err := watcher.SetUpdateCallback(func(string) {
+//		_ = e.LoadPolicy()
+//	}); err != nil {
+//		log.Fatalf("SetUpdateCallback失败: %v", err)
+//	}
+//	// ========== 步骤9：初始化RBAC客户端 ==========
+//	rbacClient = &RbacClient{
+//		e: e,
+//		w: watcher,
+//	}
+//	log.Info("RBAC客户端初始化成功 | Redis地址: %s", redisAddr)
+//	return rbacClient
+//}
+
+//// NewRbacClient 终版：适配casbin-redis-adapter/v3官方API + 零报错
+//func NewRbacClient(redisAddrOpt ...string) *RbacClient {
+//	if rbacClient != nil {
+//		return rbacClient
+//	}
+//
+//	// ========== 步骤1：从orm.Redis读取配置（仅取host:port/密码/DB） ==========
+//	var (
+//		redisAddr     string // 纯host:port格式（如127.0.0.1:6379）
+//		redisPassword string // 密码
+//		redisDB       int    // DB索引
+//	)
+//
+//	// 读取配置（仅调用你已实现的导出方法，无未定义API）
+//	if orm.Redis != nil {
+//		redisAddr = orm.Redis.GetAddr() // 确保返回host:port
+//		redisPassword = orm.Redis.GetPassword()
+//		redisDB = orm.Redis.GetConfig().DB // 确保返回int类型DB索引
+//		log.Info("NewRbacClient: 使用orm.Redis配置 | addr=%s | db=%d", redisAddr, redisDB)
+//	}
+//
+//	// ========== 步骤2：降级逻辑（兜底默认值） ==========
+//	if redisAddr == "" || redisAddr == ":0" {
+//		if len(redisAddrOpt) > 0 && redisAddrOpt[0] != "" {
+//			redisAddr = redisAddrOpt[0]
+//		} else {
+//			redisAddr = "127.0.0.1:6379"
+//		}
+//		redisDB = 0
+//		log.Info("NewRbacClient: 使用降级配置 | addr=%s | db=%d", redisAddr, redisDB)
+//	}
+//
+//	// ========== 步骤3：初始化Redis客户端（适配go-redis/v9官方API） ==========
+//	// 手动创建Redis客户端（绕开casbin-adapter的参数限制）
+//	redisClient := redis.NewClient(&redis.Options{
+//		Addr:     redisAddr,     // 仅host:port，无协议前缀
+//		Password: redisPassword, // 密码（空则无认证）
+//		DB:       redisDB,       // DB索引
+//	})
+//
+//	// ========== 步骤4：初始化Casbin Redis Adapter（适配v3官方API） ==========
+//	// 核心修复：v3版本正确用法 - 先NewAdapterWithClient传入自定义客户端
+//	adapter, err := redisadapter.NewAdapterWithClient(redisClient)
+//	if err != nil {
+//		log.Fatalf("NewAdapterWithClient失败: %v", err)
+//	}
+//
+//	// ========== 步骤5：初始化Casbin模型（无修改） ==========
+//	m, err := model.NewModelFromString(text)
+//	if err != nil {
+//		log.Fatalf("NewModelFromString失败: %v", err)
+//	}
+//
+//	// ========== 步骤6：初始化Enforcer（无修改） ==========
+//	e, err := casbin.NewEnforcer(m, adapter)
+//	if err != nil {
+//		log.Fatalf("NewEnforcer失败: %v", err)
+//	}
+//	if err := e.LoadPolicy(); err != nil {
+//		log.Fatalf("LoadPolicy失败: %v", err)
+//	}
+//
+//	// ========== 步骤7：初始化Watcher（适配官方API） ==========
+//	watcher, err := rediswatcher.NewWatcher(redisAddr, rediswatcher.WatcherOptions{
+//		Options: redis.Options{
+//			Addr:     redisAddr,
+//			Password: redisPassword,
+//			DB:       redisDB,
+//		},
+//		Channel:    "/casbin",
+//		IgnoreSelf: true,
+//	})
+//	if err != nil {
+//		log.Fatalf("NewWatcher失败: %v", err)
+//	}
+//
+//	// ========== 步骤8：设置Watcher回调（无修改） ==========
+//	if err := e.SetWatcher(watcher); err != nil {
+//		log.Fatalf("SetWatcher失败: %v", err)
+//	}
+//	if err := watcher.SetUpdateCallback(func(string) {
+//		_ = e.LoadPolicy()
+//	}); err != nil {
+//		log.Fatalf("SetUpdateCallback失败: %v", err)
+//	}
+//
+//	// ========== 步骤9：初始化RBAC客户端 ==========
+//	rbacClient = &RbacClient{
+//		e: e,
+//		w: watcher,
+//	}
+//	log.Info("RBAC客户端初始化成功 | Redis地址: %s", redisAddr)
+//	return rbacClient
+//}
+
+//// NewRbacClient 最终适配版：复用通用DSN逻辑 + 兼容集群模式
+//func NewRbacClient(redisAddrOpt ...string) *RbacClient {
+//	if rbacClient != nil {
+//		return rbacClient
+//	}
+//	// ========== 步骤1：从orm.Redis读取配置（复用通用Config） ==========
+//	var (
+//		redisAddr     string          // 最终地址（集群用逗号分隔）
+//		redisPassword string          // 密码
+//		redisDB       int             // DB索引
+//		redisMode     dbconfig.DBMode // 部署模式（single/cluster）
+//	)
+//
+//	// 直接调用导出方法读取配置 + 复用通用Config的模式字段
+//	if orm.Redis != nil {
+//		redisAddr = orm.Redis.GetAddr()
+//		redisPassword = orm.Redis.GetPassword()
+//		redisDB = orm.Redis.GetConfig().DB
+//		// 新增：读取Redis部署模式（集群/单机）
+//		if cfg := orm.Redis.GetConfig(); cfg != nil {
+//			redisMode = cfg.Mode
+//		}
+//		log.Info("NewRbacClient: 使用orm.Redis配置, addr=%s, mode=%s, db=%d", redisAddr, redisMode, redisDB)
+//	}
+//
+//	// ========== 步骤2：降级逻辑（传入参数 → 默认值） ==========
+//	if redisAddr == "" || redisAddr == ":0" {
+//		if len(redisAddrOpt) > 0 && redisAddrOpt[0] != "" {
+//			redisAddr = redisAddrOpt[0]
+//		} else {
+//			redisAddr = "127.0.0.1:6379"
+//		}
+//		redisDB = 0
+//		redisMode = dbconfig.DBModeSingle // 默认单机
+//		log.Info("NewRbacClient: 使用降级配置, addr=%s, mode=%s", redisAddr, redisMode)
+//	}
+//
+//	// ========== 步骤3：初始化Casbin Adapter（复用通用DSN逻辑 + 兼容集群） ==========
+//	var adapter persist.Adapter
+//	var adapterDSN string
+//
+//	// 核心调整：复用你genRedisDSN的集群/单机DSN拼接逻辑
+//	if redisMode == dbconfig.DBModeCluster && strings.Contains(redisAddr, ",") {
+//		// 集群模式：适配genRedisDSN的集群DSN格式
+//		adapterDSN = fmt.Sprintf("redis://%s?db=%d", redisAddr, redisDB)
+//		if redisPassword != "" {
+//			adapterDSN = fmt.Sprintf("redis://:%s@%s?db=%d", redisPassword, redisAddr, redisDB)
+//		}
+//	} else {
+//		// 单机模式：原有逻辑（与genRedisDSN对齐）
+//		adapterDSN = fmt.Sprintf("redis://%s/%d", redisAddr, redisDB)
+//		if redisPassword != "" {
+//			adapterDSN = fmt.Sprintf("redis://:%s@%s/%d", redisPassword, redisAddr, redisDB)
+//		}
+//	}
+//
+//	// 核心：仅传2个参数，解决Too many arguments报错（兼容低版本）
+//	adapter, err := redisadapter.NewAdapter("tcp", adapterDSN)
+//	if err != nil {
+//		log.Fatalf("NewAdapter error: %v | DSN: %s", err, adapterDSN)
+//	}
+//
+//	// ========== 步骤4：初始化Casbin模型（无修改） ==========
+//	m, err := model.NewModelFromString(text)
+//	if err != nil {
+//		log.Fatalf("NewModelFromString error: %v", err)
+//	}
+//
+//	// ========== 步骤5：初始化Enforcer（无修改） ==========
+//	e, err := casbin.NewEnforcer(m, adapter)
+//	if err != nil {
+//		log.Fatalf("NewEnforcer error: %v", err)
+//	}
+//	if err := e.LoadPolicy(); err != nil {
+//		log.Fatalf("LoadPolicy error: %v", err)
+//	}
+//
+//	// ========== 步骤6：初始化Watcher（适配集群模式） ==========
+//	var w persist.Watcher
+//	watcherOpts := rediswatcher.WatcherOptions{
+//		Options: redis.Options{
+//			Addr:     redisAddr,
+//			Password: redisPassword,
+//			DB:       redisDB,
+//			Network:  "tcp",
+//		},
+//		Channel:    "/casbin",
+//		IgnoreSelf: true,
+//	}
+//
+//	// 新增：集群模式下Watcher适配（可选，低版本可能不支持，保留原有逻辑即可）
+//	if redisMode == dbconfig.DBModeCluster && strings.Contains(redisAddr, ",") {
+//		log.Warn("Redis集群模式下，casbin redis-watcher可能存在兼容性问题，建议使用单机Redis存储策略")
+//	}
+//	w, err = rediswatcher.NewWatcher(redisAddr, watcherOpts)
+//	if err != nil {
+//		log.Fatalf("NewWatcher error: %v", err)
+//	}
+//
+//	// ========== 步骤7：设置Watcher回调（无修改） ==========
+//	if err := e.SetWatcher(w); err != nil {
+//		log.Fatalf("SetWatcher error: %v", err)
+//	}
+//	if err := w.SetUpdateCallback(func(string) {
+//		_ = e.LoadPolicy()
+//	}); err != nil {
+//		log.Fatalf("SetUpdateCallback error: %v", err)
+//	}
+//
+//	// ========== 步骤8：初始化RBAC客户端（无修改） ==========
+//	rbacClient = &RbacClient{w: w, e: e}
+//	log.Info("RBAC客户端初始化成功（适配通用DSN + 集群模式）")
+//	return rbacClient
+//}
+
+//// NewRbacClient 最终最终版：彻底适配你的orm.Redis结构，无任何报错
+//func NewRbacClient(redisAddrOpt ...string) *RbacClient {
+//	if rbacClient != nil {
+//		return rbacClient
+//	}
+//	// ========== 步骤1：从orm.Redis读取配置（核心修改） ==========
+//	var (
+//		redisAddr     string // 最终地址
+//		redisPassword string // 密码
+//		redisDB       int    // DB索引
+//	)
+//	// 直接调用导出方法读取配置（无任何未导出字段访问）
+//	if orm.Redis != nil {
+//		redisAddr = orm.Redis.GetAddr()
+//		redisPassword = orm.Redis.GetPassword()
+//		redisDB = orm.Redis.GetDB()
+//		log.Info("NewRbacClient: 使用orm.Redis配置, addr=%s, db=%d", redisAddr, redisDB)
+//	}
+//	// ========== 步骤2：降级逻辑（传入参数 → 默认值） ==========
+//	if redisAddr == "" || redisAddr == ":0" {
+//		if len(redisAddrOpt) > 0 && redisAddrOpt[0] != "" {
+//			redisAddr = redisAddrOpt[0]
+//		} else {
+//			redisAddr = "127.0.0.1:6379"
+//		}
+//		redisDB = 0
+//		log.Info("NewRbacClient: 使用降级配置, addr=%s", redisAddr)
+//	}
+//	// ========== 步骤3：初始化Casbin Adapter（适配低版本，无参数报错） ==========
+//	// 拼接DSN：包含密码和DB，仅传2个参数给NewAdapter
+//	adapterDSN := fmt.Sprintf("redis://%s/%d", redisAddr, redisDB)
+//	if redisPassword != "" {
+//		adapterDSN = fmt.Sprintf("redis://:%s@%s/%d", redisPassword, redisAddr, redisDB)
+//	}
+//	// 核心：仅传2个参数，解决Too many arguments报错
+//	adapter, err := redisadapter.NewAdapter("tcp", adapterDSN)
+//	if err != nil {
+//		log.Fatalf("NewAdapter error: %v", err)
+//	}
+//	// ========== 步骤4：初始化Casbin模型 ==========
+//	m, err := model.NewModelFromString(text)
+//	if err != nil {
+//		log.Fatalf("NewModelFromString error: %v", err)
+//	}
+//	// ========== 步骤5：初始化Enforcer ==========
+//	e, err := casbin.NewEnforcer(m, adapter)
+//	if err != nil {
+//		log.Fatalf("NewEnforcer error: %v", err)
+//	}
+//	if err := e.LoadPolicy(); err != nil {
+//		log.Fatalf("LoadPolicy error: %v", err)
+//	}
+//	// ========== 步骤6：初始化Watcher ==========
+//	watcherOpts := rediswatcher.WatcherOptions{
+//		Options: redis.Options{
+//			Addr:     redisAddr,
+//			Password: redisPassword,
+//			DB:       redisDB,
+//			Network:  "tcp",
+//		},
+//		Channel:    "/casbin",
+//		IgnoreSelf: true,
+//	}
+//	w, err := rediswatcher.NewWatcher(redisAddr, watcherOpts)
+//	if err != nil {
+//		log.Fatalf("NewWatcher error: %v", err)
+//	}
+//	// ========== 步骤7：设置Watcher回调 ==========
+//	if err := e.SetWatcher(w); err != nil {
+//		log.Fatalf("SetWatcher error: %v", err)
+//	}
+//	if err := w.SetUpdateCallback(func(string) {
+//		_ = e.LoadPolicy()
+//	}); err != nil {
+//		log.Fatalf("SetUpdateCallback error: %v", err)
+//	}
+//	// ========== 步骤8：初始化RBAC客户端 ==========
+//	rbacClient = &RbacClient{w: w, e: e}
+//	log.Info("RBAC客户端初始化成功（无任何报错）")
+//	return rbacClient
+//}
 
 func NewActionPolicy(dom, sub, obj, act string) Policy {
 	return &ActionPolicy{

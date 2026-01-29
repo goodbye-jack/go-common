@@ -6,6 +6,7 @@ import (
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/rbac"
 	"github.com/goodbye-jack/go-common/utils"
+	"strings"
 )
 
 type Route struct {
@@ -18,6 +19,11 @@ type Route struct {
 	handlerFunc      gin.HandlerFunc   // 主处理函数
 	BusinessApproval bool              // 是否需要业务审批
 	middlewares      []gin.HandlerFunc // 中间件链(新增)
+}
+
+// GenUniqueKey 生成路由唯一键（URL+Method）
+func (m *Route) GenUniqueKey(method string) string {
+	return fmt.Sprintf("%s-%s", strings.TrimSuffix(m.Url, "/"), strings.ToUpper(method))
 }
 
 var RoleMapping = map[string][]string{}
@@ -51,13 +57,12 @@ func NewRoute(service_name string, url string, tips string, methods []string, ro
 		log.Fatalf("the role %v is invalid", role)
 	}
 	return &Route{
-		ServiceName:  service_name,
-		Tips:         tips,
-		Sso:          sso,
-		Url:          url,
-		Methods:      methods,
-		DefaultRoles: RoleMapping[role],
-		//DefaultRoles:     newRoles,
+		ServiceName:      service_name,
+		Tips:             tips,
+		Sso:              sso,
+		Url:              url,
+		Methods:          methods,
+		DefaultRoles:     RoleMapping[role],
 		handlerFunc:      handlerFunc,
 		BusinessApproval: business_approval,
 		middlewares:      []gin.HandlerFunc{}, // 初始化空中间件链
