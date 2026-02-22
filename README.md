@@ -40,4 +40,14 @@ func main() {
 }
 ```
 
-$go run main.go
+$ go run main.go
+
+
+# How to Test
+
+```
+
+GOCACHE=/tmp go test ./ldap
+GOCACHE=/tmp OPENLDAP_TEST=1 go test ./ldap -run TestOpenLDAPIntegration
+
+```

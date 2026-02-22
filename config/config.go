@@ -64,3 +64,4 @@ func init() {
 // 保留原有读取方法
 func GetConfigString(name string) string { return viper.GetString(name) }
 func GetConfigInt(name string) int       { return viper.GetInt(name) }
+func GetConfigBool(name string) bool     { return viper.GetBool(name) }

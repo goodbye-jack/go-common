@@ -42,34 +42,73 @@ func (e LdapDeleteError) Error() string {
 	return fmt.Sprintf("delete %s(%s) error", e.Type, e.ID)
 }
 
-type User struct {
-	ID          string  `json:"id"`
-	Email       string  `json:"email"`
-	DisplayName string  `json:"displayName"`
-	FirstName   string  `json:"firstName"`
-	LastName    string  `json:"lastName"`
-	Avatar      string  `json:"avatar"`
-	Groups      []Group `json:"groups,omitempty"`
+type LdapNotFoundError struct {
+	ID   interface{}
+	Type string
 }
 
-type Group struct {
-	ID          int    `json:"id"`
-	UUID        string `json:"uuid"`
-	DisplayName string `json:"displayName"`
-	Users       []User `json:"users,omitempty"`
+func (e LdapNotFoundError) Error() string {
+	return fmt.Sprintf("%s(%s) not found", e.Type, e.ID)
+}
+
+type OrgUser struct {
+	DN            string   `json:"dn"`
+	UID           string   `json:"uid"`
+	Password      string   `json:"password"`
+	Phone         string   `json:"phone"`
+	Address       string   `json:"address"`
+	Gender        string   `json:"gender"`
+	Birthday      string   `json:"birthday"`
+	Email         string   `json:"email"`
+	DisplayName   string   `json:"displayName"`
+	FirstName     string   `json:"firstName"`
+	LastName      string   `json:"lastName"`
+	EmployeeNo    string   `json:"employeeNo"`
+	Status        string   `json:"status"`
+	DeptCodes     []string `json:"deptCodes"`
+	PositionCodes []string `json:"positionCodes"`
+}
+
+type Department struct {
+	DN        string `json:"dn"`
+	Code      string `json:"code"`
+	Name      string `json:"name"`
+	ParentDN  string `json:"parentDn"`
+	ManagerDN string `json:"managerDn"`
+	Status    string `json:"status"`
+}
+
+type Position struct {
+	DN     string `json:"dn"`
+	Code   string `json:"code"`
+	Name   string `json:"name"`
+	DeptDN string `json:"deptDn"`
+	Status string `json:"status"`
 }
 
 type Ldap interface {
-	GetUser(ctx context.Context, id string) (*User, error)
-	AddUser(ctx context.Context, u *User) error
-	UpdateUser(ctx context.Context, u *User) error
-	DeleteUser(ctx context.Context, u *User) error
-	ListUser(ctx context.Context) ([]*User, error)
-	GetGroup(ctx context.Context, id string) (*Group, error)
-	AddGroup(ctx context.Context, g *Group) error
-	UpdateGroup(ctx context.Context, g *Group) error
-	DeleteGroup(ctx context.Context, g *Group) error
-	ListGroup(ctx context.Context) ([]*Group, error)
-	JoinGroup(ctx context.Context, u *User, g *Group) error
-	QuitGroup(ctx context.Context, u *User, g *Group) error
+	GetUser(ctx context.Context, uid string) (*OrgUser, error)
+	AddUser(ctx context.Context, u *OrgUser) error
+	UpdateUser(ctx context.Context, u *OrgUser) error
+	DeleteUser(ctx context.Context, uid string) error
+	ListUser(ctx context.Context) ([]*OrgUser, error)
+
+	GetDepartment(ctx context.Context, code string) (*Department, error)
+	AddDepartment(ctx context.Context, d *Department) error
+	UpdateDepartment(ctx context.Context, d *Department) error
+	DeleteDepartment(ctx context.Context, code string) error
+	ListDepartment(ctx context.Context) ([]*Department, error)
+
+	GetPosition(ctx context.Context, code string) (*Position, error)
+	AddPosition(ctx context.Context, p *Position) error
+	UpdatePosition(ctx context.Context, p *Position) error
+	DeletePosition(ctx context.Context, code string) error
+	ListPosition(ctx context.Context) ([]*Position, error)
+
+	AddUserDepartments(ctx context.Context, uid string, deptCodes []string) error
+	RemoveUserDepartments(ctx context.Context, uid string, deptCodes []string) error
+	AddUserPositions(ctx context.Context, uid string, positionCodes []string) error
+	RemoveUserPositions(ctx context.Context, uid string, positionCodes []string) error
+
+	ValidateUser(ctx context.Context, phone, password string) (*OrgUser, error)
 }

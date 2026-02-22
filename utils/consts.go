@@ -12,9 +12,6 @@ const (
 	RoleMuseumOffice     = "MUSEUM_OFFICE_ROLE"     // 博物馆处角色
 	UserAnonymous        = "anonymous"              //not login
 	TenantAnonymous      = ""
-	LLDapLoginURL        = "/auth/simple/login"
-	LLDapRefreshTokenURL = "/auth/refresh"
-	LLDapGraphURL        = "/api/graphql"
 	TenantContextName    = "ContextTenant"
 	TenantHeaderName     = "X-Tenant"
 	CasbinRedisAddrName  = "redis_addr"
