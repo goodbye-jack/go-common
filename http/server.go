@@ -82,7 +82,7 @@ func (s *HTTPServer) RegisterCollectedRoutes() {
 				continue
 			}
 			// 调用RouteAPI注册（内部已二次校验）
-			s.RouteAPI(meta.Url, meta.Tips, []string{method}, meta.DefaultRoles, meta.Sso, meta.BusinessApproval, meta.handlerFunc)
+			s.RouteAPI(meta.Url, meta.Tips, []string{method}, meta.DefaultRoles, meta.Resource, meta.Action, meta.Sso, meta.BusinessApproval, meta.handlerFunc)
 			successCount++
 		}
 	}
@@ -96,7 +96,7 @@ func InitServer(serviceName string) {
 	if GlobalServer == nil {
 		GlobalServer = NewHTTPServer(serviceName)
 		// 默认/ping路由
-		GlobalServer.RouteAPI("/ping", "健康检查", []string{"GET"}, []string{utils.UserAnonymous}, false, false, func(c *gin.Context) {
+		GlobalServer.RouteAPI("/ping", "健康检查", []string{"GET"}, []string{utils.UserAnonymous}, "", "", false, false, func(c *gin.Context) {
 			c.JSON(200, gin.H{"msg": "pong"})
 		})
 		GlobalServer.RegisterCollectedRoutes()
@@ -106,7 +106,7 @@ func InitServer(serviceName string) {
 
 func NewHTTPServer(service_name string) *HTTPServer {
 	routes := []*Route{
-		NewRoute(service_name, "/ping", "健康检查", []string{"GET"}, utils.RoleIdle, false, false, func(c *gin.Context) {
+		NewRoute(service_name, "/ping", "健康检查", []string{"GET"}, utils.RoleIdle, "", "", false, false, func(c *gin.Context) {
 			c.String(http.StatusOK, "Pong")
 		}),
 	}
@@ -148,7 +148,7 @@ func (s *HTTPServer) MarkRouteRegistered(url, method string) {
 }
 
 // PreloadRouteAPI 业务侧init中调用，仅收集路由元信息，不注册（无任何依赖，可在init中安全调用）
-func PreloadRouteAPI(url, tips string, methods []string, defaultRoles []string, sso bool, businessApproval bool, handlerFunc gin.HandlerFunc) {
+func PreloadRouteAPI(url, tips string, methods []string, defaultRoles []string, resource string, action string, sso bool, businessApproval bool, handlerFunc gin.HandlerFunc) {
 	routeMetaCache.Lock()
 	defer routeMetaCache.Unlock()
 	for _, method := range methods { // 遍历HTTP方法，生成唯一键去重
@@ -164,6 +164,8 @@ func PreloadRouteAPI(url, tips string, methods []string, defaultRoles []string, 
 		Tips:             tips,
 		Methods:          methods,
 		DefaultRoles:     defaultRoles,
+		Resource:         resource,
+		Action:           action,
 		Sso:              sso,
 		BusinessApproval: businessApproval,
 		handlerFunc:      handlerFunc,
@@ -171,23 +173,23 @@ func PreloadRouteAPI(url, tips string, methods []string, defaultRoles []string, 
 	log.Debugf("[路由预收集] 已收集路由：%s %s", methods, url)
 }
 
-func (s *HTTPServer) Route(path string, methods []string, role string, sso bool, fn gin.HandlerFunc) {
+func (s *HTTPServer) Route(path string, methods []string, role string, resource string, action string, sso bool, fn gin.HandlerFunc) {
 	if len(methods) == 0 {
 		methods = append(methods, "GET")
 	}
-	s.routes = append(s.routes, NewRoute(s.service_name, path, "", methods, role, sso, false, fn))
+	s.routes = append(s.routes, NewRoute(s.service_name, path, "", methods, role, resource, action, sso, false, fn))
 }
 
 // RouteForRA 鉴定专用router,携带日志记录,明确角色
-func (s *HTTPServer) RouteForRA(path string, tips string, methods []string, roles []string, sso bool, fn gin.HandlerFunc) {
+func (s *HTTPServer) RouteForRA(path string, tips string, methods []string, roles []string, resource string, action string, sso bool, fn gin.HandlerFunc) {
 	if len(methods) == 0 {
 		methods = append(methods, "GET")
 	}
-	s.routes = append(s.routes, NewRouteForRA(s.service_name, path, tips, methods, roles, sso, false, fn))
+	s.routes = append(s.routes, NewRouteForRA(s.service_name, path, tips, methods, roles, resource, action, sso, false, fn))
 }
 
-func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles []string, sso bool, business_approval bool, fn gin.HandlerFunc) {
-	route := NewRouteCommon(s.service_name, path, tips, methods, roles, sso, business_approval, fn)
+func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles []string, resource string, action string, sso bool, business_approval bool, fn gin.HandlerFunc) {
+	route := NewRouteCommon(s.service_name, path, tips, methods, roles, resource, action, sso, business_approval, fn)
 	if business_approval && s.approvalHandler != nil { // 添加业务审批中间件(如果需要)
 		aConfig := approval.Config{
 			BusinessApproval: business_approval,
@@ -249,7 +251,8 @@ func (s *HTTPServer) Prepare() {
 		log.Infof("路由%d：path=%s, methods=%v, roles=%v", i+1, route.Url, route.Methods, route.DefaultRoles)
 		policies = append(policies, route.ToRbacPolicy()...)
 	}
-	RbacClient.AddActionPolicies(policies)                              // 2. 添加RBAC策略
+	_ = RbacClient.DeletePoliciesByService(s.service_name)               // 2. 清理旧策略
+	RbacClient.AddActionPolicies(policies)                               // 3. 添加RBAC策略
 	s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"}) // 3. 设置全局中间件(注意顺序)
 	// 4. 全局中间件(作用于所有路由)
 	// 先注册用户自定义额外中间件，再注册内置中间件，确保用户安全中间件可最早生效

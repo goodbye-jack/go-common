@@ -16,6 +16,9 @@ type Route struct {
 	Url              string            // 路由路径
 	Methods          []string          // HTTP方法(GET,POST等)
 	DefaultRoles     []string          // 所需角色映射
+	Resource         string            // 资源名称
+	Action           string            // 操作(read/write)
+	InternalRole     string            // internal.<resource>.<action>
 	handlerFunc      gin.HandlerFunc   // 主处理函数
 	BusinessApproval bool              // 是否需要业务审批
 	middlewares      []gin.HandlerFunc // 中间件链(新增)
@@ -49,12 +52,16 @@ func init() {
 	RoleMappingPrecise[utils.UserAnonymous] = utils.UserAnonymous
 }
 
-func NewRoute(service_name string, url string, tips string, methods []string, role string, sso bool, business_approval bool, handlerFunc gin.HandlerFunc) *Route {
+func NewRoute(service_name string, url string, tips string, methods []string, role string, resource string, action string, sso bool, business_approval bool, handlerFunc gin.HandlerFunc) *Route {
 	if len(methods) == 0 {
 		log.Fatal("NewRoute methods is empty")
 	}
 	if _, ok := RoleMapping[role]; !ok {
 		log.Fatalf("the role %v is invalid", role)
+	}
+	internalRole, err := rbac.EnsureInternalRole(resource, action)
+	if err != nil {
+		log.Fatalf("ensure internal role error, %v", err)
 	}
 	return &Route{
 		ServiceName:      service_name,
@@ -63,13 +70,16 @@ func NewRoute(service_name string, url string, tips string, methods []string, ro
 		Url:              url,
 		Methods:          methods,
 		DefaultRoles:     RoleMapping[role],
+		Resource:         resource,
+		Action:           action,
+		InternalRole:     internalRole,
 		handlerFunc:      handlerFunc,
 		BusinessApproval: business_approval,
 		middlewares:      []gin.HandlerFunc{}, // 初始化空中间件链
 	}
 }
 
-func NewRouteForRA(serviceName string, url string, tips string, methods []string, roles []string, sso bool, businessApproval bool, handlerFunc gin.HandlerFunc) *Route {
+func NewRouteForRA(serviceName string, url string, tips string, methods []string, roles []string, resource string, action string, sso bool, businessApproval bool, handlerFunc gin.HandlerFunc) *Route {
 	if len(methods) == 0 {
 		log.Fatal("NewRoute methods is empty")
 	}
@@ -80,6 +90,10 @@ func NewRouteForRA(serviceName string, url string, tips string, methods []string
 			newRoles = append(newRoles, role)
 		}
 	}
+	internalRole, err := rbac.EnsureInternalRole(resource, action)
+	if err != nil {
+		log.Fatalf("ensure internal role error, %v", err)
+	}
 	return &Route{
 		ServiceName:      serviceName,
 		Tips:             tips,
@@ -87,13 +101,16 @@ func NewRouteForRA(serviceName string, url string, tips string, methods []string
 		Url:              url,
 		Methods:          methods,
 		DefaultRoles:     newRoles,
+		Resource:         resource,
+		Action:           action,
+		InternalRole:     internalRole,
 		handlerFunc:      handlerFunc,
 		BusinessApproval: businessApproval,
 		middlewares:      []gin.HandlerFunc{}, // 初始化空中间件链
 	}
 }
 
-func NewRouteCommon(serviceName string, url string, tips string, methods []string, roles []string, sso bool, businessApproval bool, handlerFunc gin.HandlerFunc) *Route {
+func NewRouteCommon(serviceName string, url string, tips string, methods []string, roles []string, resource string, action string, sso bool, businessApproval bool, handlerFunc gin.HandlerFunc) *Route {
 	if len(methods) == 0 {
 		log.Fatal("NewRoute methods is empty")
 	}
@@ -104,6 +121,10 @@ func NewRouteCommon(serviceName string, url string, tips string, methods []strin
 			newRoles = append(newRoles, role)
 		}
 	}
+	internalRole, err := rbac.EnsureInternalRole(resource, action)
+	if err != nil {
+		log.Fatalf("ensure internal role error, %v", err)
+	}
 	return &Route{
 		ServiceName:      serviceName,
 		Tips:             tips,
@@ -111,6 +132,9 @@ func NewRouteCommon(serviceName string, url string, tips string, methods []strin
 		Url:              url,
 		Methods:          methods,
 		DefaultRoles:     newRoles,
+		Resource:         resource,
+		Action:           action,
+		InternalRole:     internalRole,
 		handlerFunc:      handlerFunc,
 		BusinessApproval: businessApproval,
 		middlewares:      []gin.HandlerFunc{}, // 初始化空中间件链
@@ -149,6 +173,13 @@ func (r *Route) ToSso() ([]string, []string) {
 func (r *Route) ToRbacPolicy() []rbac.Policy {
 	var ans []rbac.Policy
 	for _, method := range r.Methods {
+		if r.InternalRole != "" {
+			ans = append(
+				ans,
+				rbac.NewActionPolicy(r.ServiceName, r.InternalRole, r.Url, method),
+			)
+			continue
+		}
 		if len(r.DefaultRoles) == 0 {
 			ans = append(
 				ans,

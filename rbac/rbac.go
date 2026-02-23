@@ -724,3 +724,67 @@ func (c *RbacClient) Enforce(r *Req) (bool, error) {
 	log.Info("Enforce(%v) result , %v", *r, ok)
 	return ok, nil
 }
+
+func (c *RbacClient) DeletePoliciesByService(service string) error {
+	removed, err := c.e.RemoveFilteredPolicy(1, service)
+	if err != nil {
+		log.Error("DeletePoliciesByService(%s) error, %v", service, err)
+		return err
+	}
+	log.Info("DeletePoliciesByService(%s) removed=%v", service, removed)
+	if removed {
+		return c.save()
+	}
+	return nil
+}
+
+func (c *RbacClient) AddGroupingPolicy(sub, role string) error {
+	added, err := c.e.AddGroupingPolicy(sub, role)
+	if err != nil {
+		log.Error("AddGroupingPolicy(%s,%s) error, %v", sub, role, err)
+		return err
+	}
+	if added {
+		return c.save()
+	}
+	return nil
+}
+
+func (c *RbacClient) RemoveGroupingPoliciesForSubject(sub string) error {
+	removed, err := c.e.RemoveFilteredGroupingPolicy(0, sub)
+	if err != nil {
+		log.Error("RemoveGroupingPoliciesForSubject(%s) error, %v", sub, err)
+		return err
+	}
+	if removed {
+		return c.save()
+	}
+	return nil
+}
+
+func (c *RbacClient) RemoveGroupingPoliciesForRole(role string) error {
+	removed, err := c.e.RemoveFilteredGroupingPolicy(1, role)
+	if err != nil {
+		log.Error("RemoveGroupingPoliciesForRole(%s) error, %v", role, err)
+		return err
+	}
+	if removed {
+		return c.save()
+	}
+	return nil
+}
+
+func (c *RbacClient) GetRolesForSubject(sub string) ([]string, error) {
+	policies, err := c.e.GetFilteredGroupingPolicy(0, sub)
+	if err != nil {
+		log.Error("GetRolesForSubject(%s) error, %v", sub, err)
+		return nil, err
+	}
+	roles := make([]string, 0, len(policies))
+	for _, item := range policies {
+		if len(item) >= 2 {
+			roles = append(roles, item[1])
+		}
+	}
+	return roles, nil
+}
