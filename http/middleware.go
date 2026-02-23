@@ -40,6 +40,10 @@ func RbacMiddleware(serviceName string) gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		if strings.HasSuffix(c.Request.URL.Path, "login") {
+			c.Next()
+			return
+		}
 		user := GetUser(c)
 		req := rbac.NewReq(
 			user,
