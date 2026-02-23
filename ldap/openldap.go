@@ -683,6 +683,9 @@ func (o *OpenLDAP) AddDepartment(ctx context.Context, d *Department) error {
 	if err != nil {
 		return err
 	}
+	if baseCode := o.deptBaseCode(); baseCode != "" && strings.EqualFold(nd.Code, baseCode) {
+		return LdapParamsError{Params: []string{"code"}}
+	}
 	return o.withConn(func(conn *ldap.Conn) error {
 		if err := o.ensureUnique(conn, o.cfg.deptDN(), attrOU, nd.Code); err != nil {
 			return err
@@ -715,6 +718,9 @@ func (o *OpenLDAP) UpdateDepartment(ctx context.Context, d *Department) error {
 	nd, err := normalizeDepartment(d)
 	if err != nil {
 		return err
+	}
+	if baseCode := o.deptBaseCode(); baseCode != "" && strings.EqualFold(nd.Code, baseCode) {
+		return LdapParamsError{Params: []string{"code"}}
 	}
 	return o.withConn(func(conn *ldap.Conn) error {
 		if err := o.ensureDNExists(conn, nd.ParentDN); err != nil {
@@ -768,8 +774,15 @@ func (o *OpenLDAP) ListDepartment(ctx context.Context) ([]*Department, error) {
 		if err != nil {
 			return err
 		}
+		baseDN := strings.ToLower(o.cfg.deptDN())
 		out = make([]*Department, 0, len(res.Entries))
 		for _, entry := range res.Entries {
+			if entry == nil {
+				continue
+			}
+			if strings.ToLower(entry.DN) == baseDN {
+				continue
+			}
 			out = append(out, o.entryToDepartment(entry))
 		}
 		return nil
@@ -809,6 +822,20 @@ func (o *OpenLDAP) entryToDepartment(entry *ldap.Entry) *Department {
 		ManagerDN: managerDN,
 		Status:    "",
 	}
+}
+
+func (o *OpenLDAP) deptBaseCode() string {
+	dn := o.cfg.deptDN()
+	parsed, err := ldap.ParseDN(dn)
+	if err != nil || len(parsed.RDNs) == 0 || len(parsed.RDNs[0].Attributes) == 0 {
+		return ""
+	}
+	for _, attr := range parsed.RDNs[0].Attributes {
+		if strings.EqualFold(attr.Type, attrOU) {
+			return attr.Value
+		}
+	}
+	return ""
 }
 
 func (o *OpenLDAP) GetPosition(ctx context.Context, code string) (*Position, error) {
