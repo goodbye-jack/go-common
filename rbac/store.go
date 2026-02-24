@@ -334,6 +334,49 @@ func ListUserRoles(uid string) ([]string, error) {
 	return ans, nil
 }
 
+func EnsureUserRole(uid, roleCode string) error {
+	uid = strings.TrimSpace(uid)
+	if uid == "" {
+		return errors.New("uid is empty")
+	}
+	roleCode = normalizeRoleCode(roleCode)
+	if roleCode == "" {
+		return errors.New("role code is empty")
+	}
+	if IsInternalRoleCode(roleCode) {
+		return fmt.Errorf("role %s is internal", roleCode)
+	}
+
+	db, err := getStoreDB()
+	if err != nil {
+		return err
+	}
+	ok, err := roleExists(db, roleCode, RoleTypeBusiness)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("business role %s not found", roleCode)
+	}
+
+	var row UserRole
+	if err := db.Where("uid = ? AND role_code = ?", uid, roleCode).First(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			if err := db.Create(&UserRole{UID: uid, RoleCode: roleCode}).Error; err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+
+	client := NewRbacClient()
+	if err := client.AddGroupingPolicy(uid, roleCode); err != nil {
+		return err
+	}
+	return nil
+}
+
 func listUsersForRole(roleCode string) ([]string, error) {
 	roleCode = normalizeRoleCode(roleCode)
 	if roleCode == "" {
@@ -528,13 +571,49 @@ func EnsureAdminInheritsInternal(adminRole string) error {
 	if err != nil {
 		return err
 	}
-	client := NewRbacClient()
+	codes := make([]string, 0, len(internals))
 	for _, r := range internals {
-		if err := client.AddGroupingPolicy(adminRole, r.Code); err != nil {
+		codes = append(codes, r.Code)
+	}
+	return SetRoleInherits(adminRole, codes)
+}
+
+func SyncGroupingPoliciesFromDB() error {
+	db, err := getStoreDB()
+	if err != nil {
+		return err
+	}
+	var roleInherits []RoleInherit
+	if err := db.Find(&roleInherits).Error; err != nil {
+		return err
+	}
+	var userRoles []UserRole
+	if err := db.Find(&userRoles).Error; err != nil {
+		return err
+	}
+
+	client := NewRbacClient()
+	existing, err := client.e.GetGroupingPolicy()
+	if err != nil {
+		return err
+	}
+	for _, policy := range existing {
+		if _, err := client.e.RemoveGroupingPolicy(policy...); err != nil {
 			return err
 		}
 	}
-	return nil
+
+	for _, row := range roleInherits {
+		if _, err := client.e.AddGroupingPolicy(row.RoleCode, row.InheritCode); err != nil {
+			return err
+		}
+	}
+	for _, row := range userRoles {
+		if _, err := client.e.AddGroupingPolicy(row.UID, row.RoleCode); err != nil {
+			return err
+		}
+	}
+	return client.save()
 }
 
 func BuildInternalRole(resource, action string) (string, error) {
