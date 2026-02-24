@@ -598,7 +598,11 @@ func SyncGroupingPoliciesFromDB() error {
 		return err
 	}
 	for _, policy := range existing {
-		if _, err := client.e.RemoveGroupingPolicy(policy...); err != nil {
+		args := make([]interface{}, len(policy))
+		for i, v := range policy {
+			args[i] = v
+		}
+		if _, err := client.e.RemoveGroupingPolicy(args...); err != nil {
 			return err
 		}
 	}
