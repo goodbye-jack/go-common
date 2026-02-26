@@ -10,4 +10,3 @@ s3_force_path_style: true
 s3_base_prefix: "uploads"
 s3_public: false
 s3_sign_expire_seconds: 600
-
