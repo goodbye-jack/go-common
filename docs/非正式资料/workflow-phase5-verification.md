@@ -196,4 +196,3 @@ Reason:
 - the migrated core chain is now usable
 - there are still legacy endpoints outside the migrated scope
 - a release candidate stage is still necessary before final replacement
-
