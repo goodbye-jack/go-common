@@ -36,11 +36,15 @@ func Register(name string, handler SsoHandler) {
 
 func RbacMiddleware(serviceName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if strings.HasPrefix(c.Request.URL.Path, "/static/") || strings.HasPrefix(c.Request.URL.Path, "/static/") {
+		routePath := c.FullPath()
+		if routePath == "" {
+			routePath = c.Request.URL.Path
+		}
+		if strings.HasPrefix(routePath, "/static/") || strings.HasPrefix(routePath, "/static/") {
 			c.Next()
 			return
 		}
-		if strings.HasSuffix(c.Request.URL.Path, "login") {
+		if strings.HasSuffix(routePath, "login") {
 			c.Next()
 			return
 		}
@@ -48,7 +52,7 @@ func RbacMiddleware(serviceName string) gin.HandlerFunc {
 		req := rbac.NewReq(
 			user,
 			serviceName,
-			c.Request.URL.Path,
+			routePath,
 			c.Request.Method,
 		)
 		ok, err := RbacClient.Enforce(req)
@@ -76,7 +80,11 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 	}
 	tokenName := config.GetConfigString(utils.ConfigNameToken)
 	return func(c *gin.Context) {
-		sso := uniq2sso[fmt.Sprintf("%s_%s", c.Request.URL.Path, c.Request.Method)]
+		routePath := c.FullPath()
+		if routePath == "" {
+			routePath = c.Request.URL.Path
+		}
+		sso := uniq2sso[fmt.Sprintf("%s_%s", routePath, c.Request.Method)]
 		token, err := c.Cookie(tokenName)
 		if sso { // 需要登录的逻辑
 			if err != nil || token == "" {
@@ -147,8 +155,12 @@ func RecordOperationMiddleware(routes []*Route, fn OpRecordFn) gin.HandlerFunc {
 		}
 
 		tips := ""
+		routePath := c.FullPath()
+		if routePath == "" {
+			routePath = c.Request.URL.Path
+		}
 		for _, route := range routes {
-			if route.Url == c.Request.URL.Path {
+			if route.Url == routePath {
 				for _, method := range route.Methods {
 					if method == c.Request.Method {
 						tips = route.Tips

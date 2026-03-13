@@ -88,18 +88,21 @@ type Position struct {
 
 type Ldap interface {
 	GetUser(ctx context.Context, uid string) (*OrgUser, error)
+	GetUserByDN(ctx context.Context, dn string) (*OrgUser, error)
 	AddUser(ctx context.Context, u *OrgUser) error
 	UpdateUser(ctx context.Context, u *OrgUser) error
 	DeleteUser(ctx context.Context, uid string) error
 	ListUser(ctx context.Context) ([]*OrgUser, error)
 
 	GetDepartment(ctx context.Context, code string) (*Department, error)
+	GetDepartmentByDN(ctx context.Context, dn string) (*Department, error)
 	AddDepartment(ctx context.Context, d *Department) error
 	UpdateDepartment(ctx context.Context, d *Department) error
 	DeleteDepartment(ctx context.Context, code string) error
 	ListDepartment(ctx context.Context) ([]*Department, error)
 
 	GetPosition(ctx context.Context, code string) (*Position, error)
+	GetPositionByDN(ctx context.Context, dn string) (*Position, error)
 	AddPosition(ctx context.Context, p *Position) error
 	UpdatePosition(ctx context.Context, p *Position) error
 	DeletePosition(ctx context.Context, code string) error
@@ -111,4 +114,5 @@ type Ldap interface {
 	RemoveUserPositions(ctx context.Context, uid string, positionCodes []string) error
 
 	ValidateUser(ctx context.Context, phone, password string) (*OrgUser, error)
+	ValidateUserByUID(ctx context.Context, uid, password string) (*OrgUser, error)
 }

@@ -414,6 +414,27 @@ func (o *OpenLDAP) GetUser(ctx context.Context, uid string) (*OrgUser, error) {
 	return out, err
 }
 
+func (o *OpenLDAP) GetUserByDN(ctx context.Context, dn string) (*OrgUser, error) {
+	dn = strings.TrimSpace(dn)
+	if dn == "" {
+		return nil, LdapParamsError{Params: []string{"dn"}}
+	}
+	var out *OrgUser
+	err := o.withConn(func(conn *ldap.Conn) error {
+		entry, err := o.getEntryByDN(conn, dn, []string{
+			attrUID, attrCN, attrSN, attrGivenName, attrMail, attrEmployeeNumber, attrTelephoneNumber, attrPostalAddress,
+			attrDNQualifier, attrEmployeeType, attrTitle,
+			attrBusinessCategory, attrDepartmentNumber,
+		})
+		if err != nil {
+			return err
+		}
+		out = entryToOrgUser(entry)
+		return nil
+	})
+	return out, err
+}
+
 func (o *OpenLDAP) AddUser(ctx context.Context, u *OrgUser) error {
 	nu, err := normalizeOrgUser(u)
 	if err != nil {
@@ -678,6 +699,25 @@ func (o *OpenLDAP) GetDepartment(ctx context.Context, code string) (*Department,
 	return out, err
 }
 
+func (o *OpenLDAP) GetDepartmentByDN(ctx context.Context, dn string) (*Department, error) {
+	dn = strings.TrimSpace(dn)
+	if dn == "" {
+		return nil, LdapParamsError{Params: []string{"dn"}}
+	}
+	var out *Department
+	err := o.withConn(func(conn *ldap.Conn) error {
+		entry, err := o.getEntryByDN(conn, dn, []string{
+			attrOU, attrDescription, attrSeeAlso,
+		})
+		if err != nil {
+			return err
+		}
+		out = o.entryToDepartment(entry)
+		return nil
+	})
+	return out, err
+}
+
 func (o *OpenLDAP) AddDepartment(ctx context.Context, d *Department) error {
 	nd, err := normalizeDepartment(d)
 	if err != nil {
@@ -857,6 +897,25 @@ func (o *OpenLDAP) GetPosition(ctx context.Context, code string) (*Position, err
 	return out, err
 }
 
+func (o *OpenLDAP) GetPositionByDN(ctx context.Context, dn string) (*Position, error) {
+	dn = strings.TrimSpace(dn)
+	if dn == "" {
+		return nil, LdapParamsError{Params: []string{"dn"}}
+	}
+	var out *Position
+	err := o.withConn(func(conn *ldap.Conn) error {
+		entry, err := o.getEntryByDN(conn, dn, []string{
+			attrCN, attrDescription, attrSeeAlso,
+		})
+		if err != nil {
+			return err
+		}
+		out = entryToPosition(entry)
+		return nil
+	})
+	return out, err
+}
+
 func (o *OpenLDAP) AddPosition(ctx context.Context, p *Position) error {
 	np, err := normalizePosition(p)
 	if err != nil {
@@ -1011,6 +1070,47 @@ func (o *OpenLDAP) ValidateUser(ctx context.Context, phone, password string) (*O
 		}
 
 		entry := res.Entries[0]
+		authConn, err := ldap.DialURL(o.cfg.url())
+		if err != nil {
+			return err
+		}
+		defer authConn.Close()
+
+		if err := authConn.Bind(entry.DN, password); err != nil {
+			return err
+		}
+
+		out = entryToOrgUser(entry)
+		return nil
+	})
+	return out, err
+}
+
+func (o *OpenLDAP) ValidateUserByUID(ctx context.Context, uid, password string) (*OrgUser, error) {
+	uid = strings.TrimSpace(uid)
+	password = strings.TrimSpace(password)
+	missing := []string{}
+	if uid == "" {
+		missing = append(missing, "uid")
+	}
+	if password == "" {
+		missing = append(missing, "password")
+	}
+	if len(missing) > 0 {
+		return nil, LdapParamsError{Params: missing}
+	}
+
+	var out *OrgUser
+	err := o.withConn(func(conn *ldap.Conn) error {
+		entry, err := o.getEntryByDN(conn, o.userDN(uid), []string{
+			attrUID, attrCN, attrSN, attrGivenName, attrMail, attrEmployeeNumber, attrTelephoneNumber, attrPostalAddress,
+			attrDNQualifier, attrEmployeeType, attrTitle,
+			attrBusinessCategory, attrDepartmentNumber,
+		})
+		if err != nil {
+			return err
+		}
+
 		authConn, err := ldap.DialURL(o.cfg.url())
 		if err != nil {
 			return err
