@@ -107,6 +107,44 @@ func main() {
 
 $ go run main.go
 
+## Redis 密码配置（RBAC）
+
+RBAC 默认读取以下配置键连接 Redis：
+
+- `redis_addr`
+- `redis_password`（可选，为空字符串表示无密码）
+
+示例：
+
+```yaml
+redis_addr: "127.0.0.1:6379"
+redis_password: ""
+```
+
+## Tag 发布与推送
+
+基于当前分支提交打 tag 并推送：
+
+```bash
+# 1) 确认当前分支
+git branch --show-current
+
+# 2) 在当前提交创建注释 tag
+git tag -a v0.2.21 -m "release: v0.2.21"
+
+# 3) 推送分支（建议）
+git push -u origin <your-branch>
+
+# 4) 推送指定 tag
+git push origin v0.2.21
+```
+
+查看远程 tag：
+
+```bash
+git ls-remote --tags origin
+```
+
 
 # 测试命令
 

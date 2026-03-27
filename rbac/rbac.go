@@ -43,7 +43,10 @@ e = some(where (p.eft == allow))
 m = g(r.sub, p.sub) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
 `
 
-// NewRbacClient 最终简化版：直接读取Config原始参数，无冗余方法
+// NewRbacClient 兼容参数：
+//   - NewRbacClient()                        使用 orm.Redis 配置或默认值
+//   - NewRbacClient(redisAddr)               指定地址
+//   - NewRbacClient(redisAddr, redisPassword) 指定地址和密码
 func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 	if rbacClient != nil {
 		return rbacClient
@@ -72,6 +75,9 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 			redisAddr = redisAddrOpt[0]
 		} else {
 			redisAddr = "127.0.0.1:6379"
+		}
+		if len(redisAddrOpt) > 1 {
+			redisPassword = redisAddrOpt[1]
 		}
 		redisDB = 0
 		log.Info("NewRbacClient: 使用降级配置 | addr=%s | db=%d", redisAddr, redisDB)

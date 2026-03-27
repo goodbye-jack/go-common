@@ -59,7 +59,10 @@ type HTTPServer struct {
 }
 
 func init() {
-	RbacClient = rbac.NewRbacClient(config.GetConfigString(utils.CasbinRedisAddrName))
+	RbacClient = rbac.NewRbacClient(
+		config.GetConfigString(utils.CasbinRedisAddrName),
+		config.GetConfigString(utils.CasbinRedisPasswordName),
+	)
 }
 
 // RegisterCollectedRoutes Server就绪后调用，批量注册预收集的路由
@@ -251,8 +254,8 @@ func (s *HTTPServer) Prepare() {
 		log.Infof("路由%d：path=%s, methods=%v, roles=%v", i+1, route.Url, route.Methods, route.DefaultRoles)
 		policies = append(policies, route.ToRbacPolicy()...)
 	}
-	_ = RbacClient.DeletePoliciesByService(s.service_name)               // 2. 清理旧策略
-	RbacClient.AddActionPolicies(policies)                               // 3. 添加RBAC策略
+	_ = RbacClient.DeletePoliciesByService(s.service_name)              // 2. 清理旧策略
+	RbacClient.AddActionPolicies(policies)                              // 3. 添加RBAC策略
 	s.router.SetTrustedProxies([]string{"127.0.0.1", "192.168.0.0/24"}) // 3. 设置全局中间件(注意顺序)
 	// 4. 全局中间件(作用于所有路由)
 	// 先注册用户自定义额外中间件，再注册内置中间件，确保用户安全中间件可最早生效

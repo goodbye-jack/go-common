@@ -1,4 +1,11 @@
-# CHANGELOG
+## v1.3.1（2026-03-27）
+### 变更
+- **RBAC Redis 密码支持**：`NewRbacClient` 增加对 `redis_password` 的读取与透传，空密码保持兼容。
+- **HTTP 初始化适配**：`http/server.go` 初始化 RBAC 时同时传入 `redis_addr` 和 `redis_password`。
+- **配置常量补充**：新增 `CasbinRedisPasswordName = "redis_password"`。
+- **示例配置更新**：`example/config.yaml` 增加 `redis_password` 配置示例。
+- **文档补充**：`README.md` 新增 Redis 密码配置说明与 tag 推送步骤。
+
 ## v1.3.0（2026-03-13）
 ### 变更
 - **工作流标准接口正式收口**：固定正式标准接口清单，明确兼容接口清单，稳定对外契约

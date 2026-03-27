@@ -1,7 +1,8 @@
 server_name: go-common
 addr: ":8088"
 #middleware
-#redis_addr: "0.0.0.0:6379"
+redis_addr: "0.0.0.0:6379"
+redis_password: ""
 
 databases:
   mysql:
