@@ -24,7 +24,8 @@ const (
 	TenantContextName = "ContextTenant"
 	TenantHeaderName  = "X-Tenant"
 
-	CasbinRedisAddrName = "redis_addr"
+	CasbinRedisAddrName     = "redis_addr"
+	CasbinRedisPasswordName = "redis_password"
 
 	JWTSecret = "goodbye-jack,comeon"
 

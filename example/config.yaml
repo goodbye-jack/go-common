@@ -3,5 +3,6 @@ addr: ":8088"
 
 #middleware
 redis_addr: "0.0.0.0:6379"
+redis_password: ""
 
 lldap: "0.0.0.0:32780"

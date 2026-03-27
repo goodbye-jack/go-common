@@ -74,7 +74,7 @@ type RbacClient struct {
 
 var rbacClient *RbacClient = nil
 
-func NewRbacClient(redisAddr string) *RbacClient {
+func NewRbacClient(redisAddr, redisPassword string) *RbacClient {
 	log.Info("NewRbacClient(%s)", redisAddr)
 	if rbacClient != nil {
 		return rbacClient
@@ -85,7 +85,7 @@ func NewRbacClient(redisAddr string) *RbacClient {
 		log.Fatalf("NewRbacClient/NewModelFromString error, %v", err)
 	}
 
-	adapter, err := redisadapter.NewAdapter("tcp", redisAddr)
+	adapter, err := redisadapter.NewAdapterWithPassword("tcp", redisAddr, redisPassword)
 	if err != nil {
 		log.Fatalf("NewRbacClient/NewAdapter error, %v", err)
 	}
@@ -101,7 +101,9 @@ func NewRbacClient(redisAddr string) *RbacClient {
 
 	w, err := rediswatcher.NewWatcher(redisAddr, rediswatcher.WatcherOptions{
 		Options: redis.Options{
-			Network: "tcp",
+			Network:  "tcp",
+			Addr:     redisAddr,
+			Password: redisPassword,
 		},
 		Channel:    "/casbin",
 		IgnoreSelf: true,

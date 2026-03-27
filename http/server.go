@@ -44,6 +44,7 @@ type HTTPServer struct {
 func init() {
 	rbacClient = rbac.NewRbacClient(
 		config.GetConfigString(utils.CasbinRedisAddrName),
+		config.GetConfigString(utils.CasbinRedisPasswordName),
 	)
 
 }

@@ -10,11 +10,12 @@ import (
 
 func TestRbac(t *testing.T) {
 	redisAddr := config.GetConfigString("redis_addr")
+	redisPassword := config.GetConfigString("redis_password")
 	if redisAddr == "" {
 		log.Fatal("config.yaml no redis_addr configuration")
 	}
 
-	rbac := NewRbacClient(redisAddr)
+	rbac := NewRbacClient(redisAddr, redisPassword)
 
 	aRp, err := rbac.GetRolePolicy("admin")
 	if err != nil {
