@@ -33,25 +33,39 @@ var (
 )
 
 type Operation struct {
-	User          string                 `json:"user"`
-	Time          time.Time              `json:"time"`
-	Path          string                 `json:"path"`
-	Method        string                 `json:"method"`
-	ClientIP      string                 `json:"client_ip"`
-	StatusCode    int                    `json:"status_code"`
-	Duration      int                    `json:"duration"`
-	Body          map[string]interface{} `json:"body"`
-	Tips          string                 `json:"tips"`
-	Authorization string                 `json:"authorization"` // 门户使用的token,在单独项目里拿不到，通过这里获取
+	User            string                 `json:"user"`
+	UserID          string                 `json:"user_id"`
+	UserName        string                 `json:"user_name"`
+	Time            time.Time              `json:"time"`
+	LogTime         time.Time              `json:"log_time"`
+	URL             string                 `json:"url"`
+	Path            string                 `json:"path"`
+	Method          string                 `json:"method"`
+	QueryString     string                 `json:"query_string"`
+	ClientType      string                 `json:"client_type"`
+	ClientIP        string                 `json:"client_ip"`
+	StatusCode      int                    `json:"status_code"`
+	Duration        int                    `json:"duration"`
+	DurationMs      int                    `json:"duration_ms"`
+	Body            map[string]interface{} `json:"body"`
+	HeaderContent   string                 `json:"header_content"`
+	RequestContent  string                 `json:"request_content"`
+	ResponseContent string                 `json:"response_content"`
+	Tenant          string                 `json:"tenant"`
+	Category        string                 `json:"category"`
+	Tips            string                 `json:"tips"`
+	Authorization   string                 `json:"authorization"` // 门户使用的token,在单独项目里拿不到，通过这里获取
 }
 
 type OpRecordFn func(ctx context.Context, op Operation) error
+type AccessRecordFn func(ctx context.Context, op Operation) error
 
 type HTTPServer struct {
 	service_name     string
 	routes           []*Route
 	router           *gin.Engine
 	opRecordFn       OpRecordFn
+	accessRecordFn   AccessRecordFn
 	approvalHandler  approval.ApprovalHandler
 	extraMiddlewares []gin.HandlerFunc
 	globalPrefix     string          // 路由全局前缀 新增字段（增量，不影响原有逻辑）
@@ -191,17 +205,61 @@ func (s *HTTPServer) RouteForRA(path string, tips string, methods []string, role
 	s.routes = append(s.routes, NewRouteForRA(s.service_name, path, tips, methods, roles, resource, action, sso, false, fn))
 }
 
-func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles []string, resource string, action string, sso bool, business_approval bool, fn gin.HandlerFunc) {
-	route := NewRouteCommon(s.service_name, path, tips, methods, roles, resource, action, sso, business_approval, fn)
-	if business_approval && s.approvalHandler != nil { // 添加业务审批中间件(如果需要)
+func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles []string, args ...interface{}) {
+	resource := ""
+	action := ""
+	sso := false
+	businessApproval := false
+	var fn gin.HandlerFunc
+
+	switch len(args) {
+	case 3:
+		var ok bool
+		sso, ok = args[0].(bool)
+		if !ok {
+			panic("RouteAPI legacy signature expects bool sso at arg[0]")
+		}
+		businessApproval, ok = args[1].(bool)
+		if !ok {
+			panic("RouteAPI legacy signature expects bool businessApproval at arg[1]")
+		}
+		fn, ok = asGinHandlerFunc(args[2])
+		if !ok {
+			panic("RouteAPI legacy signature expects gin.HandlerFunc at arg[2]")
+		}
+	case 5:
+		var ok bool
+		resource, ok = args[0].(string)
+		if !ok {
+			panic("RouteAPI new signature expects string resource at arg[0]")
+		}
+		action, ok = args[1].(string)
+		if !ok {
+			panic("RouteAPI new signature expects string action at arg[1]")
+		}
+		sso, ok = args[2].(bool)
+		if !ok {
+			panic("RouteAPI new signature expects bool sso at arg[2]")
+		}
+		businessApproval, ok = args[3].(bool)
+		if !ok {
+			panic("RouteAPI new signature expects bool businessApproval at arg[3]")
+		}
+		fn, ok = asGinHandlerFunc(args[4])
+		if !ok {
+			panic("RouteAPI new signature expects gin.HandlerFunc at arg[4]")
+		}
+	default:
+		panic(fmt.Sprintf("RouteAPI unsupported arg count: %d", len(args)))
+	}
+
+	route := NewRouteCommon(s.service_name, path, tips, methods, roles, resource, action, sso, businessApproval, fn)
+	if businessApproval && s.approvalHandler != nil { // 添加业务审批中间件(如果需要)
 		aConfig := approval.Config{
-			BusinessApproval: business_approval,
+			BusinessApproval: businessApproval,
 			Handler:          s.approvalHandler,
 		}
 		route.AddMiddleware(approval.ApprovalMiddleware(aConfig))
-	}
-	if tips != "" && s.opRecordFn != nil {
-		route.AddMiddleware(RecordOperationMiddleware(s.routes, s.opRecordFn))
 	}
 	s.routes = append(s.routes, route)
 	//// 关键：注册到 gin 引擎（适配你的 Route 结构体字段）
@@ -217,6 +275,17 @@ func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles 
 	//	s.MarkRouteRegistered(path, method)
 	//}
 	//log.Infof("[自动注册路由] url=%s, methods=%v", path, methods)
+}
+
+func asGinHandlerFunc(value interface{}) (gin.HandlerFunc, bool) {
+	switch typedValue := value.(type) {
+	case gin.HandlerFunc:
+		return typedValue, true
+	case func(*gin.Context):
+		return gin.HandlerFunc(typedValue), true
+	default:
+		return nil, false
+	}
 }
 
 //// RouteAutoRegisterAPI 业务侧调用的简化版API（自动拼接前缀、内置优先级）
@@ -248,6 +317,10 @@ func (s *HTTPServer) SetOpRecordFn(fn OpRecordFn) {
 	s.opRecordFn = fn
 }
 
+func (s *HTTPServer) SetAccessRecordFn(fn AccessRecordFn) {
+	s.accessRecordFn = fn
+}
+
 func (s *HTTPServer) Prepare() {
 	var policies []rbac.Policy
 	for i, route := range s.routes { // 1. 收集所有路由的RBAC策略和路由信息
@@ -263,10 +336,10 @@ func (s *HTTPServer) Prepare() {
 		s.router.Use(s.extraMiddlewares...)
 	}
 	s.router.Use(
-		LoginRequiredMiddleware(s.routes),                 // 登录检查
-		RbacMiddleware(s.service_name),                    // RBAC鉴权
-		TenantMiddleware(),                                // 租户隔离
-		RecordOperationMiddleware(s.routes, s.opRecordFn), // 操作记录
+		LoginRequiredMiddleware(s.routes),                                 // 登录检查
+		RbacMiddleware(s.service_name),                                    // RBAC鉴权
+		TenantMiddleware(),                                                // 租户隔离
+		RecordRequestMiddleware(s.routes, s.opRecordFn, s.accessRecordFn), // 操作/访问记录
 	)
 	// 5. 直接注册路由（不再使用routeInfos）
 	for _, route := range s.routes {
