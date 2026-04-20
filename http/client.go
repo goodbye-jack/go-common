@@ -31,7 +31,7 @@ func genUniq(tenant, service_name string) string {
 }
 
 func NewHTTPClient(tenant, service_name string) *HTTPClient {
-	log.Info("u2c, %v", uniq2client)
+	log.Infof("u2c, %v", uniq2client)
 	uniq := genUniq(tenant, service_name)
 	if client, ok := uniq2client[uniq]; ok {
 		return client
@@ -75,12 +75,12 @@ func (c *HTTPClient) do(ctx context.Context, method, url string, data []byte, he
 		return nil, errors.New("HTTPClient is nil")
 	}
 	absUrl := c.genAbsUrl(url)
-	log.Info("HTTPClient.do absUrl=%s", absUrl)
+	log.Infof("HTTPClient.do absUrl=%s", absUrl)
 	//Body
 	buf := bytes.NewBuffer(data)
 	req, err := http.NewRequestWithContext(ctx, method, absUrl, buf)
 	if err != nil {
-		log.Error("do(%s, %s) error, %v", method, absUrl, err)
+		log.Errorf("do(%s, %s) error, %v", method, absUrl, err)
 		return nil, err
 	}
 	//Header
@@ -91,23 +91,23 @@ func (c *HTTPClient) do(ctx context.Context, method, url string, data []byte, he
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		log.Error("do/http.Do() error, %v", err)
+		log.Errorf("do/http.Do() error, %v", err)
 		return nil, err
 	}
 	//Response
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Error("do/io.ReadAll() error, %v", err)
+		log.Errorf("do/io.ReadAll() error, %v", err)
 		return nil, err
 	}
-	log.Info("%s(%s) status code %d", method, absUrl, resp.StatusCode)
+	log.Infof("%s(%s) status code %d", method, absUrl, resp.StatusCode)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, errors.New(
 			fmt.Sprintf("%s(%s) statusCode=%d, %s", method, absUrl, resp.StatusCode, string(body)),
 		)
 	}
-	log.Info("%s(url, %s): %s", method, absUrl, string(data), string(body))
+	log.Infof("%s(%s, %s): %s", method, absUrl, string(data), string(body))
 	return body, nil
 }
 

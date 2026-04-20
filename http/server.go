@@ -12,7 +12,9 @@ import (
 	"github.com/goodbye-jack/go-common/utils"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -122,6 +124,7 @@ func InitServer(serviceName string) {
 }
 
 func NewHTTPServer(service_name string) *HTTPServer {
+	applyGinModeFromConfig()
 	routes := []*Route{
 		NewRoute(service_name, "/ping", "健康检查", []string{"GET"}, utils.RoleIdle, "", "", false, false, func(c *gin.Context) {
 			c.String(http.StatusOK, "Pong")
@@ -133,6 +136,26 @@ func NewHTTPServer(service_name string) *HTTPServer {
 		router:           gin.Default(),
 		extraMiddlewares: []gin.HandlerFunc{},
 		registeredKeys:   make(map[string]bool), // 初始化已注册路由缓存
+	}
+}
+
+func applyGinModeFromConfig() {
+	if gin.Mode() == gin.TestMode {
+		return
+	}
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("GIN_MODE")))
+	if mode == "" {
+		mode = strings.ToLower(strings.TrimSpace(config.GetConfigString("http.gin_mode")))
+	}
+	if mode == "" {
+		mode = gin.ReleaseMode
+	}
+	switch mode {
+	case gin.DebugMode, gin.ReleaseMode, gin.TestMode:
+		gin.SetMode(mode)
+	default:
+		log.Warnf("未知的Gin模式配置：%s，自动回退为release", mode)
+		gin.SetMode(gin.ReleaseMode)
 	}
 }
 
@@ -323,8 +346,9 @@ func (s *HTTPServer) SetAccessRecordFn(fn AccessRecordFn) {
 
 func (s *HTTPServer) Prepare() {
 	var policies []rbac.Policy
+	log.Infof("HTTPServer.Prepare registering routes, service=%s, route_count=%d", s.service_name, len(s.routes))
 	for i, route := range s.routes { // 1. 收集所有路由的RBAC策略和路由信息
-		log.Infof("路由%d：path=%s, methods=%v, roles=%v", i+1, route.Url, route.Methods, route.DefaultRoles)
+		log.Debugf("route[%d] path=%s methods=%v roles=%v", i+1, route.Url, route.Methods, route.DefaultRoles)
 		policies = append(policies, route.ToRbacPolicy()...)
 	}
 	_ = RbacClient.DeletePoliciesByService(s.service_name)              // 2. 清理旧策略
@@ -373,7 +397,14 @@ func (s *HTTPServer) StaticFs(static_dir string) {
 }
 
 func (s *HTTPServer) Run(addr string) {
-	log.Info("server %v is running", addr)
 	s.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	s.router.Run(addr)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Errorf("server %v failed to listen: %v", addr, err)
+		return
+	}
+	log.Infof("server %v is running", addr)
+	if err := s.router.RunListener(listener); err != nil {
+		log.Errorf("server %v exited with error: %v", addr, err)
+	}
 }

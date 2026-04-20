@@ -3,11 +3,14 @@ package dbconfig
 import (
 	"errors"
 	"fmt"
+	"net/url"
+	"sort"
+	"strings"
+	"time"
+
 	"github.com/goodbye-jack/go-common/utils"
 	"github.com/spf13/viper"
 	gormLogger "gorm.io/gorm/logger"
-	"strings"
-	"time"
 )
 
 var defaultConfig = &Config{
@@ -27,21 +30,24 @@ var defaultConfig = &Config{
 // Config DB configuration
 type Config struct {
 	// 基础通用字段
-	DBName   string        `json:"db_name" yaml:"db_name"`
-	DBType   utils.DBType  `json:"db_type" yaml:"db_type"`
-	Mode     utils.DBMode  `json:"mode" yaml:"mode"`     // 新增：单点/集群标识
-	Schema   string        `json:"schema" yaml:"schema"` // DM模式（适配DM的schema参数）
-	Host     string        `json:"host" yaml:"host"`
-	Port     int           `json:"port" yaml:"port"`
-	User     string        `json:"user" yaml:"user"`
-	Password string        `json:"password" yaml:"password"`
-	Database string        `json:"database" yaml:"database"`
-	DSN      string        `json:"dsn" yaml:"dsn"`
-	LogMode  utils.LogMode `json:"log_mode" yaml:"log_mode"`
-	SSLMode  string        `json:"ssl_mode" yaml:"ssl_mode"`
-	SSL      bool          `json:"ssl" yaml:"ssl"` // Mongo专用SSL开关（true/false）
-	TimeZone string        `json:"time_zone" yaml:"time_zone"`
-	Charset  string        `json:"charset" yaml:"charset"`
+	DBName    string            `json:"db_name" yaml:"db_name"`
+	DBType    utils.DBType      `json:"db_type" yaml:"db_type"`
+	Mode      utils.DBMode      `json:"mode" yaml:"mode"`     // 新增：单点/集群标识
+	Schema    string            `json:"schema" yaml:"schema"` // DM模式（适配DM的schema参数）
+	Host      string            `json:"host" yaml:"host"`
+	Port      int               `json:"port" yaml:"port"`
+	User      string            `json:"user" yaml:"user"`
+	Password  string            `json:"password" yaml:"password"`
+	Database  string            `json:"database" yaml:"database"`
+	DSN       string            `json:"dsn" yaml:"dsn"`
+	LogMode   utils.LogMode     `json:"log_mode" yaml:"log_mode"`
+	SSLMode   string            `json:"ssl_mode" yaml:"ssl_mode"`
+	SSL       bool              `json:"ssl" yaml:"ssl"` // Mongo专用SSL开关（true/false）
+	TimeZone  string            `json:"time_zone" yaml:"time_zone"`
+	Charset   string            `json:"charset" yaml:"charset"`
+	ParseTime *bool             `json:"parse_time" yaml:"parse_time"`
+	Loc       string            `json:"loc" yaml:"loc"`
+	Params    map[string]string `json:"params" yaml:"params"`
 	// 关系型数据库专属字段
 	MaxOpenConn     int           `json:"max_open_conn" yaml:"max_open_conn"`
 	MaxIdleConn     int           `json:"max_idle_conn" yaml:"max_idle_conn"`
@@ -77,7 +83,7 @@ func (c *Config) GenDSN() string {
 		return c.DSN
 	}
 	switch c.DBType { // 2. 按数据库类型分层处理（复用DBDsnMap模板）
-	case utils.DBTypeMySQL, utils.DBTypePostgres, utils.DBTypeSqlserver, utils.DBTypeOracle, utils.DBTypeDM, utils.DBTypeSQLite:
+	case utils.DBTypeMySQL, utils.DBTypePostgres, utils.DBTypeSqlserver, utils.DBTypeOracle, utils.DBTypeDM, utils.DBTypeSQLite, utils.DBTypeKingBase:
 		return c.genRelationalDSN() // 关系型数据库
 	case utils.DBTypeMongo, utils.DBTypeMongoDB:
 		return c.genMongoDSN() // Mongo（兼容MongoDB别名）
@@ -100,27 +106,176 @@ func (c *Config) genRelationalDSN() string {
 	case utils.DBTypeSQLite:
 		return fmt.Sprintf(template, c.Database) // SQLite仅需数据库路径
 	case utils.DBTypeDM:
-		// DM模板：dm://%s:%s@%s:%d?schema=%s → user/pass/host/port/schema
-		schema := c.Schema
-		if schema == "" {
-			schema = c.Database // 未指定schema时用数据库名
-		}
-		return fmt.Sprintf(template, c.User, c.Password, c.Host, c.Port, schema)
+		return c.genDMDSN(template)
 	case utils.DBTypeOracle:
 		// Oracle模板：%s/%s@%s:%d/%s → user/pass/host/port/dbname
 		return fmt.Sprintf(template, c.User, c.Password, c.Host, c.Port, c.Database)
 	case utils.DBTypeMySQL:
-		// MySQL模板：%s:%s@tcp(%s:%d)/%s?parseTime=True&loc=Local → user/pass/host/port/dbname
-		return fmt.Sprintf(template, c.User, c.Password, c.Host, c.Port, c.Database)
+		return c.genMySQLDSN()
 	case utils.DBTypePostgres:
-		// Postgres模板：user=%s password=%s host=%s port=%d dbname=%s ... → user/pass/host/port/dbname
-		return fmt.Sprintf(template, c.User, c.Password, c.Host, c.Port, c.Database)
+		return c.genPostgresStyleDSN(false)
+	case utils.DBTypeKingBase:
+		return c.genPostgresStyleDSN(true)
 	case utils.DBTypeSqlserver:
 		// SQLServer模板：user id=%s;password=%s;server=%s;port=%d;database=%s ... → user/pass/host/port/dbname
 		return fmt.Sprintf(template, c.User, c.Password, c.Host, c.Port, c.Database)
 	default:
 		return ""
 	}
+}
+
+func (c *Config) genMySQLDSN() string {
+	base := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", c.User, c.Password, c.Host, c.Port, c.Database)
+	parseTime := "True"
+	if c.ParseTime != nil {
+		if *c.ParseTime {
+			parseTime = "True"
+		} else {
+			parseTime = "False"
+		}
+	}
+	params := map[string]string{
+		"parseTime": parseTime,
+		"loc":       firstNonBlank(c.Loc, "Local"),
+	}
+	if charset := strings.TrimSpace(c.Charset); charset != "" {
+		params["charset"] = charset
+	}
+	query := buildOrderedQuery(mergeStringMaps(params, c.Params), []string{"charset", "parseTime", "loc"})
+	if query == "" {
+		return base
+	}
+	return base + "?" + query
+}
+
+func (c *Config) genPostgresStyleDSN(isKingBase bool) string {
+	params := map[string]string{
+		"user":     c.User,
+		"password": c.Password,
+		"host":     c.Host,
+		"port":     fmt.Sprintf("%d", c.Port),
+		"dbname":   c.Database,
+	}
+	if sslMode := strings.TrimSpace(c.SSLMode); sslMode != "" {
+		params["sslmode"] = sslMode
+	} else {
+		params["sslmode"] = "disable"
+	}
+	if timeZone := strings.TrimSpace(c.TimeZone); timeZone != "" {
+		params["TimeZone"] = timeZone
+	} else {
+		params["TimeZone"] = "Asia/Shanghai"
+	}
+	if isKingBase {
+		params["application_name"] = firstNonBlank(c.DBName, "go-common")
+	}
+	return buildOrderedKVString(mergeStringMaps(params, c.Params), []string{"user", "password", "host", "port", "dbname", "sslmode", "TimeZone", "application_name"})
+}
+
+func (c *Config) genDMDSN(template string) string {
+	schema := strings.TrimSpace(c.Schema)
+	if schema == "" {
+		schema = strings.TrimSpace(c.Database)
+	}
+	dsn := fmt.Sprintf(template, c.User, c.Password, c.Host, c.Port, schema)
+	if query := buildOrderedQuery(c.Params, nil); query != "" {
+		if strings.Contains(dsn, "?") {
+			dsn += "&" + query
+		} else {
+			dsn += "?" + query
+		}
+	}
+	return dsn
+}
+
+func mergeStringMaps(defaults, extras map[string]string) map[string]string {
+	result := make(map[string]string)
+	for key, value := range defaults {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		result[key] = value
+	}
+	for key, value := range extras {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		result[key] = value
+	}
+	return result
+}
+
+func buildOrderedQuery(params map[string]string, preferredOrder []string) string {
+	if len(params) == 0 {
+		return ""
+	}
+	used := make(map[string]bool)
+	parts := make([]string, 0, len(params))
+	for _, key := range preferredOrder {
+		value, ok := params[key]
+		if !ok || strings.TrimSpace(value) == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", url.QueryEscape(key), url.QueryEscape(value)))
+		used[key] = true
+	}
+	keys := make([]string, 0, len(params))
+	for key := range params {
+		if used[key] {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := strings.TrimSpace(params[key])
+		if value == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", url.QueryEscape(key), url.QueryEscape(value)))
+	}
+	return strings.Join(parts, "&")
+}
+
+func buildOrderedKVString(params map[string]string, preferredOrder []string) string {
+	if len(params) == 0 {
+		return ""
+	}
+	used := make(map[string]bool)
+	parts := make([]string, 0, len(params))
+	for _, key := range preferredOrder {
+		value, ok := params[key]
+		if !ok || strings.TrimSpace(value) == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", key, value))
+		used[key] = true
+	}
+	keys := make([]string, 0, len(params))
+	for key := range params {
+		if used[key] {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := strings.TrimSpace(params[key])
+		if value == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", key, value))
+	}
+	return strings.Join(parts, " ")
+}
+
+func firstNonBlank(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // genMongoDSN 生成Mongo DSN（最终版：仅用SSL布尔字段）
@@ -206,17 +361,16 @@ func (c *Config) genRedisDSN() string {
 	if writeTimeout <= 0 {
 		writeTimeout = int(utils.DefaultRedisWriteTimeout.Seconds())
 	}
-	// 2. 区分有无密码（核心修复）
-	var authPart string
+	// 2. 区分有无密码；无密码时不拼接空 userinfo，避免 redis://@host 这种非标准格式
+	authPart := ""
 	if c.Password != "" {
-		// 有密码：:password（Redis User通常为空，无需拼接）
-		authPart = ":" + c.Password
+		authPart = url.UserPassword(c.User, c.Password).String() + "@"
+	} else if c.User != "" {
+		authPart = url.User(c.User).String() + "@"
 	}
-	// 无密码：空字符串（避免多余的:@）
 	// 3. 单机模式DSN
-	dsn := fmt.Sprintf(utils.DBDsnMap[utils.DBTypeRedis],
-		c.User, authPart, c.Host, c.Port, dbIndex,
-		dialTimeout, readTimeout, writeTimeout,
+	dsn := fmt.Sprintf("redis://%s%s:%d/%d?dial_timeout=%ds&read_timeout=%ds&write_timeout=%ds",
+		authPart, c.Host, c.Port, dbIndex, dialTimeout, readTimeout, writeTimeout,
 	)
 	// 4. 集群模式适配（修复密码拼接）
 	if c.Mode == utils.DBModeCluster && strings.Contains(c.Host, ",") {
@@ -310,10 +464,11 @@ func LoadDBConfig(v *viper.Viper, dbKey string) (*Config, error) {
 	if len(parts) != 2 {
 		return nil, errors.New("dbKey格式错误，应为${dbType}.${instanceName}（如mysql.master）")
 	}
-	dbType := utils.DBType(parts[0])
+	dbTypeKey := parts[0]
+	dbType := normalizeDBType(dbTypeKey)
 	instanceName := parts[1]
 	// 构造配置路径：databases.${dbType}.${instanceName}.xxx
-	prefix := fmt.Sprintf("databases.%s.%s", dbType, instanceName)
+	prefix := fmt.Sprintf("databases.%s.%s", dbTypeKey, instanceName)
 	cfg := &Config{
 		// 基础默认值（通用）
 		DBType:   dbType,
@@ -321,7 +476,6 @@ func LoadDBConfig(v *viper.Viper, dbKey string) (*Config, error) {
 		LogMode:  utils.LogModeError,
 		SSLMode:  "disable",
 		TimeZone: "Asia/Shanghai",
-		Charset:  "utf8mb4",
 	}
 	// 1. 按类型设置默认值
 	setDefaultValuesByType(cfg)
@@ -369,6 +523,16 @@ func readConfigFields(v *viper.Viper, prefix string, cfg *Config) {
 	}
 	if v.IsSet(prefix + ".charset") {
 		cfg.Charset = v.GetString(prefix + ".charset")
+	}
+	if v.IsSet(prefix + ".parse_time") {
+		parseTime := v.GetBool(prefix + ".parse_time")
+		cfg.ParseTime = &parseTime
+	}
+	if v.IsSet(prefix + ".loc") {
+		cfg.Loc = v.GetString(prefix + ".loc")
+	}
+	if v.IsSet(prefix + ".params") {
+		cfg.Params = readStringMap(v.GetStringMap(prefix + ".params"))
 	}
 
 	// 关系型专属字段
@@ -418,6 +582,26 @@ func readConfigFields(v *viper.Viper, prefix string, cfg *Config) {
 	}
 }
 
+func readStringMap(source map[string]interface{}) map[string]string {
+	if len(source) == 0 {
+		return nil
+	}
+	result := make(map[string]string, len(source))
+	for key, value := range source {
+		result[key] = fmt.Sprint(value)
+	}
+	return result
+}
+
+func normalizeDBType(dbType string) utils.DBType {
+	switch strings.ToLower(strings.TrimSpace(dbType)) {
+	case "postgres", "postgresql", "pgsql":
+		return utils.DBTypePostgres
+	default:
+		return utils.DBType(dbType)
+	}
+}
+
 // splitDBKey 拆分dbKey为类型+实例名
 func splitDBKey(dbKey string) []string {
 	sep := -1
@@ -437,7 +621,7 @@ func splitDBKey(dbKey string) []string {
 func setDefaultValuesByType(cfg *Config) {
 	switch cfg.DBType {
 	// 关系型：MySQL/达梦等
-	case utils.DBTypeMySQL, utils.DBTypeDM, utils.DBTypePostgres:
+	case utils.DBTypeMySQL, utils.DBTypeDM, utils.DBTypePostgres, utils.DBTypeKingBase:
 		cfg.MaxOpenConn = utils.DefaultMySQLMaxOpenConn
 		cfg.MaxIdleConn = utils.DefaultMySQLMaxIdleConn
 		cfg.ConnMaxLifeTime = utils.DefaultMySQLConnMaxLifeTime
@@ -599,8 +783,8 @@ func ValidateRequiredFields(cfg *Config) error {
 			if cfg.Password == "" {
 				requiredFields = append(requiredFields, "password")
 			}
-			if cfg.Schema == "" { // DM用schema替代database
-				requiredFields = append(requiredFields, "schema")
+			if strings.TrimSpace(cfg.Schema) == "" && strings.TrimSpace(cfg.Database) == "" {
+				requiredFields = append(requiredFields, "schema/database")
 			}
 		default:
 			return fmt.Errorf("DM不支持的运行模式：%s（仅支持single）", cfg.Mode)

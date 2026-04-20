@@ -11,37 +11,41 @@ import (
 )
 
 const (
-	ldapAddrKey          = "ldap_addr"
-	ldapBindDNKey        = "ldap_bind_dn"
-	ldapBindPasswordKey  = "ldap_bind_password"
-	ldapBaseDNKey        = "ldap_base_dn"
-	ldapPeopleOUKey      = "ldap_people_ou"
-	ldapDepartmentOUKey  = "ldap_department_ou"
-	ldapPositionOUKey    = "ldap_position_ou"
-	ldapUseTLSKey        = "ldap_use_tls"
-	defaultPeopleOU      = "ou=people"
-	defaultDepartmentOU  = "ou=departments"
-	defaultPositionOU    = "ou=positions"
-	attrUID              = "uid"
-	attrCN               = "cn"
-	attrOU               = "ou"
-	attrSN               = "sn"
-	attrGivenName        = "givenName"
-	attrMail             = "mail"
-	attrEmployeeNumber   = "employeeNumber"
-	attrDepartmentNumber = "departmentNumber"
-	attrEmployeeType     = "employeeType"
-	attrBusinessCategory = "businessCategory"
-	attrUserPassword     = "userPassword"
-	attrTelephoneNumber  = "telephoneNumber"
-	attrPostalAddress    = "postalAddress"
-	attrDNQualifier      = "dnQualifier"
-	attrTitle            = "title"
-	attrDescription      = "description"
-	attrSeeAlso          = "seeAlso"
-	objectClassPerson    = "inetOrgPerson"
-	objectClassDept      = "organizationalUnit"
-	objectClassPosition  = "organizationalRole"
+	ldapAddrKey           = "ldap_addr"
+	ldapBindDNKey         = "ldap_bind_dn"
+	ldapBindPasswordKey   = "ldap_bind_password"
+	ldapBaseDNKey         = "ldap_base_dn"
+	ldapPeopleOUKey       = "ldap_people_ou"
+	ldapDepartmentOUKey   = "ldap_department_ou"
+	ldapPositionOUKey     = "ldap_position_ou"
+	ldapGroupOUKey        = "ldap_group_ou"
+	ldapUseTLSKey         = "ldap_use_tls"
+	defaultPeopleOU       = "ou=people"
+	defaultDepartmentOU   = "ou=departments"
+	defaultPositionOU     = "ou=positions"
+	defaultGroupOU        = "ou=groups"
+	attrUID               = "uid"
+	attrCN                = "cn"
+	attrOU                = "ou"
+	attrSN                = "sn"
+	attrGivenName         = "givenName"
+	attrMail              = "mail"
+	attrEmployeeNumber    = "employeeNumber"
+	attrDepartmentNumber  = "departmentNumber"
+	attrEmployeeType      = "employeeType"
+	attrBusinessCategory  = "businessCategory"
+	attrUserPassword      = "userPassword"
+	attrTelephoneNumber   = "telephoneNumber"
+	attrPostalAddress     = "postalAddress"
+	attrDNQualifier       = "dnQualifier"
+	attrTitle             = "title"
+	attrDescription       = "description"
+	attrSeeAlso           = "seeAlso"
+	attrUniqueMember      = "uniqueMember"
+	objectClassPerson     = "inetOrgPerson"
+	objectClassDept       = "organizationalUnit"
+	objectClassPosition   = "organizationalRole"
+	objectClassGroup      = "groupOfUniqueNames"
 	objectClassExtensible = "extensibleObject"
 )
 
@@ -53,6 +57,7 @@ type OpenLDAPConfig struct {
 	PeopleOU     string
 	DeptOU       string
 	PositionOU   string
+	GroupOU      string
 	UseTLS       bool
 }
 
@@ -81,14 +86,18 @@ func New() (Ldap, error) {
 
 func loadOpenLDAPConfig() (OpenLDAPConfig, error) {
 	cfg := OpenLDAPConfig{
-		Addr:         strings.TrimSpace(config.GetConfigString(ldapAddrKey)),
-		BindDN:       strings.TrimSpace(config.GetConfigString(ldapBindDNKey)),
-		BindPassword: config.GetConfigString(ldapBindPasswordKey),
-		BaseDN:       strings.TrimSpace(config.GetConfigString(ldapBaseDNKey)),
-		PeopleOU:     strings.TrimSpace(config.GetConfigString(ldapPeopleOUKey)),
-		DeptOU:       strings.TrimSpace(config.GetConfigString(ldapDepartmentOUKey)),
-		PositionOU:   strings.TrimSpace(config.GetConfigString(ldapPositionOUKey)),
+		Addr:         firstNonBlankConfig("workflow.directory.ldap.addr", ldapAddrKey),
+		BindDN:       firstNonBlankConfig("workflow.directory.ldap.bind_dn", ldapBindDNKey),
+		BindPassword: firstNonBlankString(config.GetConfigString("workflow.directory.ldap.bind_password"), config.GetConfigString(ldapBindPasswordKey)),
+		BaseDN:       firstNonBlankConfig("workflow.directory.ldap.base_dn", ldapBaseDNKey),
+		PeopleOU:     firstNonBlankConfig("workflow.directory.ldap.people_ou", ldapPeopleOUKey),
+		DeptOU:       firstNonBlankConfig("workflow.directory.ldap.department_ou", ldapDepartmentOUKey),
+		PositionOU:   firstNonBlankConfig("workflow.directory.ldap.position_ou", ldapPositionOUKey),
+		GroupOU:      firstNonBlankConfig("workflow.directory.ldap.group_ou", ldapGroupOUKey),
 		UseTLS:       config.GetConfigBool(ldapUseTLSKey),
+	}
+	if config.GetConfigString("workflow.directory.ldap.addr") != "" {
+		cfg.UseTLS = config.GetConfigBool("workflow.directory.ldap.use_tls")
 	}
 	if cfg.PeopleOU == "" {
 		cfg.PeopleOU = defaultPeopleOU
@@ -98,6 +107,9 @@ func loadOpenLDAPConfig() (OpenLDAPConfig, error) {
 	}
 	if cfg.PositionOU == "" {
 		cfg.PositionOU = defaultPositionOU
+	}
+	if cfg.GroupOU == "" {
+		cfg.GroupOU = defaultGroupOU
 	}
 	return cfg, validateOpenLDAPConfig(cfg)
 }
@@ -120,6 +132,24 @@ func validateOpenLDAPConfig(cfg OpenLDAPConfig) error {
 		return LdapParamsError{Params: missing}
 	}
 	return nil
+}
+
+func firstNonBlankConfig(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(config.GetConfigString(key)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstNonBlankString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func (o *OpenLDAP) withConn(fn func(conn *ldap.Conn) error) error {
@@ -157,6 +187,14 @@ func (cfg OpenLDAPConfig) deptDN() string {
 
 func (cfg OpenLDAPConfig) positionDN() string {
 	return normalizeDN(cfg.BaseDN, cfg.PositionOU)
+}
+
+func (cfg OpenLDAPConfig) groupDN() string {
+	groupOU := cfg.GroupOU
+	if strings.TrimSpace(groupOU) == "" {
+		groupOU = defaultGroupOU
+	}
+	return normalizeDN(cfg.BaseDN, groupOU)
 }
 
 func normalizeDN(baseDN, ou string) string {
@@ -238,7 +276,7 @@ func (o *OpenLDAP) getEntryByDN(conn *ldap.Conn, dn string, attrs []string) (*ld
 	)
 	res, err := conn.Search(req)
 	if err != nil {
-		return nil, err
+		return nil, ldapErr(err, "Entry", dn)
 	}
 	if len(res.Entries) == 0 {
 		return nil, LdapNotFoundError{Type: "Entry", ID: dn}
@@ -252,6 +290,42 @@ func (o *OpenLDAP) ensureDNExists(conn *ldap.Conn, dn string) error {
 	}
 	_, err := o.getEntryByDN(conn, dn, []string{"dn"})
 	return err
+}
+
+func (o *OpenLDAP) ensureBaseEntryExists(conn *ldap.Conn, dn string) error {
+	if strings.TrimSpace(dn) == "" {
+		return nil
+	}
+	if err := o.ensureDNExists(conn, dn); err == nil {
+		return nil
+	} else if _, ok := err.(LdapNotFoundError); !ok {
+		return err
+	}
+	parts := strings.SplitN(dn, ",", 2)
+	if len(parts) != 2 {
+		return LdapParamsError{Params: []string{"dn"}}
+	}
+	rdn := strings.SplitN(strings.TrimSpace(parts[0]), "=", 2)
+	if len(rdn) != 2 {
+		return LdapParamsError{Params: []string{"dn"}}
+	}
+	attrName := strings.TrimSpace(rdn[0])
+	attrValue := strings.TrimSpace(rdn[1])
+	parentDN := strings.TrimSpace(parts[1])
+	if err := o.ensureDNExists(conn, parentDN); err != nil {
+		return err
+	}
+	req := ldap.NewAddRequest(dn, nil)
+	req.Attribute("objectClass", []string{objectClassDept})
+	switch attrName {
+	case attrOU:
+		req.Attribute(attrOU, []string{attrValue})
+	case attrCN:
+		req.Attribute(attrCN, []string{attrValue})
+	default:
+		return LdapParamsError{Params: []string{"dn"}}
+	}
+	return ldapErr(conn.Add(req), "Entry", dn)
 }
 
 func (o *OpenLDAP) ensureEntryExistsByAttr(conn *ldap.Conn, baseDN, attr, value, typ string) error {
@@ -366,6 +440,35 @@ func normalizePosition(p *Position) (*Position, error) {
 	return p, nil
 }
 
+func normalizeGroup(g *Group) (*Group, error) {
+	if g == nil || strings.TrimSpace(g.Code) == "" {
+		return nil, LdapParamsError{Params: []string{"code"}}
+	}
+	g.Code = strings.TrimSpace(g.Code)
+	if g.Name == "" {
+		g.Name = g.Code
+	}
+	g.Name = strings.TrimSpace(g.Name)
+	memberDNs := make([]string, 0, len(g.MemberDNs))
+	seen := make(map[string]struct{}, len(g.MemberDNs))
+	for _, value := range g.MemberDNs {
+		dn := strings.TrimSpace(value)
+		if dn == "" {
+			continue
+		}
+		if err := validateDN(dn); err != nil {
+			return nil, LdapParamsError{Params: []string{"memberDns"}}
+		}
+		if _, ok := seen[dn]; ok {
+			continue
+		}
+		seen[dn] = struct{}{}
+		memberDNs = append(memberDNs, dn)
+	}
+	g.MemberDNs = memberDNs
+	return g, nil
+}
+
 func (o *OpenLDAP) userDN(uid string) string {
 	return fmt.Sprintf("uid=%s,%s", uid, o.cfg.peopleDN())
 }
@@ -376,6 +479,10 @@ func (o *OpenLDAP) departmentDN(code string) string {
 
 func (o *OpenLDAP) positionDN(code string) string {
 	return fmt.Sprintf("%s=%s,%s", attrCN, code, o.cfg.positionDN())
+}
+
+func (o *OpenLDAP) groupDN(code string) string {
+	return fmt.Sprintf("%s=%s,%s", attrCN, code, o.cfg.groupDN())
 }
 
 func isDescendantDN(child, base string) bool {
@@ -1005,6 +1112,147 @@ func entryToPosition(entry *ldap.Entry) *Position {
 		Name:   entry.GetAttributeValue(attrDescription),
 		DeptDN: entry.GetAttributeValue(attrSeeAlso),
 		Status: "",
+	}
+}
+
+func (o *OpenLDAP) GetGroup(ctx context.Context, code string) (*Group, error) {
+	if strings.TrimSpace(code) == "" {
+		return nil, LdapParamsError{Params: []string{"code"}}
+	}
+	var out *Group
+	err := o.withConn(func(conn *ldap.Conn) error {
+		entry, err := o.getEntryByDN(conn, o.groupDN(strings.TrimSpace(code)), []string{
+			attrCN, attrDescription, attrUniqueMember,
+		})
+		if err != nil {
+			return err
+		}
+		out = entryToGroup(entry)
+		return nil
+	})
+	return out, err
+}
+
+func (o *OpenLDAP) GetGroupByDN(ctx context.Context, dn string) (*Group, error) {
+	dn = strings.TrimSpace(dn)
+	if dn == "" {
+		return nil, LdapParamsError{Params: []string{"dn"}}
+	}
+	var out *Group
+	err := o.withConn(func(conn *ldap.Conn) error {
+		entry, err := o.getEntryByDN(conn, dn, []string{
+			attrCN, attrDescription, attrUniqueMember,
+		})
+		if err != nil {
+			return err
+		}
+		out = entryToGroup(entry)
+		return nil
+	})
+	return out, err
+}
+
+func (o *OpenLDAP) AddGroup(ctx context.Context, group *Group) error {
+	ng, err := normalizeGroup(group)
+	if err != nil {
+		return err
+	}
+	if len(ng.MemberDNs) == 0 {
+		return LdapParamsError{Params: []string{"memberDns"}}
+	}
+	return o.withConn(func(conn *ldap.Conn) error {
+		if err := o.ensureBaseEntryExists(conn, o.cfg.groupDN()); err != nil {
+			return err
+		}
+		if err := o.ensureUnique(conn, o.cfg.groupDN(), attrCN, ng.Code); err != nil {
+			return err
+		}
+		for _, memberDN := range ng.MemberDNs {
+			if err := o.ensureDNExists(conn, memberDN); err != nil {
+				return err
+			}
+		}
+		req := ldap.NewAddRequest(o.groupDN(ng.Code), nil)
+		req.Attribute("objectClass", []string{objectClassGroup})
+		req.Attribute(attrCN, []string{ng.Code})
+		req.Attribute(attrDescription, []string{ng.Name})
+		req.Attribute(attrUniqueMember, ng.MemberDNs)
+		return ldapErr(conn.Add(req), "Group", ng.Code)
+	})
+}
+
+func (o *OpenLDAP) UpdateGroup(ctx context.Context, group *Group) error {
+	ng, err := normalizeGroup(group)
+	if err != nil {
+		return err
+	}
+	if len(ng.MemberDNs) == 0 {
+		return LdapParamsError{Params: []string{"memberDns"}}
+	}
+	return o.withConn(func(conn *ldap.Conn) error {
+		if err := o.ensureBaseEntryExists(conn, o.cfg.groupDN()); err != nil {
+			return err
+		}
+		for _, memberDN := range ng.MemberDNs {
+			if err := o.ensureDNExists(conn, memberDN); err != nil {
+				return err
+			}
+		}
+		req := ldap.NewModifyRequest(o.groupDN(ng.Code), nil)
+		req.Replace(attrDescription, []string{ng.Name})
+		req.Replace(attrUniqueMember, ng.MemberDNs)
+		return ldapErr(conn.Modify(req), "Group", ng.Code)
+	})
+}
+
+func (o *OpenLDAP) DeleteGroup(ctx context.Context, code string) error {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return LdapParamsError{Params: []string{"code"}}
+	}
+	return o.withConn(func(conn *ldap.Conn) error {
+		req := ldap.NewDelRequest(o.groupDN(code), nil)
+		return ldapErr(conn.Del(req), "Group", code)
+	})
+}
+
+func (o *OpenLDAP) ListGroup(ctx context.Context) ([]*Group, error) {
+	var out []*Group
+	err := o.withConn(func(conn *ldap.Conn) error {
+		if err := o.ensureBaseEntryExists(conn, o.cfg.groupDN()); err != nil {
+			return err
+		}
+		req := ldap.NewSearchRequest(
+			o.cfg.groupDN(),
+			ldap.ScopeWholeSubtree,
+			ldap.NeverDerefAliases,
+			0, 0, false,
+			fmt.Sprintf("(objectClass=%s)", objectClassGroup),
+			[]string{attrCN, attrDescription, attrUniqueMember},
+			nil,
+		)
+		res, err := conn.Search(req)
+		if err != nil {
+			return err
+		}
+		out = make([]*Group, 0, len(res.Entries))
+		for _, entry := range res.Entries {
+			out = append(out, entryToGroup(entry))
+		}
+		return nil
+	})
+	return out, err
+}
+
+func entryToGroup(entry *ldap.Entry) *Group {
+	if entry == nil {
+		return nil
+	}
+	return &Group{
+		DN:        entry.DN,
+		Code:      entry.GetAttributeValue(attrCN),
+		Name:      entry.GetAttributeValue(attrDescription),
+		MemberDNs: entry.GetAttributeValues(attrUniqueMember),
 	}
 }
 

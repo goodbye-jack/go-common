@@ -66,7 +66,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 		redisPassword = cfg.Password
 		// 解析DB索引（兼容字符串/数字配置）
 		fmt.Sscanf(cfg.Database, "%d", &redisDB)
-		log.Info("NewRbacClient: 使用orm.Redis配置 | addr=%s | db=%d", redisAddr, redisDB)
+		log.Infof("NewRbacClient: 使用orm.Redis配置 | addr=%s | db=%d", redisAddr, redisDB)
 	}
 
 	// ========== 步骤2：降级逻辑 ==========
@@ -80,7 +80,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 			redisPassword = redisAddrOpt[1]
 		}
 		redisDB = 0
-		log.Info("NewRbacClient: 使用降级配置 | addr=%s | db=%d", redisAddr, redisDB)
+		log.Infof("NewRbacClient: 使用降级配置 | addr=%s | db=%d", redisAddr, redisDB)
 	}
 
 	// ========== 步骤3：构造casbin-adapter兼容的DSN ==========
@@ -145,7 +145,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 		e: e,
 		w: watcher,
 	}
-	log.Info("RBAC客户端初始化成功 | Redis地址: %s", redisAddr)
+	log.Infof("RBAC客户端初始化成功 | Redis地址: %s", redisAddr)
 	return rbacClient
 }
 
@@ -165,7 +165,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 //		redisAddr = orm.Redis.GetAddr()
 //		redisPassword = orm.Redis.GetPassword()
 //		redisDB = orm.Redis.GetConfig().DB
-//		log.Info("NewRbacClient: 使用orm.Redis配置 | addr=%s | db=%d", redisAddr, redisDB)
+//		log.Infof("NewRbacClient: 使用orm.Redis配置 | addr=%s | db=%d", redisAddr, redisDB)
 //	}
 //	// ========== 步骤2：降级逻辑（兜底默认值） ==========
 //	if redisAddr == "" || redisAddr == ":0" {
@@ -175,7 +175,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 //			redisAddr = "127.0.0.1:6379"
 //		}
 //		redisDB = 0
-//		log.Info("NewRbacClient: 使用降级配置 | addr=%s | db=%d", redisAddr, redisDB)
+//		log.Infof("NewRbacClient: 使用降级配置 | addr=%s | db=%d", redisAddr, redisDB)
 //	}
 //	// ========== 步骤3：核心兼容方案 - 直接构造DSN（适配v3所有版本） ==========
 //	// 构造casbin-redis-adapter兼容的DSN格式（无协议前缀，仅host:port?参数）
@@ -240,7 +240,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 //		e: e,
 //		w: watcher,
 //	}
-//	log.Info("RBAC客户端初始化成功 | Redis地址: %s", redisAddr)
+//	log.Infof("RBAC客户端初始化成功 | Redis地址: %s", redisAddr)
 //	return rbacClient
 //}
 
@@ -262,7 +262,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 //		redisAddr = orm.Redis.GetAddr() // 确保返回host:port
 //		redisPassword = orm.Redis.GetPassword()
 //		redisDB = orm.Redis.GetConfig().DB // 确保返回int类型DB索引
-//		log.Info("NewRbacClient: 使用orm.Redis配置 | addr=%s | db=%d", redisAddr, redisDB)
+//		log.Infof("NewRbacClient: 使用orm.Redis配置 | addr=%s | db=%d", redisAddr, redisDB)
 //	}
 //
 //	// ========== 步骤2：降级逻辑（兜底默认值） ==========
@@ -273,7 +273,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 //			redisAddr = "127.0.0.1:6379"
 //		}
 //		redisDB = 0
-//		log.Info("NewRbacClient: 使用降级配置 | addr=%s | db=%d", redisAddr, redisDB)
+//		log.Infof("NewRbacClient: 使用降级配置 | addr=%s | db=%d", redisAddr, redisDB)
 //	}
 //
 //	// ========== 步骤3：初始化Redis客户端（适配go-redis/v9官方API） ==========
@@ -335,7 +335,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 //		e: e,
 //		w: watcher,
 //	}
-//	log.Info("RBAC客户端初始化成功 | Redis地址: %s", redisAddr)
+//	log.Infof("RBAC客户端初始化成功 | Redis地址: %s", redisAddr)
 //	return rbacClient
 //}
 
@@ -361,7 +361,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 //		if cfg := orm.Redis.GetConfig(); cfg != nil {
 //			redisMode = cfg.Mode
 //		}
-//		log.Info("NewRbacClient: 使用orm.Redis配置, addr=%s, mode=%s, db=%d", redisAddr, redisMode, redisDB)
+//		log.Infof("NewRbacClient: 使用orm.Redis配置, addr=%s, mode=%s, db=%d", redisAddr, redisMode, redisDB)
 //	}
 //
 //	// ========== 步骤2：降级逻辑（传入参数 → 默认值） ==========
@@ -373,7 +373,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 //		}
 //		redisDB = 0
 //		redisMode = dbconfig.DBModeSingle // 默认单机
-//		log.Info("NewRbacClient: 使用降级配置, addr=%s, mode=%s", redisAddr, redisMode)
+//		log.Infof("NewRbacClient: 使用降级配置, addr=%s, mode=%s", redisAddr, redisMode)
 //	}
 //
 //	// ========== 步骤3：初始化Casbin Adapter（复用通用DSN逻辑 + 兼容集群） ==========
@@ -470,7 +470,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 //		redisAddr = orm.Redis.GetAddr()
 //		redisPassword = orm.Redis.GetPassword()
 //		redisDB = orm.Redis.GetDB()
-//		log.Info("NewRbacClient: 使用orm.Redis配置, addr=%s, db=%d", redisAddr, redisDB)
+//		log.Infof("NewRbacClient: 使用orm.Redis配置, addr=%s, db=%d", redisAddr, redisDB)
 //	}
 //	// ========== 步骤2：降级逻辑（传入参数 → 默认值） ==========
 //	if redisAddr == "" || redisAddr == ":0" {
@@ -480,7 +480,7 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 //			redisAddr = "127.0.0.1:6379"
 //		}
 //		redisDB = 0
-//		log.Info("NewRbacClient: 使用降级配置, addr=%s", redisAddr)
+//		log.Infof("NewRbacClient: 使用降级配置, addr=%s", redisAddr)
 //	}
 //	// ========== 步骤3：初始化Casbin Adapter（适配低版本，无参数报错） ==========
 //	// 拼接DSN：包含密码和DB，仅传2个参数给NewAdapter
@@ -580,17 +580,17 @@ func (r Req) ToArr() []string {
 func (c *RbacClient) GetRolePolicy(sub string) (*RolePolicy, error) {
 	policies, err := c.e.GetFilteredGroupingPolicy(0, sub)
 	if err != nil {
-		log.Error("GetRolePolicy/GetFilteredPolicy(0, %s) error, %v", sub, err)
+		log.Errorf("GetRolePolicy/GetFilteredPolicy(0, %s) error, %v", sub, err)
 		return nil, err
 	}
 	if len(policies) == 0 {
 		return nil, nil
 	}
 	if len(policies) > 1 {
-		log.Warn("GetRolePolicy/GetFilterPolicy(0, %s) result count %d", sub, len(policies))
+		log.Warnf("GetRolePolicy/GetFilterPolicy(0, %s) result count %d", sub, len(policies))
 	}
 
-	log.Info("GetRolePolicy(%s), result, %+v", sub, policies)
+	log.Debugf("GetRolePolicy(%s) loaded, count=%d", sub, len(policies))
 	return &RolePolicy{
 		Role: policies[0][1],
 		User: policies[0][0],
@@ -598,21 +598,21 @@ func (c *RbacClient) GetRolePolicy(sub string) (*RolePolicy, error) {
 }
 
 func (c *RbacClient) AddRolePolicy(rp *RolePolicy) error {
-	log.Info("AddRolePolicy(%v)", *rp)
+	log.Infof("AddRolePolicy(%v)", *rp)
 	_rp, err := c.GetRolePolicy(rp.User)
 	if err != nil {
-		log.Error("AddRolePolicy/GetRolePolicy(%v) error, %v", *rp, err)
+		log.Errorf("AddRolePolicy/GetRolePolicy(%v) error, %v", *rp, err)
 		return err
 	}
 	if _rp != nil && _rp.Role != rp.Role { // 如果缓存中的角色和当前传入的角色不一致,那么删除缓存的角色,重新传入新的角色
-		log.Info("AddRolePolicy(%v) had existed", *rp)
+		log.Infof("AddRolePolicy(%v) had existed", *rp)
 		if errDR := c.DeleteRolePolicy(_rp); errDR != nil {
 			return errDR
 		}
 	}
 	added, err := c.e.AddGroupingPolicy(rp.ToArr())
 	if err != nil {
-		log.Error("AddRolePolicy/AddGroupingPolicy(%v) error, %v", *rp, err)
+		log.Errorf("AddRolePolicy/AddGroupingPolicy(%v) error, %v", *rp, err)
 		return err
 	}
 	if added {
@@ -630,7 +630,7 @@ func (c *RbacClient) UpdateRolePolicy(rp *RolePolicy, role string) error {
 	if err != nil {
 		return err
 	}
-	log.Info("UpdateRolePolicy(%v, %v), %b updated", rp.ToArr(), newRp.ToArr(), updated)
+	log.Infof("UpdateRolePolicy(%v, %v), updated=%t", rp.ToArr(), newRp.ToArr(), updated)
 
 	if updated {
 		return c.save()
@@ -644,7 +644,7 @@ func (c *RbacClient) DeleteRolePolicy(rp *RolePolicy) error {
 	if err != nil {
 		return err
 	}
-	log.Info("DeleteRolePolicy %v, %b removed", rp)
+	log.Infof("DeleteRolePolicy %v, %t removed", rp, removed)
 	if removed {
 		return c.save()
 	}
@@ -671,30 +671,30 @@ func (c *RbacClient) AddActionPolicies(policies []Policy) error {
 		_policy := p.ToArr()
 		_policies = append(_policies, _policy)
 	}
-	log.Info("rabc AddPolicies, %+v", _policies)
+	log.Infof("AddActionPolicies begin, count=%d", len(_policies))
 
 	ok, err := c.e.AddPoliciesEx(_policies)
 	if err != nil {
-		log.Error("AddPolicies, %+v, %v", _policies, err)
+		log.Errorf("AddPolicies failed, count=%d, err=%v", len(_policies), err)
 		return err
 	}
 	if !ok {
 		log.Errorf("AddPolicies, casbin Enforcer.AddPolices not ok")
 		return errors.New("AddPolices Failed")
 	}
-	log.Info("AddPolicies %+v success", policies)
+	log.Infof("AddActionPolicies success, count=%d", len(_policies))
 	return c.save()
 }
 
 func (c *RbacClient) GetActionPolicies(role string) ([]*ActionPolicy, error) {
-	log.Info("GetActionPolicies, role is %s", role)
+	log.Debugf("GetActionPolicies requested, role=%s", role)
 	content, err := c.e.GetFilteredPolicy(0, role)
 	if err != nil {
-		log.Error("GetActionPolicies/GetFilteredPolicy failed, %v, error, %v", content, err)
+		log.Errorf("GetActionPolicies/GetFilteredPolicy failed, %v, error, %v", content, err)
 		return nil, err
 	}
 
-	log.Info("GetActionPolicies/FilteredPolicies return content: %v", content)
+	log.Debugf("GetActionPolicies loaded, role=%s, count=%d", role, len(content))
 	ans := []*ActionPolicy{}
 	for _, item := range content {
 		ans = append(ans, &ActionPolicy{
@@ -710,11 +710,11 @@ func (c *RbacClient) GetActionPolicies(role string) ([]*ActionPolicy, error) {
 func (c *RbacClient) DeleteActionPolicy(ap *ActionPolicy) error {
 	removed, err := c.e.RemovePolicy(ap.ToArr())
 	if err != nil {
-		log.Error("DeleteActionPolicy/RemovePolicy, error %v", err)
+		log.Errorf("DeleteActionPolicy/RemovePolicy, error %v", err)
 		return err
 	}
 
-	log.Info("DeleteActionPolicy %v, removed: %v", *ap, removed)
+	log.Infof("DeleteActionPolicy %v, removed: %v", *ap, removed)
 	if removed {
 		return c.save()
 	}
@@ -724,20 +724,20 @@ func (c *RbacClient) DeleteActionPolicy(ap *ActionPolicy) error {
 func (c *RbacClient) Enforce(r *Req) (bool, error) {
 	ok, err := c.e.Enforce(r.sub, r.dom, r.obj, r.act)
 	if err != nil {
-		log.Error("Enforce(%v) error, %v", *r, err)
+		log.Errorf("Enforce(%v) error, %v", *r, err)
 		return false, err
 	}
-	log.Info("Enforce(%v) result , %v", *r, ok)
+	log.Infof("Enforce(%v) result , %v", *r, ok)
 	return ok, nil
 }
 
 func (c *RbacClient) DeletePoliciesByService(service string) error {
 	removed, err := c.e.RemoveFilteredPolicy(1, service)
 	if err != nil {
-		log.Error("DeletePoliciesByService(%s) error, %v", service, err)
+		log.Errorf("DeletePoliciesByService(%s) error, %v", service, err)
 		return err
 	}
-	log.Info("DeletePoliciesByService(%s) removed=%v", service, removed)
+	log.Infof("DeletePoliciesByService(%s) removed=%v", service, removed)
 	if removed {
 		return c.save()
 	}
@@ -747,7 +747,7 @@ func (c *RbacClient) DeletePoliciesByService(service string) error {
 func (c *RbacClient) AddGroupingPolicy(sub, role string) error {
 	added, err := c.e.AddGroupingPolicy(sub, role)
 	if err != nil {
-		log.Error("AddGroupingPolicy(%s,%s) error, %v", sub, role, err)
+		log.Errorf("AddGroupingPolicy(%s,%s) error, %v", sub, role, err)
 		return err
 	}
 	if added {
@@ -759,7 +759,7 @@ func (c *RbacClient) AddGroupingPolicy(sub, role string) error {
 func (c *RbacClient) RemoveGroupingPoliciesForSubject(sub string) error {
 	removed, err := c.e.RemoveFilteredGroupingPolicy(0, sub)
 	if err != nil {
-		log.Error("RemoveGroupingPoliciesForSubject(%s) error, %v", sub, err)
+		log.Errorf("RemoveGroupingPoliciesForSubject(%s) error, %v", sub, err)
 		return err
 	}
 	if removed {
@@ -771,7 +771,7 @@ func (c *RbacClient) RemoveGroupingPoliciesForSubject(sub string) error {
 func (c *RbacClient) RemoveGroupingPoliciesForRole(role string) error {
 	removed, err := c.e.RemoveFilteredGroupingPolicy(1, role)
 	if err != nil {
-		log.Error("RemoveGroupingPoliciesForRole(%s) error, %v", role, err)
+		log.Errorf("RemoveGroupingPoliciesForRole(%s) error, %v", role, err)
 		return err
 	}
 	if removed {
@@ -783,7 +783,7 @@ func (c *RbacClient) RemoveGroupingPoliciesForRole(role string) error {
 func (c *RbacClient) GetRolesForSubject(sub string) ([]string, error) {
 	policies, err := c.e.GetFilteredGroupingPolicy(0, sub)
 	if err != nil {
-		log.Error("GetRolesForSubject(%s) error, %v", sub, err)
+		log.Errorf("GetRolesForSubject(%s) error, %v", sub, err)
 		return nil, err
 	}
 	roles := make([]string, 0, len(policies))

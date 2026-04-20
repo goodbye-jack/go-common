@@ -1,10 +1,23 @@
-## v1.3.1（2026-03-27）
+## v1.3.1（2026-04-15）
 ### 变更
-- **RBAC Redis 密码支持**：`NewRbacClient` 增加对 `redis_password` 的读取与透传，空密码保持兼容。
-- **HTTP 初始化适配**：`http/server.go` 初始化 RBAC 时同时传入 `redis_addr` 和 `redis_password`。
-- **配置常量补充**：新增 `CasbinRedisPasswordName = "redis_password"`。
-- **示例配置更新**：`example/config.yaml` 增加 `redis_password` 配置示例。
-- **文档补充**：`README.md` 新增 Redis 密码配置说明与 tag 推送步骤。
+- **工作流业务接入进一步简化**：业务项目推荐直接使用 `workflowapi.MustRegisterFromConfig(server)` 完成标准模块注册。
+- **目录服务 provider 标准化**：统一支持 `workflow.directory.provider=none|ldap`，并兼容老的全局 `ldap_*` 配置自动识别。
+- **自动分配 provider 标准化**：统一支持 `workflow.assignment.provider=none|directory|ldap`，可直接回写 `nextAssignee`、`nextCandidateUsers`、`nextCandidateGroups`。
+- **身份归一能力增强**：新增 / 强化 `workflow.identity.role_aliases`、`workflow.identity.group_aliases`，支持 LDAP 与本地登录态切换时尽量不改 BPMN。
+- **启动摘要日志增强**：工作流模块注册时输出 provider、assignment provider、alias 数量等关键信息，方便开发排障。
+- **数据库统一配置能力增强**：`databases.*` 配置继续完善，支持 MySQL `charset/parse_time/loc/params`，并兼容 PostgreSQL、KingBase、DM、Mongo、Redis 多实例初始化。
+- **Redis 密码兼容保留**：历史 RBAC 读取 `redis_addr`、`redis_password` 的方式继续兼容，避免影响旧项目。
+### 升级指引
+1. 业务项目工作流注册统一改为 `workflowapi.MustRegisterFromConfig(server)`
+2. 新项目优先配置 `workflow.directory.provider`，不再依赖隐式目录来源判断
+3. 如需 LDAP / 本地登录态两种来源共用同一套 BPMN，请补齐 `workflow.identity.role_aliases` / `group_aliases`
+4. 业务数据库与 Redis 推荐统一迁移到 `databases.*` 结构
+5. 如启用自动分配，优先显式配置 `workflow.assignment.provider`
+### 兼容说明
+- 老的 `workflowapi.NewDefaultModuleFromConfig()` + `module.Register(server)` 仍可继续使用
+- 老的全局 LDAP 配置 `ldap_*` 仍兼容
+- 历史 RBAC Redis 配置 `redis_addr` / `redis_password` 仍兼容
+- 新版本推荐文档与接入方式以 `v1.3.1` 发布说明和最小接入手册为准
 
 ## v1.3.0（2026-03-13）
 ### 变更

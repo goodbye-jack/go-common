@@ -89,8 +89,8 @@ func (o *Orm) GetDB() *gorm.DB {
 }
 
 // NewOrm 创建 ORM 实例
-func NewOrm(dsn string, dbtype utils.DBType, slowTime int) *Orm {
-	glog.Error("NewOrm param:dsn=%s", dsn)
+func NewOrm(dsn string, dbtype utils.DBType, slowTime int, logLevels ...logger.LogLevel) *Orm {
+	glog.Infof("NewOrm param:dsn=%s", maskDSN(dsn, dbtype))
 	if dsn == "" {
 		glog.Error("NewOrm param dsn is empty:请检查您的DSN参数")
 		return nil
@@ -101,6 +101,10 @@ func NewOrm(dsn string, dbtype utils.DBType, slowTime int) *Orm {
 	}
 	if slowTime <= 0 {
 		slowTime = 3
+	}
+	gormLogLevel := logger.Warn
+	if len(logLevels) > 0 {
+		gormLogLevel = logLevels[0]
 	}
 	var dialect gorm.Dialector
 	switch dbtype {
@@ -120,21 +124,21 @@ func NewOrm(dsn string, dbtype utils.DBType, slowTime int) *Orm {
 			DSN:        dsn,
 		})
 	default:
-		glog.Error(fmt.Sprintf("unsupported dbType: %s", string(dsn)))
+		glog.Errorf("unsupported dbType: %s", dbtype)
 	}
 	dbConfig := &gorm.Config{ // 配置 GORM
 		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
 			SlowThreshold:             time.Duration(slowTime) * time.Second, // 这个最小就是5,后面改成可传入数字
-			LogLevel:                  logger.Info,
-			IgnoreRecordNotFoundError: false,
+			LogLevel:                  gormLogLevel,
+			IgnoreRecordNotFoundError: true,
 			Colorful:                  true,
-		}).LogMode(logger.Info),
+		}).LogMode(gormLogLevel),
 		DisableForeignKeyConstraintWhenMigrating: true,
 		PrepareStmt:                              true,
 	}
 	db, err := gorm.Open(dialect, dbConfig)
 	if err != nil {
-		glog.Error(fmt.Sprintf("%s connect failed, %v", dbtype, err))
+		glog.Errorf("%s connect failed, %v", dbtype, err)
 	}
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxIdleConns(10)
@@ -149,6 +153,62 @@ func NewOrm(dsn string, dbtype utils.DBType, slowTime int) *Orm {
 		orm.registerKingbaseHooks()
 	}
 	return orm
+}
+
+func maskDSN(dsn string, dbType utils.DBType) string {
+	trimmed := strings.TrimSpace(dsn)
+	if trimmed == "" {
+		return trimmed
+	}
+	switch dbType {
+	case utils.DBTypeMySQL:
+		if idx := strings.Index(trimmed, "@"); idx > 0 {
+			if colon := strings.Index(trimmed[:idx], ":"); colon >= 0 {
+				return trimmed[:colon+1] + "******" + trimmed[idx:]
+			}
+		}
+	case utils.DBTypePostgres, utils.DBTypeKingBase:
+		parts := strings.Fields(trimmed)
+		for i, part := range parts {
+			if strings.HasPrefix(strings.ToLower(part), "password=") {
+				parts[i] = "password=******"
+			}
+		}
+		return strings.Join(parts, " ")
+	case utils.DBTypeSqlserver:
+		parts := strings.Split(trimmed, ";")
+		for i, part := range parts {
+			lower := strings.ToLower(strings.TrimSpace(part))
+			if strings.HasPrefix(lower, "password=") {
+				parts[i] = "password=******"
+			}
+		}
+		return strings.Join(parts, ";")
+	case utils.DBTypeOracle:
+		if at := strings.Index(trimmed, "@"); at > 0 {
+			if slash := strings.Index(trimmed[:at], "/"); slash >= 0 {
+				return trimmed[:slash+1] + "******" + trimmed[at:]
+			}
+		}
+	case utils.DBTypeDM:
+		if at := strings.Index(trimmed, "@"); at > 0 {
+			if colon := strings.Index(trimmed[:at], ":"); colon >= 0 {
+				return trimmed[:colon+1] + "******" + trimmed[at:]
+			}
+		}
+	case utils.DBTypeMongo, utils.DBTypeMongoDB, utils.DBTypeRedis:
+		if schemeSep := strings.Index(trimmed, "://"); schemeSep >= 0 {
+			prefix := trimmed[:schemeSep+3]
+			rest := trimmed[schemeSep+3:]
+			if at := strings.Index(rest, "@"); at > 0 {
+				if colon := strings.LastIndex(rest[:at], ":"); colon >= 0 {
+					return prefix + rest[:colon+1] + "******" + rest[at:]
+				}
+				return prefix + "******@" + rest[at+1:]
+			}
+		}
+	}
+	return trimmed
 }
 
 // 注册达梦专用钩子
@@ -196,7 +256,14 @@ func convertDMLimit(db *gorm.DB) {
 			if orderBy, ok := orderClause.Expression.(clause.OrderBy); ok {
 				orderExpr = ""
 				for _, col := range orderBy.Columns {
-					orderExpr += fmt.Sprintf("%s, ", col.Column)
+					if col.Column.Name == "" {
+						continue
+					}
+					direction := "ASC"
+					if col.Desc {
+						direction = "DESC"
+					}
+					orderExpr += fmt.Sprintf("%s %s, ", col.Column.Name, direction)
 				}
 				if orderExpr != "" {
 					orderExpr = strings.TrimSuffix(orderExpr, ", ")
@@ -228,14 +295,14 @@ func convertDMLimit(db *gorm.DB) {
 func (o *Orm) AutoMigrate(ptr interface{}) {
 	err := o.db.AutoMigrate(ptr)
 	if err != nil {
-		glog.Error("AutoMigrate error: %v", err)
+		glog.Errorf("AutoMigrate error: %v", err)
 		return
 	}
 }
 
 func (o *Orm) Migrator(ptr interface{}, indexName string) {
-	if err := o.db.Migrator().CreateIndex(ptr, indexName).Error; err != nil {
-		glog.Error("CreateIndex error: %v", err)
+	if err := o.db.Migrator().CreateIndex(ptr, indexName); err != nil {
+		glog.Errorf("CreateIndex error: %v", err)
 	}
 }
 
@@ -246,7 +313,7 @@ func (o *Orm) Table(name string, args ...interface{}) (tx *gorm.DB) {
 func (o *Orm) Transaction(ctx context.Context, fn func(tx *gorm.DB) error) {
 	db := o.db.WithContext(ctx)
 	if err := db.Transaction(fn); err != nil {
-		glog.Error("Transaction error: %v", err)
+		glog.Errorf("Transaction error: %v", err)
 	}
 }
 

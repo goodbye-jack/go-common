@@ -1,0 +1,151 @@
+module: rbac_compatibility
+title: 历史兼容配置
+description: 旧版 RBAC、LDAP 与数据库兼容配置，仅用于迁移提示，不作为新项目主模板推荐。
+owner: go-common/rbac
+order: 90
+
+items:
+  - key: redis_addr
+    kind: scalar
+    type: string
+    since: v1.0.0
+    compatibility_only: true
+    comment: 历史 Redis 地址配置。
+    example: 127.0.0.1:6379
+    group: compatibility.redis
+    order: 10
+    merge_policy: compatibility_only
+
+  - key: redis_password
+    kind: scalar
+    type: string
+    since: v1.3.1
+    compatibility_only: true
+    sensitive: true
+    comment: 历史 Redis 密码配置。
+    example: ""
+    group: compatibility.redis
+    order: 20
+    merge_policy: compatibility_only
+
+  - key: db_dsn
+    kind: scalar
+    type: string
+    since: v1.0.0
+    compatibility_only: true
+    comment: 历史关系型数据库 DSN。
+    example: root:your_password@tcp(127.0.0.1:3306)/your_database?charset=utf8mb4&parseTime=True&loc=Local
+    group: compatibility.db
+    order: 30
+    merge_policy: compatibility_only
+
+  - key: db_type
+    kind: scalar
+    type: string
+    since: v1.0.0
+    compatibility_only: true
+    comment: 历史关系型数据库类型。
+    example: mysql
+    group: compatibility.db
+    order: 40
+    merge_policy: compatibility_only
+
+  - key: db_sql_execute_time
+    kind: scalar
+    type: int
+    since: v1.0.0
+    compatibility_only: true
+    comment: 历史 SQL 执行慢日志阈值，单位秒。
+    example: 5
+    group: compatibility.db
+    order: 50
+    merge_policy: compatibility_only
+
+  - key: ldap_addr
+    kind: scalar
+    type: string
+    since: v1.0.0
+    compatibility_only: true
+    comment: 历史 LDAP 地址配置。
+    example: ldap://127.0.0.1:8389
+    group: compatibility.ldap
+    order: 60
+    merge_policy: compatibility_only
+
+  - key: ldap_bind_dn
+    kind: scalar
+    type: string
+    since: v1.0.0
+    compatibility_only: true
+    comment: 历史 LDAP 绑定 DN。
+    example: cn=admin,dc=example,dc=com
+    group: compatibility.ldap
+    order: 70
+    merge_policy: compatibility_only
+
+  - key: ldap_bind_password
+    kind: scalar
+    type: string
+    since: v1.0.0
+    compatibility_only: true
+    sensitive: true
+    comment: 历史 LDAP 绑定密码。
+    example: ldap-bind-password
+    group: compatibility.ldap
+    order: 80
+    merge_policy: compatibility_only
+
+  - key: ldap_base_dn
+    kind: scalar
+    type: string
+    since: v1.0.0
+    compatibility_only: true
+    comment: 历史 LDAP 根 DN。
+    example: dc=example,dc=com
+    group: compatibility.ldap
+    order: 90
+    merge_policy: compatibility_only
+
+  - key: ldap_people_ou
+    kind: scalar
+    type: string
+    since: v1.0.0
+    compatibility_only: true
+    comment: 历史 LDAP 用户 OU。
+    example: ou=people
+    group: compatibility.ldap
+    order: 100
+    merge_policy: compatibility_only
+
+  - key: ldap_department_ou
+    kind: scalar
+    type: string
+    since: v1.0.0
+    compatibility_only: true
+    comment: 历史 LDAP 部门 OU。
+    example: ou=departments
+    group: compatibility.ldap
+    order: 110
+    merge_policy: compatibility_only
+
+  - key: ldap_position_ou
+    kind: scalar
+    type: string
+    since: v1.0.0
+    compatibility_only: true
+    comment: 历史 LDAP 岗位 OU。
+    example: ou=positions
+    group: compatibility.ldap
+    order: 120
+    merge_policy: compatibility_only
+
+  - key: ldap_use_tls
+    kind: scalar
+    type: bool
+    since: v1.0.0
+    compatibility_only: true
+    comment: 历史 LDAP TLS 开关。
+    example: false
+    group: compatibility.ldap
+    order: 130
+    merge_policy: compatibility_only

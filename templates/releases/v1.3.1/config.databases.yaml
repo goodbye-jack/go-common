@@ -1,0 +1,106 @@
+# go-common v1.3.1 数据源模板
+#
+# 默认真实运行配置建议使用 MySQL + Redis。
+# 如果项目使用 PostgreSQL / KingBase / DM，请替换 mysql.default。
+
+databases:
+  mysql:
+    default:
+      db_name: default_mysql
+      mode: single
+      host: 127.0.0.1
+      port: 3306
+      user: root
+      password: your_password
+      database: your_database
+      charset: utf8mb4
+      parse_time: true
+      loc: Local
+      params:
+        allowNativePasswords: "true"
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5
+      log_mode: info
+  postgres:
+    default:
+      db_name: default_postgres
+      mode: single
+      host: 127.0.0.1
+      port: 5432
+      user: postgres
+      password: postgres-password
+      database: your_database
+      ssl_mode: disable
+      time_zone: Asia/Shanghai
+      params:
+        application_name: go-common
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5
+      log_mode: info
+  kingbase:
+    default:
+      db_name: default_kingbase
+      mode: single
+      host: 127.0.0.1
+      port: 54321
+      user: system
+      password: kingbase-password
+      database: your_database
+      ssl_mode: disable
+      time_zone: Asia/Shanghai
+      params:
+        application_name: go-common
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5
+      log_mode: info
+  dm:
+    default:
+      db_name: default_dm
+      mode: single
+      host: 127.0.0.1
+      port: 5236
+      user: SYSDBA
+      password: dm-password
+      database: your_database
+      schema: your_schema
+      params:
+        compatibleMode: mysql
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5
+      log_mode: info
+  redis:
+    default:
+      db_name: default_redis
+      mode: single
+      host: 127.0.0.1
+      port: 6379
+      password:
+      database: 0
+      timeout: 5
+      max_pool_size: 100
+      min_pool_size: 10
+      read_timeout: 3s
+      write_timeout: 3s
+  mongo:
+    default:
+      db_name: default_mongo
+      mode: single
+      host: 127.0.0.1
+      port: 27017
+      user:
+      password:
+      database: your_database
+      auth_db: admin
+      ssl: false
+      ssl_mode: disable
+      timeout: 5
+      max_pool_size: 100
+      min_pool_size: 10

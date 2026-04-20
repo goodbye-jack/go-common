@@ -1,0 +1,125 @@
+module: workflow_directory
+title: 工作流目录服务配置
+description: workflow directory provider 与 LDAP 目录服务配置。
+owner: go-common/workflow/directory
+order: 30
+
+items:
+  - key: workflow.directory
+    kind: object
+    since: v1.3.1
+    comment: 工作流目录服务配置对象。
+    group: workflow.directory
+    order: 10
+
+  - key: workflow.directory.provider
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    default: none
+    enum:
+      - none
+      - ldap
+    comment: 工作流目录服务来源。
+    example: none
+    group: workflow.directory
+    order: 20
+    merge_policy: add_if_missing
+
+  - key: workflow.directory.ldap
+    kind: object
+    since: v1.3.1
+    comment: LDAP 目录服务配置对象。
+    group: workflow.directory.ldap
+    order: 30
+
+  - key: workflow.directory.ldap.addr
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    comment: LDAP 地址。
+    example: ldap://127.0.0.1:8389
+    group: workflow.directory.ldap
+    order: 40
+    merge_policy: add_if_missing
+
+  - key: workflow.directory.ldap.bind_dn
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    comment: LDAP 管理员绑定 DN。
+    example: cn=admin,dc=example,dc=com
+    group: workflow.directory.ldap
+    order: 50
+    merge_policy: add_if_missing
+
+  - key: workflow.directory.ldap.bind_password
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    sensitive: true
+    comment: LDAP 管理员绑定密码。
+    example: ldap-bind-password
+    group: workflow.directory.ldap
+    order: 60
+    merge_policy: add_if_missing
+
+  - key: workflow.directory.ldap.base_dn
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    comment: LDAP 根 DN。
+    example: dc=example,dc=com
+    group: workflow.directory.ldap
+    order: 70
+    merge_policy: add_if_missing
+
+  - key: workflow.directory.ldap.people_ou
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    comment: LDAP 用户 OU。
+    example: ou=people
+    group: workflow.directory.ldap
+    order: 80
+    merge_policy: add_if_missing
+
+  - key: workflow.directory.ldap.department_ou
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    comment: LDAP 部门 OU。
+    example: ou=departments
+    group: workflow.directory.ldap
+    order: 90
+    merge_policy: add_if_missing
+
+  - key: workflow.directory.ldap.position_ou
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    comment: LDAP 岗位 OU。
+    example: ou=positions
+    group: workflow.directory.ldap
+    order: 100
+    merge_policy: add_if_missing
+
+  - key: workflow.directory.ldap.use_tls
+    kind: scalar
+    type: bool
+    since: v1.3.1
+    required: false
+    default: false
+    comment: LDAP 是否启用 TLS。
+    example: false
+    group: workflow.directory.ldap
+    order: 110
+    merge_policy: add_if_missing

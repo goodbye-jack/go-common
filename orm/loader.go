@@ -9,6 +9,7 @@ import (
 	"github.com/goodbye-jack/go-common/orm/redis"
 	"github.com/goodbye-jack/go-common/utils"
 	"github.com/spf13/viper"
+	"sort"
 	"strings"
 )
 
@@ -25,6 +26,8 @@ func InitAllDB(v *viper.Viper) error {
 		// 关系型数据库
 		case "mysql":
 			err = initRelationalDB(v, utils.DBTypeMySQL)
+		case "postgres", "postgresql", "pgsql":
+			err = initRelationalDBByKey(v, dbType, utils.DBTypePostgres)
 		case "dm":
 			err = initRelationalDB(v, utils.DBTypeDM)
 		case "kingbase":
@@ -48,14 +51,18 @@ func InitAllDB(v *viper.Viper) error {
 
 // initRelationalDB 通用关系型数据库初始化（MySQL/DM/金仓等）
 func initRelationalDB(v *viper.Viper, dbType utils.DBType) error {
-	instanceKey := string(dbType)
+	return initRelationalDBByKey(v, string(dbType), dbType)
+}
+
+func initRelationalDBByKey(v *viper.Viper, instanceKey string, dbType utils.DBType) error {
 	instances := v.GetStringMap(fmt.Sprintf("databases.%s", instanceKey))
 	if len(instances) == 0 {
 		log.Infof("【%s初始化】未配置任何%s实例，跳过", dbType, dbType)
 		return nil
 	}
-	log.Infof("【%s初始化】开始初始化%d个实例：%v", dbType, len(instances), getInstanceNames(instances))
-	for instanceName := range instances {
+	instanceNames := getInstanceNames(instances)
+	log.Infof("【%s初始化】开始初始化%d个实例：%v", dbType, len(instances), instanceNames)
+	for _, instanceName := range instanceNames {
 		// 1. 加载配置（逻辑不变）
 		cfg, err := dbconfig.LoadDBConfig(v, fmt.Sprintf("%s.%s", instanceKey, instanceName))
 		if err != nil {
@@ -69,7 +76,7 @@ func initRelationalDB(v *viper.Viper, dbType utils.DBType) error {
 		}
 		// 3. 创建ORM实例（逻辑不变）
 		slowTime := v.GetInt(fmt.Sprintf("databases.%s.%s.slow_time", instanceKey, instanceName))
-		ormInstance := NewOrm(dsn, dbType, slowTime)
+		ormInstance := NewOrm(dsn, dbType, slowTime, cfg.GetLogMode())
 		if ormInstance == nil {
 			return fmt.Errorf("%s实例[%s]创建ORM实例失败", dbType, instanceName)
 		}
@@ -104,8 +111,9 @@ func initNoSQLDB(v *viper.Viper, dbType utils.DBType) error {
 		log.Infof("【%s初始化】未配置任何%s实例，跳过", dbType, dbType)
 		return nil
 	}
-	log.Infof("【%s初始化】开始初始化%d个实例：%v", dbType, len(instances), getInstanceNames(instances))
-	for instanceName := range instances {
+	instanceNames := getInstanceNames(instances)
+	log.Infof("【%s初始化】开始初始化%d个实例：%v", dbType, len(instances), instanceNames)
+	for _, instanceName := range instanceNames {
 		// 1. 加载配置
 		cfg, err := dbconfig.LoadDBConfig(v, fmt.Sprintf("%s.%s", instanceKey, instanceName))
 		if err != nil {
@@ -188,6 +196,15 @@ func getInstanceNames(instances map[string]interface{}) []string {
 	for name := range instances {
 		names = append(names, name)
 	}
+	sort.Slice(names, func(i, j int) bool {
+		if names[i] == "default" && names[j] != "default" {
+			return true
+		}
+		if names[i] != "default" && names[j] == "default" {
+			return false
+		}
+		return names[i] < names[j]
+	})
 	return names
 }
 

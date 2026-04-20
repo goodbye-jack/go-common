@@ -30,7 +30,7 @@ var ssoMu sync.Mutex
 func Register(name string, handler SsoHandler) {
 	ssoMu.Lock()
 	if _, ok := ssoHandlers[name]; ok {
-		fmt.Printf("GlobalSsoHandler %s had registerd", name)
+		log.Warnf("GlobalSsoHandler %s has already been registered and will be replaced", name)
 	}
 	ssoHandlers[name] = handler
 	ssoMu.Unlock()
@@ -91,6 +91,7 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 		if sso { // 需要登录的逻辑
 			if err != nil || token == "" {
 				c.AbortWithStatus(http.StatusUnauthorized)
+				return
 			}
 			// ====以下  用于与统一登录对接时，需要每次都回调统一登录token验证====
 			ssoEnabled := config.GetConfigString(utils.SsoEnabledVerify)
@@ -109,13 +110,13 @@ func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
 			// ====以上  用于与统一登录对接时，需要每次都回调统一登录token验证====
 			uid, errP := utils.ParseJWT(token)
 			if errP != nil {
-				log.Warn("Token(%s) expired, %v", token, errP)
+				log.Warnf("Token parse failed, err=%v", errP)
 				if sso {
 					c.AbortWithStatus(http.StatusUnauthorized)
 					return
 				}
 			}
-			log.Info("LoginRequiredMiddleware(), uid=%s", uid)
+			log.Infof("LoginRequiredMiddleware(), uid=%s", uid)
 			SetUser(c, uid)
 			c.Next()
 			//return

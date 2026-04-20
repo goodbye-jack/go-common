@@ -86,6 +86,14 @@ type Position struct {
 	Status string `json:"status"`
 }
 
+type Group struct {
+	DN        string   `json:"dn"`
+	Code      string   `json:"code"`
+	Name      string   `json:"name"`
+	MemberDNs []string `json:"memberDns"`
+	Status    string   `json:"status"`
+}
+
 type Ldap interface {
 	GetUser(ctx context.Context, uid string) (*OrgUser, error)
 	GetUserByDN(ctx context.Context, dn string) (*OrgUser, error)
@@ -115,4 +123,14 @@ type Ldap interface {
 
 	ValidateUser(ctx context.Context, phone, password string) (*OrgUser, error)
 	ValidateUserByUID(ctx context.Context, uid, password string) (*OrgUser, error)
+}
+
+// GroupLdap 是可选扩展接口，提供真正 LDAP Group 的原子操作能力。
+type GroupLdap interface {
+	GetGroup(ctx context.Context, code string) (*Group, error)
+	GetGroupByDN(ctx context.Context, dn string) (*Group, error)
+	AddGroup(ctx context.Context, group *Group) error
+	UpdateGroup(ctx context.Context, group *Group) error
+	DeleteGroup(ctx context.Context, code string) error
+	ListGroup(ctx context.Context) ([]*Group, error)
 }

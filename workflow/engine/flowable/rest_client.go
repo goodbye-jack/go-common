@@ -15,6 +15,7 @@ import (
 	"github.com/goodbye-jack/go-common/config"
 	"github.com/goodbye-jack/go-common/orm"
 	workflowcontext "github.com/goodbye-jack/go-common/workflow/context"
+	"github.com/goodbye-jack/go-common/workflow/identity"
 	"github.com/goodbye-jack/go-common/workflow/types"
 	redisv9 "github.com/redis/go-redis/v9"
 )
@@ -577,7 +578,7 @@ func (c *RESTClient) CompleteTask(ctx stdcontext.Context, taskID string, req *ty
 		putIfNonBlank(variables, "comment", req.Comment)
 		putIfNonBlank(variables, "reworkComment", req.ReworkComment)
 		putIfNonBlank(variables, "payloadRef", req.PayloadRef)
-		variables["needExpert"] = req.NeedExpert
+		mergeOptionalNeedExpert(variables, req)
 	}
 
 	payload := map[string]interface{}{
@@ -586,7 +587,7 @@ func (c *RESTClient) CompleteTask(ctx stdcontext.Context, taskID string, req *ty
 	if len(variables) > 0 {
 		payload["variables"] = toFlowableVariables(variables)
 	}
-	_, err = c.doJSON(ctx, http.MethodPost, "/runtime/tasks/"+taskID, nil, payload)
+	_, err = c.completeTaskWithRetry(ctx, taskID, payload)
 	if err == nil {
 		c.storeDoneTaskProjection(ctx, c.buildDoneTaskProjection(task, variables, user, req))
 		c.invalidateProcessSummaryCache(ctx, task.ProcessInstanceID)
@@ -594,6 +595,40 @@ func (c *RESTClient) CompleteTask(ctx stdcontext.Context, taskID string, req *ty
 		c.removeRuntimeTaskProjection(ctx, taskID)
 	}
 	return err
+}
+
+func mergeOptionalNeedExpert(target map[string]interface{}, req *types.CompleteTaskRequest) {
+	if target == nil || req == nil {
+		return
+	}
+	if _, exists := target["needExpert"]; exists {
+		return
+	}
+	if req.NeedExpert {
+		target["needExpert"] = true
+	}
+}
+
+func (c *RESTClient) completeTaskWithRetry(ctx stdcontext.Context, taskID string, payload map[string]interface{}) ([]byte, error) {
+	body, err := c.doJSON(ctx, http.MethodPost, "/runtime/tasks/"+taskID, nil, payload)
+	if err == nil || !shouldRetryFlowableDeadlock(err) {
+		return body, err
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(150 * time.Millisecond):
+	}
+	return c.doJSON(ctx, http.MethodPost, "/runtime/tasks/"+taskID, nil, payload)
+}
+
+func shouldRetryFlowableDeadlock(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(message, "deadlock found when trying to get lock") ||
+		strings.Contains(message, "mysqltransactionrollbackexception")
 }
 
 func (c *RESTClient) getRawDefinitionXML(ctx stdcontext.Context, processInstanceID string) ([]byte, error) {
@@ -1424,19 +1459,14 @@ func candidateGroups(user *workflowcontext.UserContext, groupPrefix, rolePrefix 
 	if user == nil {
 		return nil
 	}
-	result := make([]string, 0, len(user.Groups)+len(user.Roles))
-	for _, group := range user.Groups {
-		group = strings.TrimSpace(group)
-		if group == "" {
-			continue
-		}
+	normalizer := identity.NewNormalizerFromConfig()
+	normalizedGroups := normalizer.NormalizeGroups(user.Groups)
+	normalizedRoles := normalizer.NormalizeRoles(user.Roles)
+	result := make([]string, 0, len(normalizedGroups)+len(normalizedRoles))
+	for _, group := range normalizedGroups {
 		result = append(result, groupPrefix+group)
 	}
-	for _, role := range user.Roles {
-		role = strings.TrimSpace(role)
-		if role == "" {
-			continue
-		}
+	for _, role := range normalizedRoles {
 		result = append(result, rolePrefix+role)
 	}
 	return result

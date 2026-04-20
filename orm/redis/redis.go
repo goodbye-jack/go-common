@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/orm/dbconfig"
 	"github.com/goodbye-jack/go-common/utils"
 	"github.com/redis/go-redis/v9"
@@ -47,7 +48,7 @@ func NewRedis(dsn string, dbType utils.DBType, timeout int, cfgFromYaml ...*dbco
 	// ========== 核心4：解析DSN并初始化客户端（容错逻辑） ==========
 	opt, err := redis.ParseURL(cfg.GenDSN())
 	if err != nil { // 解析失败时手动构建（兜底，兼容genRedisDSN的复杂格式）
-		fmt.Printf("警告：解析DSN [%s] 失败 %v，手动构建连接配置\n", cfg.GenDSN(), err)
+		log.Warnf("Redis DSN parse failed, fallback to manual options, dsn=%s, err=%v", cfg.GenDSN(), err)
 		var dbIndex int
 		fmt.Sscanf(cfg.Database, "%d", &dbIndex)
 		opt = &redis.Options{
@@ -62,12 +63,12 @@ func NewRedis(dsn string, dbType utils.DBType, timeout int, cfgFromYaml ...*dbco
 	client := redis.NewClient(opt) // 初始化客户端
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.ConnectTimeout)
 	defer cancel()
-	fmt.Printf("尝试连接Redis | 地址：%s | DB：%d | 超时：%ds\n", opt.Addr, opt.DB, timeout)
+	log.Infof("Connecting redis, addr=%s, db=%d, timeout=%ds", opt.Addr, opt.DB, timeout)
 	_, err = client.Ping(ctx).Result()
 	if err != nil {
 		panic(fmt.Sprintf("Redis Ping失败：%v | 最终DSN：%s | 连接地址：%s", err, cfg.GenDSN(), opt.Addr))
 	}
-	fmt.Printf("Redis初始化成功 | 地址：%s | DB：%d\n", opt.Addr, opt.DB)
+	log.Infof("Redis initialized, addr=%s, db=%d", opt.Addr, opt.DB)
 	return &Redis{
 		client: client,
 		config: cfg,

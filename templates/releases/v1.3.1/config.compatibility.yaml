@@ -1,0 +1,19 @@
+# go-common v1.3.1 历史兼容配置模板
+#
+# 以下配置仅供旧项目迁移参考，不建议新项目继续使用。
+
+redis_addr: "127.0.0.1:6379"
+redis_password: ""
+
+db_dsn: "root:your_password@tcp(127.0.0.1:3306)/your_database?charset=utf8mb4&parseTime=True&loc=Local"
+db_type: "mysql"
+db_sql_execute_time: 5
+
+ldap_addr: "ldap://127.0.0.1:8389"
+ldap_bind_dn: "cn=admin,dc=example,dc=com"
+ldap_bind_password: "ldap-bind-password"
+ldap_base_dn: "dc=example,dc=com"
+ldap_people_ou: "ou=people"
+ldap_department_ou: "ou=departments"
+ldap_position_ou: "ou=positions"
+ldap_use_tls: false

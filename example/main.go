@@ -1,5 +1,9 @@
 package main
 
+func main() {
+	// 示例代码保留在下方注释中，避免默认构建时启动外部数据库/Redis 依赖。
+}
+
 //import (
 //	"context"
 //	"errors"

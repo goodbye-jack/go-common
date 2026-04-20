@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"errors"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/goodbye-jack/go-common/log"
+	"strings"
 	"time"
 )
 
@@ -25,14 +27,26 @@ func GenJWT(data string, expiredSeconds int) (string, error) {
 }
 
 func ParseJWT(token string) (string, error) {
-	log.Info("ParseJWT then token=%s", token)
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", errors.New("jwt token is empty")
+	}
+	log.Debug("ParseJWT invoked")
 	t, err := jwt.ParseWithClaims(token, &payload{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(JWTSecret), nil
 	})
-
-	if claims, ok := t.Claims.(*payload); ok && t.Valid {
-		return claims.Data, nil
-	} else {
+	if err != nil {
 		return "", err
 	}
+	if t == nil {
+		return "", errors.New("jwt token parse result is nil")
+	}
+	claims, ok := t.Claims.(*payload)
+	if !ok {
+		return "", errors.New("jwt claims type mismatch")
+	}
+	if !t.Valid {
+		return "", errors.New("jwt token is invalid")
+	}
+	return claims.Data, nil
 }

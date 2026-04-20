@@ -1,0 +1,28 @@
+module: service
+title: 服务基础配置
+description: go-common 当前运行兼容的服务启动基础配置。
+owner: go-common/config
+order: 10
+
+items:
+  - key: service_name
+    kind: scalar
+    type: string
+    since: v1.0.0
+    required: true
+    comment: 服务名称，当前运行时直接读取该字段。
+    example: your-service-name
+    group: service
+    order: 10
+    merge_policy: add_if_missing
+
+  - key: addr
+    kind: scalar
+    type: string
+    since: v1.0.0
+    required: true
+    comment: 服务监听地址，当前运行时直接读取该字段。
+    example: :9081
+    group: service
+    order: 20
+    merge_policy: add_if_missing

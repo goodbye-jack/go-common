@@ -97,6 +97,16 @@ func (c *RESTClient) loadSnapshot(ctx stdcontext.Context, processInstanceID stri
 	if err != nil {
 		return nil, err
 	}
+	historicActivities, err := c.queryHistoricActivities(ctx, map[string]string{
+		"processInstanceId": processInstanceID,
+		"tenantId":          process.TenantID,
+		"size":              "500",
+		"sort":              "startTime",
+		"order":             "asc",
+	})
+	if err != nil {
+		historicActivities = nil
+	}
 	definitionXML, err := c.getRawDefinitionXML(ctx, processInstanceID)
 	if err != nil {
 		return nil, err
@@ -106,11 +116,12 @@ func (c *RESTClient) loadSnapshot(ctx stdcontext.Context, processInstanceID stri
 		return nil, err
 	}
 	snapshot := &processSnapshot{
-		process:       process,
-		variables:     variables,
-		runtimeTasks:  runtimeTasks,
-		historicTasks: historicTasks,
-		model:         model,
+		process:            process,
+		variables:          variables,
+		runtimeTasks:       runtimeTasks,
+		historicTasks:      historicTasks,
+		historicActivities: historicActivities,
+		model:              model,
 	}
 	c.expandCallActivitySnapshot(ctx, snapshot)
 	return snapshot, nil
@@ -529,6 +540,12 @@ func buildSteps(snapshot *processSnapshot) []types.ProcessProgressStep {
 	for _, task := range snapshot.historicTasks {
 		historicByActivity[task.TaskDefinitionKey] = append(historicByActivity[task.TaskDefinitionKey], task)
 	}
+	historicActivitiesByID := map[string][]historicActivityRecord{}
+	for _, activity := range snapshot.historicActivities {
+		if activity.ActivityID != "" && activity.EndTime != nil {
+			historicActivitiesByID[activity.ActivityID] = append(historicActivitiesByID[activity.ActivityID], activity)
+		}
+	}
 	runtimeByActivity := map[string][]runtimeTaskRecord{}
 	for _, task := range snapshot.runtimeTasks {
 		runtimeByActivity[task.TaskDefinitionKey] = append(runtimeByActivity[task.TaskDefinitionKey], task)
@@ -557,9 +574,10 @@ func buildSteps(snapshot *processSnapshot) []types.ProcessProgressStep {
 			step.StartTime = formatTime(snapshot.process.StartTime)
 			step.EndTime = formatTime(snapshot.process.StartTime)
 		}
-		if node.Type == "endEvent" && snapshot.process.EndTime != nil {
-			step.StartTime = formatTime(*snapshot.process.EndTime)
-			step.EndTime = formatTime(*snapshot.process.EndTime)
+		if historicActivities := historicActivitiesByID[node.ID]; len(historicActivities) > 0 {
+			activity := historicActivities[len(historicActivities)-1]
+			step.StartTime = firstNonBlank(step.StartTime, activity.StartTimeRaw)
+			step.EndTime = firstNonBlank(step.EndTime, activity.EndTimeRaw)
 		}
 		if runtimeTasks := runtimeByActivity[node.ID]; len(runtimeTasks) > 0 {
 			runtimeTask := runtimeTasks[len(runtimeTasks)-1]
@@ -1178,7 +1196,15 @@ func completedActivityIDs(snapshot *processSnapshot) []string {
 			result = appendIfMissing(result, task.TaskDefinitionKey)
 		}
 	}
-	if snapshot.process.EndTime != nil && snapshot.model.EndNodeID != "" {
+	for _, activity := range snapshot.historicActivities {
+		if activity.EndTime == nil || activity.ActivityID == "" {
+			continue
+		}
+		if _, ok := snapshot.model.NodesByID[activity.ActivityID]; ok {
+			result = appendIfMissing(result, activity.ActivityID)
+		}
+	}
+	if snapshot.process.EndTime != nil && snapshot.model.EndNodeID != "" && len(snapshot.model.EndNodeIDs) <= 1 {
 		result = appendIfMissing(result, snapshot.model.EndNodeID)
 	}
 	return result
@@ -1242,11 +1268,12 @@ func min(left, right int) int {
 }
 
 type processSnapshot struct {
-	process       processInstanceRecord
-	variables     map[string]interface{}
-	runtimeTasks  []runtimeTaskRecord
-	historicTasks []historicTaskRecord
-	model         *parsedModel
+	process            processInstanceRecord
+	variables          map[string]interface{}
+	runtimeTasks       []runtimeTaskRecord
+	historicTasks      []historicTaskRecord
+	historicActivities []historicActivityRecord
+	model              *parsedModel
 }
 
 type modelNode struct {

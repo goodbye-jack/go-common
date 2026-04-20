@@ -1,7 +1,7 @@
 package rbac
 
 import (
-	"fmt"
+	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/utils"
 	"sync"
 )
@@ -37,16 +37,16 @@ func InitRoleMapping(config interface{}) {
 		case []string:
 			// 从角色列表初始化
 			roleConfig = initFromRoleList(cfg)
-			fmt.Println("从角色列表初始化角色配置成功")
+			log.Info("Role mapping initialized from role list")
 		case RoleMappingConfig:
 			// 从完整配置初始化
 			roleConfig = cfg
 			validateAndMergeConfig(&roleConfig)
-			fmt.Println("从完整配置初始化角色配置成功")
+			log.Info("Role mapping initialized from full config")
 		default:
 			// 使用默认配置
 			roleConfig = defaultRoleMappingConfig
-			fmt.Println("使用默认角色配置")
+			log.Info("Role mapping initialized from default config")
 		}
 	})
 }

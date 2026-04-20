@@ -9,7 +9,7 @@ import (
 
 func GetUser(c *gin.Context) string {
 	user := c.GetString("UserID")
-	log.Info("GetUser(%s)", user)
+	log.Infof("GetUser(%s)", user)
 	if user == "" {
 		user = utils.UserAnonymous
 	}
@@ -35,7 +35,7 @@ func AddTokenCookie(c *gin.Context, token string, tokenExpired int) {
 		tokenName = "good_token"
 	}
 	domainName := config.GetConfigString(utils.ConfigNameDomain)
-	log.Info("token name = %s", tokenName, domainName)
+	log.Infof("token name = %s, domain = %s", tokenName, domainName)
 
 	c.SetCookie(tokenName, token, tokenExpired, "/", domainName, false, true)
 }
@@ -46,7 +46,7 @@ func SetTokenCookie(c *gin.Context, token string, tokenExpired int, domain strin
 		log.Warn("!!!!!!!!!!!token name is empty!!!!!!!")
 		tokenName = "good_token"
 	}
-	log.Info("token name = %s", tokenName)
+	log.Infof("token name = %s", tokenName)
 	c.SetCookie(tokenName, token, tokenExpired, "/", domain, secure, httpOnly)
 }
 

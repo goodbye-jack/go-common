@@ -1,0 +1,455 @@
+module: workflow
+title: 工作流核心配置
+description: go-common workflow 标准接口、Flowable、上下文、表单引用与身份归一配置。
+owner: go-common/workflow
+order: 20
+
+items:
+  - key: workflow.api
+    kind: object
+    since: v1.3.0
+    comment: 工作流标准接口配置对象。
+    group: workflow.api
+    order: 10
+
+  - key: workflow.api.enabled
+    kind: scalar
+    type: bool
+    since: v1.3.1
+    required: false
+    default: false
+    comment: 是否启用工作流标准接口自动注册。
+    example: true
+    group: workflow.api
+    order: 20
+    merge_policy: add_if_missing
+
+  - key: workflow.api.prefix
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: /api
+    comment: 工作流标准接口路由前缀。
+    example: /api
+    group: workflow.api
+    order: 30
+    merge_policy: add_if_missing
+
+  - key: workflow.api.sso_enabled
+    kind: scalar
+    type: bool
+    since: v1.3.0
+    required: false
+    default: true
+    comment: 工作流标准接口是否启用登录校验。
+    example: true
+    group: workflow.api
+    order: 40
+    merge_policy: add_if_missing
+
+  - key: workflow.api.roles
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: ""
+    comment: 工作流标准接口的角色范围，留空表示使用默认角色集合。
+    example: ""
+    group: workflow.api
+    order: 50
+    merge_policy: add_if_missing
+
+  - key: workflow.api.callback_path
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: /flowable/callback
+    comment: Flowable 回调入口路径。
+    example: /flowable/callback
+    group: workflow.api
+    order: 60
+    merge_policy: add_if_missing
+
+  - key: workflow.api.callback_secret
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: ""
+    sensitive: true
+    comment: Flowable 回调签名密钥，留空表示不校验签名。
+    example: callback-secret
+    group: workflow.api
+    order: 70
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable
+    kind: object
+    since: v1.3.0
+    comment: Flowable REST 客户端配置对象。
+    group: workflow.flowable
+    order: 80
+
+  - key: workflow.flowable.base_url
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: ""
+    comment: Flowable REST 服务地址。
+    example: http://127.0.0.1:8087/flowable-rest/service
+    group: workflow.flowable
+    order: 90
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.username
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: ""
+    comment: Flowable REST 服务账号用户名；当前官方 flowable-rest.war 建议使用 rest-admin 这类服务账号。
+    example: rest-admin
+    group: workflow.flowable
+    order: 100
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.password
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: ""
+    sensitive: true
+    comment: Flowable REST 服务账号密码。
+    example: flowable-rest-password
+    group: workflow.flowable
+    order: 110
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.timeout_seconds
+    kind: scalar
+    type: int
+    since: v1.3.0
+    required: false
+    default: 15
+    comment: Flowable REST 请求超时时间，单位秒。
+    example: 15
+    group: workflow.flowable
+    order: 120
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.group_prefix
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: ""
+    comment: Flowable 候选组前缀。
+    example: ""
+    group: workflow.flowable
+    order: 130
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.role_prefix
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: role_
+    comment: Flowable 角色前缀。
+    example: role_
+    group: workflow.flowable
+    order: 140
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.summary_cache_ttl_seconds
+    kind: scalar
+    type: int
+    since: v1.3.0
+    required: false
+    default: 0
+    comment: 流程摘要缓存过期时间，单位秒。
+    example: 3600
+    group: workflow.flowable
+    order: 150
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.summary_cache_prefix
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: "workflow:summary:"
+    comment: 流程摘要缓存 key 前缀。
+    example: "workflow:summary:"
+    group: workflow.flowable
+    order: 160
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.candidate_index_ttl_seconds
+    kind: scalar
+    type: int
+    since: v1.3.0
+    required: false
+    default: 0
+    comment: 候选索引缓存过期时间，单位秒。
+    example: 3600
+    group: workflow.flowable
+    order: 170
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.candidate_index_prefix
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: "workflow:candidate:"
+    comment: 候选索引缓存 key 前缀。
+    example: "workflow:candidate:"
+    group: workflow.flowable
+    order: 180
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.todo_projection_ttl_seconds
+    kind: scalar
+    type: int
+    since: v1.3.0
+    required: false
+    default: 604800
+    comment: 待办投影缓存过期时间，单位秒。
+    example: 604800
+    group: workflow.flowable
+    order: 190
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.todo_projection_task_prefix
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: "workflow:todo-task:"
+    comment: 待办单任务投影 key 前缀。
+    example: "workflow:todo-task:"
+    group: workflow.flowable
+    order: 200
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.todo_projection_user_prefix
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: "workflow:user-todo:"
+    comment: 按用户组织待办的 key 前缀。
+    example: "workflow:user-todo:"
+    group: workflow.flowable
+    order: 210
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.todo_projection_group_prefix
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: "workflow:group-todo:"
+    comment: 按候选组组织待办的 key 前缀。
+    example: "workflow:group-todo:"
+    group: workflow.flowable
+    order: 220
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.process_runtime_task_prefix
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: "workflow:process-runtime-tasks:"
+    comment: 按流程实例组织运行态任务的 key 前缀。
+    example: "workflow:process-runtime-tasks:"
+    group: workflow.flowable
+    order: 230
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.done_projection_ttl_seconds
+    kind: scalar
+    type: int
+    since: v1.3.0
+    required: false
+    default: 604800
+    comment: 已办投影缓存过期时间，单位秒。
+    example: 604800
+    group: workflow.flowable
+    order: 240
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.done_task_prefix
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: "workflow:done-task:"
+    comment: 已办单任务投影 key 前缀。
+    example: "workflow:done-task:"
+    group: workflow.flowable
+    order: 250
+    merge_policy: add_if_missing
+
+  - key: workflow.flowable.done_user_prefix
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: "workflow:user-done:"
+    comment: 按用户组织已办的 key 前缀。
+    example: "workflow:user-done:"
+    group: workflow.flowable
+    order: 260
+    merge_policy: add_if_missing
+
+  - key: workflow.context
+    kind: object
+    since: v1.3.0
+    comment: 工作流上下文解析配置对象。
+    group: workflow.context
+    order: 270
+
+  - key: workflow.context.user_id_strategy
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    default: raw
+    enum:
+      - raw
+      - username_suffix
+      - header
+    comment: 工作流 userId 解析策略。
+    example: raw
+    group: workflow.context
+    order: 280
+    merge_policy: add_if_missing
+
+  - key: workflow.context.user_id_delimiter
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    default: "#"
+    comment: username_suffix 模式使用的分隔符。
+    example: "#"
+    group: workflow.context
+    order: 290
+    merge_policy: add_if_missing
+
+  - key: workflow.context.user_id_header
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    default: X-Workflow-User-ID
+    comment: header 模式下读取 workflow userId 的请求头。
+    example: X-Workflow-User-ID
+    group: workflow.context
+    order: 300
+    merge_policy: add_if_missing
+
+  - key: workflow.context.user_name_header
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: X-Workflow-User-Name
+    comment: 工作流用户名请求头。
+    example: X-Workflow-User-Name
+    group: workflow.context
+    order: 310
+    merge_policy: add_if_missing
+
+  - key: workflow.context.system_code_header
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: X-System-Code
+    comment: 系统编码请求头。
+    example: X-System-Code
+    group: workflow.context
+    order: 320
+    merge_policy: add_if_missing
+
+  - key: workflow.context.groups_header
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: X-Workflow-Groups
+    comment: 候选组请求头。
+    example: X-Workflow-Groups
+    group: workflow.context
+    order: 330
+    merge_policy: add_if_missing
+
+  - key: workflow.context.roles_header
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: X-Workflow-Roles
+    comment: 角色请求头。
+    example: X-Workflow-Roles
+    group: workflow.context
+    order: 340
+    merge_policy: add_if_missing
+
+  - key: workflow.formref
+    kind: object
+    since: v1.3.0
+    comment: Flowable 表单引用解析配置对象。
+    group: workflow.formref
+    order: 350
+
+  - key: workflow.formref.db_instance
+    kind: scalar
+    type: string
+    since: v1.3.0
+    required: false
+    default: ""
+    comment: Flowable 表单引用解析使用的数据库实例名。
+    example: flowable_meta
+    group: workflow.formref
+    order: 360
+    merge_policy: add_if_missing
+
+  - key: workflow.identity
+    kind: object
+    since: v1.3.1
+    comment: 身份归一配置对象。
+    group: workflow.identity
+    order: 370
+
+  - key: workflow.identity.role_aliases
+    kind: map
+    type: string_map
+    since: v1.3.1
+    required: false
+    comment: 角色别名映射，用于统一 HTTP / LDAP / JWT 等来源角色编码。
+    example:
+      LDAP_ROLE_CITY_REVIEWER: APP_ROLE_CITY_REVIEW
+    group: workflow.identity
+    order: 380
+    merge_policy: add_if_missing
+
+  - key: workflow.identity.group_aliases
+    kind: map
+    type: string_map
+    since: v1.3.1
+    required: false
+    comment: 组别名映射，用于统一来源组编码。
+    example:
+      CITY_REVIEWERS: city_reviewers
+    group: workflow.identity
+    order: 390
+    merge_policy: add_if_missing

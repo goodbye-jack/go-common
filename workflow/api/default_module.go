@@ -14,16 +14,21 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/config"
 	commonhttp "github.com/goodbye-jack/go-common/http"
+	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/utils"
+	"github.com/goodbye-jack/go-common/workflow/assignment"
 	workflowcontext "github.com/goodbye-jack/go-common/workflow/context"
 	"github.com/goodbye-jack/go-common/workflow/directory"
 	"github.com/goodbye-jack/go-common/workflow/engine/flowable"
 	"github.com/goodbye-jack/go-common/workflow/formref"
+	"github.com/goodbye-jack/go-common/workflow/identity"
 	"github.com/goodbye-jack/go-common/workflow/types"
 )
 
 const (
+	configAPIEnabled    = "workflow.api.enabled"
 	configAPIPrefix     = "workflow.api.prefix"
+	configAPILogRoutes  = "workflow.api.log_routes"
 	configAPISSOEnabled = "workflow.api.sso_enabled"
 	configAPIRoles      = "workflow.api.roles"
 	configCallbackPath  = "workflow.api.callback_path"
@@ -42,13 +47,47 @@ var defaultRouteRoles = []string{
 type DefaultModule struct {
 	resolver     workflowcontext.Resolver
 	directory    directory.Service
+	assignment   assignment.Service
 	flowable     flowable.Client
 	formref      formref.Service
 	routePrefix  string
 	routeRoles   []string
+	logRoutes    bool
 	requireSSO   bool
 	callbackPath string
 	callbackKey  string
+}
+
+type workflowRouteDefinition struct {
+	Path       string
+	Tips       string
+	Methods    []string
+	RequireSSO bool
+	Handler    gin.HandlerFunc
+}
+
+func EnabledFromConfig() bool {
+	return config.GetConfigBool(configAPIEnabled)
+}
+
+func RegisterFromConfig(server *commonhttp.HTTPServer) error {
+	if !EnabledFromConfig() {
+		log.Infof("【workflow】未启用标准接口注册，配置项 %s=false", configAPIEnabled)
+		return nil
+	}
+	module, provider, assignmentProvider, err := newModuleWithProviderFromConfig()
+	if err != nil {
+		return err
+	}
+	logStartupSummary(module, provider, assignmentProvider)
+	module.Register(server)
+	return nil
+}
+
+func MustRegisterFromConfig(server *commonhttp.HTTPServer) {
+	if err := RegisterFromConfig(server); err != nil {
+		log.Fatalf("workflow standard module register failed: %v", err)
+	}
 }
 
 func NewDefaultModule(resolver workflowcontext.Resolver, directoryService directory.Service, flowableClient flowable.Client) (*DefaultModule, error) {
@@ -64,9 +103,11 @@ func NewDefaultModule(resolver workflowcontext.Resolver, directoryService direct
 	return &DefaultModule{
 		resolver:     resolver,
 		directory:    directoryService,
+		assignment:   assignment.NewNoopService(),
 		flowable:     flowableClient,
 		routePrefix:  normalizedPrefix(config.GetConfigString(configAPIPrefix)),
 		routeRoles:   configuredRoles(config.GetConfigString(configAPIRoles)),
+		logRoutes:    configuredBool(config.GetConfigString(configAPILogRoutes), true),
 		requireSSO:   configuredBool(config.GetConfigString(configAPISSOEnabled), true),
 		callbackPath: configuredCallbackPath(config.GetConfigString(configCallbackPath)),
 		callbackKey:  strings.TrimSpace(config.GetConfigString(configCallbackKey)),
@@ -75,7 +116,11 @@ func NewDefaultModule(resolver workflowcontext.Resolver, directoryService direct
 
 func NewDefaultModuleFromConfig() (*DefaultModule, error) {
 	resolver := workflowcontext.NewDefaultResolver()
-	directoryService, err := directory.NewLDAPServiceFromConfig()
+	directoryService, _, err := directory.NewServiceFromConfig()
+	if err != nil {
+		return nil, err
+	}
+	assignmentService, _, err := assignment.NewServiceFromConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -87,8 +132,32 @@ func NewDefaultModuleFromConfig() (*DefaultModule, error) {
 	if err != nil {
 		return nil, err
 	}
+	module.assignment = assignmentService
 	module.formref = formref.NewFlowableService(flowableClient)
 	return module, nil
+}
+
+func newModuleWithProviderFromConfig() (*DefaultModule, string, string, error) {
+	resolver := workflowcontext.NewDefaultResolver()
+	directoryService, provider, err := directory.NewServiceFromConfig()
+	if err != nil {
+		return nil, provider, "", err
+	}
+	assignmentService, assignmentProvider, err := assignment.NewServiceFromConfig()
+	if err != nil {
+		return nil, provider, assignmentProvider, err
+	}
+	flowableClient, err := flowable.NewRESTClientFromConfig()
+	if err != nil {
+		return nil, provider, assignmentProvider, err
+	}
+	module, err := NewDefaultModule(resolver, directoryService, flowableClient)
+	if err != nil {
+		return nil, provider, assignmentProvider, err
+	}
+	module.assignment = assignmentService
+	module.formref = formref.NewFlowableService(flowableClient)
+	return module, provider, assignmentProvider, nil
 }
 
 func (m *DefaultModule) WithFormRefService(service formref.Service) *DefaultModule {
@@ -99,30 +168,77 @@ func (m *DefaultModule) WithFormRefService(service formref.Service) *DefaultModu
 	return m
 }
 
+func (m *DefaultModule) WithAssignmentService(service assignment.Service) *DefaultModule {
+	if m == nil {
+		return nil
+	}
+	if service != nil {
+		m.assignment = service
+	}
+	return m
+}
+
 func (m *DefaultModule) Register(server *commonhttp.HTTPServer) {
 	if server == nil {
 		return
 	}
-	server.RouteAPI(m.route("/me"), "workflow current user", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleMe)
-	server.RouteAPI(m.route("/me/tasks/todo"), "workflow todo tasks", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleTodo)
-	server.RouteAPI(m.route("/me/tasks/done"), "workflow done tasks", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleDone)
-	server.RouteAPI(m.route("/me/manager"), "workflow current user manager", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleMyManager)
-	server.RouteAPI(m.route("/me/department"), "workflow current user department", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleMyDepartment)
-	server.RouteAPI(m.route("/process/start"), "workflow start process", []string{http.MethodPost}, m.routeRoles, "", "", m.requireSSO, false, m.handleStartProcess)
-	server.RouteAPI(m.route("/tasks/:id/context"), "workflow task context", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleTaskContext)
-	server.RouteAPI(m.route("/tasks/:id/form-ref"), "workflow task form reference", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleTaskFormRef)
-	server.RouteAPI(m.route("/tasks/:id/complete"), "workflow complete task", []string{http.MethodPost}, m.routeRoles, "", "", m.requireSSO, false, m.handleCompleteTask)
-	server.RouteAPI(m.route("/org/users/:userId"), "workflow directory user", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleUser)
-	server.RouteAPI(m.route("/org/users/:userId/manager"), "workflow directory user manager", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleUserManager)
-	server.RouteAPI(m.route("/org/users/:userId/department"), "workflow directory user department", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleUserDepartment)
-	server.RouteAPI(m.route("/process-instances/:id/progress-view"), "workflow progress view", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleProgressView)
-	server.RouteAPI(m.route("/process-instances/:id/progress-timeline"), "workflow progress timeline", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleProgressTimeline)
-	server.RouteAPI(m.route("/biz/:bizId/progress-view"), "workflow progress view by biz id", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleBizProgressView)
-	server.RouteAPI(m.route("/biz/:bizId/progress-timeline"), "workflow progress timeline by biz id", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleBizProgressTimeline)
-	server.RouteAPI(m.route("/process/instance/:id/definition-xml"), "workflow definition xml", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleDefinitionXML)
-	server.RouteAPI(m.route("/process-instances/:id/diagram-view"), "workflow diagram view", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleDiagramView)
-	server.RouteAPI(m.route("/process-instances/:id/composite-diagram"), "workflow composite diagram", []string{http.MethodGet}, m.routeRoles, "", "", m.requireSSO, false, m.handleCompositeDiagram)
-	server.RouteAPI(m.callbackPath, "workflow flowable callback", []string{http.MethodPost}, m.routeRoles, "", "", false, false, m.handleCallback)
+	routes := m.routeDefinitions()
+	for _, route := range routes {
+		server.RouteAPI(route.Path, route.Tips, route.Methods, m.routeRoles, "", "", route.RequireSSO, false, route.Handler)
+	}
+	m.logRegisteredRoutes(routes)
+}
+
+func (m *DefaultModule) routeDefinitions() []workflowRouteDefinition {
+	return []workflowRouteDefinition{
+		{Path: m.route("/me"), Tips: "workflow current user", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleMe},
+		{Path: m.route("/me/tasks/todo"), Tips: "workflow todo tasks", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleTodo},
+		{Path: m.route("/me/tasks/done"), Tips: "workflow done tasks", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleDone},
+		{Path: m.route("/me/manager"), Tips: "workflow current user manager", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleMyManager},
+		{Path: m.route("/me/department"), Tips: "workflow current user department", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleMyDepartment},
+		{Path: m.route("/process/start"), Tips: "workflow start process", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleStartProcess},
+		{Path: m.route("/tasks/:id/context"), Tips: "workflow task context", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleTaskContext},
+		{Path: m.route("/tasks/:id/form-ref"), Tips: "workflow task form reference", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleTaskFormRef},
+		{Path: m.route("/tasks/:id/complete"), Tips: "workflow complete task", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleCompleteTask},
+		{Path: m.route("/org/users/:userId"), Tips: "workflow directory user", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleUser},
+		{Path: m.route("/org/users/:userId/manager"), Tips: "workflow directory user manager", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleUserManager},
+		{Path: m.route("/org/users/:userId/department"), Tips: "workflow directory user department", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleUserDepartment},
+		{Path: m.route("/process-instances/:id/progress-view"), Tips: "workflow progress view", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleProgressView},
+		{Path: m.route("/process-instances/:id/progress-timeline"), Tips: "workflow progress timeline", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleProgressTimeline},
+		{Path: m.route("/biz/:bizId/progress-view"), Tips: "workflow progress view by biz id", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleBizProgressView},
+		{Path: m.route("/biz/:bizId/progress-timeline"), Tips: "workflow progress timeline by biz id", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleBizProgressTimeline},
+		{Path: m.route("/process/instance/:id/definition-xml"), Tips: "workflow definition xml", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleDefinitionXML},
+		{Path: m.route("/process-instances/:id/diagram-view"), Tips: "workflow diagram view", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleDiagramView},
+		{Path: m.route("/process-instances/:id/composite-diagram"), Tips: "workflow composite diagram", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleCompositeDiagram},
+		{Path: m.callbackPath, Tips: "workflow flowable callback", Methods: []string{http.MethodPost}, RequireSSO: false, Handler: m.handleCallback},
+	}
+}
+
+func (m *DefaultModule) logRegisteredRoutes(routes []workflowRouteDefinition) {
+	if m == nil || !m.logRoutes || len(routes) == 0 {
+		return
+	}
+	total := 0
+	for _, route := range routes {
+		total += len(route.Methods)
+	}
+	log.Info("======================================================================")
+	log.Infof("=== WORKFLOW ROUTES REGISTERED | total=%d | prefix=%s | callback=%s ===", total, m.routePrefix, m.callbackPath)
+	log.Info("======================================================================")
+	index := 0
+	for _, route := range routes {
+		for _, method := range route.Methods {
+			index++
+			ssoFlag := "N"
+			if route.RequireSSO {
+				ssoFlag = "Y"
+			}
+			log.Infof("=== WORKFLOW ROUTE [%02d/%02d] %-6s %-48s | SSO=%s | %s", index, total, strings.ToUpper(method), route.Path, ssoFlag, route.Tips)
+		}
+	}
+	log.Info("======================================================================")
+	log.Info("=== WORKFLOW ROUTE LOG END ===========================================")
+	log.Info("======================================================================")
 }
 
 func (m *DefaultModule) handleMe(c *gin.Context) {
@@ -286,6 +402,12 @@ func (m *DefaultModule) handleStartProcess(c *gin.Context) {
 	if request.Variables == nil {
 		request.Variables = map[string]interface{}{}
 	}
+	if request.Variables["starterId"] == nil && strings.TrimSpace(user.UserID) != "" {
+		request.Variables["starterId"] = user.UserID
+	}
+	if request.Variables["starterName"] == nil && strings.TrimSpace(user.UserName) != "" {
+		request.Variables["starterName"] = user.UserName
+	}
 	if request.Variables["startUserId"] == nil && strings.TrimSpace(user.UserID) != "" {
 		request.Variables["startUserId"] = user.UserID
 	}
@@ -294,6 +416,14 @@ func (m *DefaultModule) handleStartProcess(c *gin.Context) {
 	}
 	if request.Variables["systemCode"] == nil && strings.TrimSpace(user.SystemCode) != "" {
 		request.Variables["systemCode"] = user.SystemCode
+	}
+	if m.assignment != nil {
+		resolved, err := m.assignment.ResolveStart(c.Request.Context(), buildStartAssignmentRequest(user, request))
+		if err != nil {
+			writeWorkflowError(c, err)
+			return
+		}
+		request.Variables = assignment.MergeResolvedVariables(request.Variables, resolved)
 	}
 	response, err := m.flowable.StartProcess(c.Request.Context(), request)
 	if err != nil {
@@ -338,6 +468,25 @@ func (m *DefaultModule) handleCompleteTask(c *gin.Context) {
 	if err := c.ShouldBindJSON(request); err != nil && !strings.Contains(strings.ToLower(err.Error()), "eof") {
 		writeError(c, http.StatusBadRequest, "invalid complete task request")
 		return
+	}
+	if request.Variables == nil {
+		request.Variables = map[string]interface{}{}
+	}
+	if m.assignment != nil {
+		taskContext, err := m.flowable.GetTaskContext(c.Request.Context(), strings.TrimSpace(c.Param("id")), user)
+		if err != nil {
+			writeWorkflowError(c, err)
+			return
+		}
+		resolved, err := m.assignment.ResolveComplete(
+			c.Request.Context(),
+			buildCompleteAssignmentRequest(user, strings.TrimSpace(c.Param("id")), request, taskContext),
+		)
+		if err != nil {
+			writeWorkflowError(c, err)
+			return
+		}
+		request.Variables = assignment.MergeResolvedVariables(request.Variables, resolved)
 	}
 	if err := m.flowable.CompleteTask(c.Request.Context(), strings.TrimSpace(c.Param("id")), request, user); err != nil {
 		writeWorkflowError(c, err)
@@ -615,6 +764,9 @@ func writeWorkflowError(c *gin.Context, err error) {
 	switch {
 	case strings.Contains(strings.ToLower(message), "not found"):
 		status = http.StatusNotFound
+	case strings.Contains(strings.ToLower(message), "not configured"),
+		strings.Contains(strings.ToLower(message), "unavailable"):
+		status = http.StatusServiceUnavailable
 	case strings.Contains(strings.ToLower(message), "missing"),
 		strings.Contains(strings.ToLower(message), "required"),
 		strings.Contains(strings.ToLower(message), "invalid"):
@@ -665,4 +817,196 @@ func firstNonBlank(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func buildStartAssignmentRequest(user *workflowcontext.UserContext, request *types.StartProcessRequest) *types.AssignmentResolveRequest {
+	if request == nil {
+		request = &types.StartProcessRequest{}
+	}
+	return &types.AssignmentResolveRequest{
+		Action:               "start",
+		ProcessDefinitionID:  strings.TrimSpace(request.ProcessDefinitionID),
+		ProcessDefinitionKey: strings.TrimSpace(request.ProcessDefinitionKey),
+		BusinessKey:          strings.TrimSpace(firstNonBlank(request.BusinessKey, request.BizID)),
+		BizID:                strings.TrimSpace(request.BizID),
+		BizType:              strings.TrimSpace(request.BizType),
+		Title:                strings.TrimSpace(request.Title),
+		Name:                 strings.TrimSpace(request.Name),
+		User:                 toAssignmentUser(user),
+		Variables:            cloneVariables(request.Variables),
+	}
+}
+
+func buildCompleteAssignmentRequest(user *workflowcontext.UserContext, taskID string, request *types.CompleteTaskRequest, taskContext *types.TaskContextResponse) *types.AssignmentResolveRequest {
+	if request == nil {
+		request = &types.CompleteTaskRequest{}
+	}
+	resolvedTaskID := strings.TrimSpace(taskID)
+	currentVariables := map[string]interface{}{}
+	var task *types.TaskInfo
+	var business *types.TaskBusinessContext
+	processDefinitionID := ""
+	processInstanceID := ""
+	businessKey := ""
+	bizID := ""
+	bizType := ""
+	title := ""
+	if taskContext != nil {
+		copyTask := taskContext.Task
+		task = &copyTask
+		if taskContext.Business.BizID != "" || taskContext.Business.BizType != "" || taskContext.Business.Title != "" || taskContext.Business.PayloadRef != "" || taskContext.Business.SystemCode != "" || taskContext.Business.TenantID != "" {
+			copyBusiness := taskContext.Business
+			business = &copyBusiness
+		}
+		currentVariables = cloneVariables(taskContext.Variables)
+		if resolvedTaskID == "" {
+			resolvedTaskID = strings.TrimSpace(taskContext.Task.TaskID)
+		}
+		processDefinitionID = strings.TrimSpace(taskContext.Task.ProcessDefinitionID)
+		processInstanceID = strings.TrimSpace(taskContext.Task.ProcessInstanceID)
+		businessKey = strings.TrimSpace(firstNonBlank(taskContext.Business.BizID, taskContext.Task.BizID, taskContext.Task.PayloadRef))
+		bizID = strings.TrimSpace(firstNonBlank(taskContext.Business.BizID, taskContext.Task.BizID))
+		bizType = strings.TrimSpace(firstNonBlank(taskContext.Business.BizType, taskContext.Task.BizType))
+		title = strings.TrimSpace(firstNonBlank(taskContext.Business.Title, taskContext.Task.Title))
+	}
+	return &types.AssignmentResolveRequest{
+		Action:              "complete",
+		ProcessDefinitionID: processDefinitionID,
+		ProcessInstanceID:   processInstanceID,
+		BusinessKey:         businessKey,
+		BizID:               bizID,
+		BizType:             bizType,
+		Title:               title,
+		TaskID:              resolvedTaskID,
+		ActivityID:          strings.TrimSpace(firstNonBlank(request.ActivityID, activityIDFromTask(task))),
+		Result:              strings.TrimSpace(request.Result),
+		Comment:             strings.TrimSpace(request.Comment),
+		ReworkComment:       strings.TrimSpace(request.ReworkComment),
+		PayloadRef:          strings.TrimSpace(request.PayloadRef),
+		NeedExpert:          resolveNeedExpertForAssignment(request, currentVariables),
+		User:                toAssignmentUser(user),
+		Task:                task,
+		Business:            business,
+		Variables:           cloneVariables(request.Variables),
+		CurrentVariables:    currentVariables,
+	}
+}
+
+func resolveNeedExpertForAssignment(request *types.CompleteTaskRequest, currentVariables map[string]interface{}) bool {
+	if request == nil {
+		return boolValueFromMap(currentVariables, "needExpert")
+	}
+	if value, ok := boolValueFromAny(request.Variables, "needExpert"); ok {
+		return value
+	}
+	if request.NeedExpert {
+		return true
+	}
+	return boolValueFromMap(currentVariables, "needExpert")
+}
+
+func boolValueFromMap(values map[string]interface{}, key string) bool {
+	value, ok := boolValueFromAny(values, key)
+	return ok && value
+}
+
+func boolValueFromAny(values map[string]interface{}, key string) (bool, bool) {
+	if len(values) == 0 {
+		return false, false
+	}
+	raw, exists := values[key]
+	if !exists {
+		return false, false
+	}
+	switch current := raw.(type) {
+	case bool:
+		return current, true
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(current))
+		if err != nil {
+			return false, false
+		}
+		return parsed, true
+	default:
+		return false, false
+	}
+}
+
+func toAssignmentUser(user *workflowcontext.UserContext) types.AssignmentUserContext {
+	if user == nil {
+		return types.AssignmentUserContext{}
+	}
+	return types.AssignmentUserContext{
+		UserID:     strings.TrimSpace(user.UserID),
+		UserName:   strings.TrimSpace(user.UserName),
+		TenantID:   strings.TrimSpace(user.TenantID),
+		SystemCode: strings.TrimSpace(user.SystemCode),
+		Groups:     append([]string(nil), user.Groups...),
+		Roles:      append([]string(nil), user.Roles...),
+	}
+}
+
+func cloneVariables(source map[string]interface{}) map[string]interface{} {
+	if len(source) == 0 {
+		return map[string]interface{}{}
+	}
+	target := make(map[string]interface{}, len(source))
+	for key, value := range source {
+		target[key] = value
+	}
+	return target
+}
+
+func activityIDFromTask(task *types.TaskInfo) string {
+	if task == nil {
+		return ""
+	}
+	return strings.TrimSpace(task.ActivityID)
+}
+
+func logStartupSummary(module *DefaultModule, provider, assignmentProvider string) {
+	if module == nil {
+		return
+	}
+	userIDStrategy := firstNonBlank(config.GetConfigString("workflow.context.user_id_strategy"), "raw")
+	formRefDBInstance := strings.TrimSpace(config.GetConfigString("workflow.formref.db_instance"))
+	assignmentAssigneeKey := firstNonBlank(config.GetConfigString("workflow.assignment.variable_keys.assignee"), "nextAssignee")
+	assignmentCandidateUsersKey := firstNonBlank(config.GetConfigString("workflow.assignment.variable_keys.candidate_users"), "nextCandidateUsers")
+	assignmentCandidateGroupsKey := firstNonBlank(config.GetConfigString("workflow.assignment.variable_keys.candidate_groups"), "nextCandidateGroups")
+	normalizer := identity.NewNormalizerFromConfig()
+	log.Infof("【workflow】标准接口启用 | prefix=%s | sso=%t | user_id_strategy=%s | directory_provider=%s | assignment_provider=%s | flowable_base_url=%s | assignment_base_url=%s | variable_keys=%s/%s/%s | role_alias_count=%d | group_alias_count=%d | formref_db_instance=%s",
+		module.routePrefix,
+		module.requireSSO,
+		userIDStrategy,
+		firstNonBlank(provider, "none"),
+		firstNonBlank(assignmentProvider, "none"),
+		strings.TrimSpace(config.GetConfigString("workflow.flowable.base_url")),
+		firstNonBlank(strings.TrimSpace(config.GetConfigString("workflow.assignment.http.base_url")), "(empty)"),
+		assignmentAssigneeKey,
+		assignmentCandidateUsersKey,
+		assignmentCandidateGroupsKey,
+		normalizer.RoleAliasCount(),
+		normalizer.GroupAliasCount(),
+		firstNonBlank(formRefDBInstance, "(empty)"),
+	)
+	if firstNonBlank(provider, "none") == "none" {
+		log.Warn("【workflow】directory provider=none，组织目录接口可访问但会返回未配置错误")
+	}
+	if isNoneProvider(assignmentProvider) {
+		log.Warn("【workflow】assignment provider=none，如 BPMN 依赖 nextAssignee/nextCandidateUsers/nextCandidateGroups，请改为显式配置 assignment provider")
+	}
+	if userIDStrategy == "raw" {
+		log.Warn("【workflow】user_id_strategy=raw，请确认业务登录态中的 UserID 与 Flowable assignee/candidateUser 完全一致")
+	}
+	if formRefDBInstance == "" {
+		log.Warn("【workflow】workflow.formref.db_instance 未配置，任务表单引用解析能力可能受限")
+	}
+}
+
+func isNoneProvider(provider string) bool {
+	provider = strings.TrimSpace(provider)
+	if provider == "" || provider == "none" {
+		return true
+	}
+	return strings.HasSuffix(provider, ":none")
 }

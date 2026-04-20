@@ -1,0 +1,72 @@
+module: workflow_assignment
+title: 工作流自动分配配置
+description: workflow assignment provider 与变量回写配置。
+owner: go-common/workflow/assignment
+order: 35
+
+items:
+  - key: workflow.assignment
+    kind: object
+    since: v1.3.1
+    comment: 工作流自动分配配置对象。
+    group: workflow.assignment
+    order: 10
+
+  - key: workflow.assignment.provider
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    default: none
+    enum:
+      - none
+      - directory
+      - ldap
+    comment: 工作流自动分配来源。
+    example: none
+    group: workflow.assignment
+    order: 20
+    merge_policy: add_if_missing
+
+  - key: workflow.assignment.variable_keys
+    kind: object
+    since: v1.3.1
+    comment: 自动分配变量回写键配置对象。
+    group: workflow.assignment.variable_keys
+    order: 30
+
+  - key: workflow.assignment.variable_keys.assignee
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    default: nextAssignee
+    comment: 下一环节办理人变量名。
+    example: nextAssignee
+    group: workflow.assignment.variable_keys
+    order: 40
+    merge_policy: add_if_missing
+
+  - key: workflow.assignment.variable_keys.candidate_users
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    default: nextCandidateUsers
+    comment: 下一环节候选用户变量名。
+    example: nextCandidateUsers
+    group: workflow.assignment.variable_keys
+    order: 50
+    merge_policy: add_if_missing
+
+  - key: workflow.assignment.variable_keys.candidate_groups
+    kind: scalar
+    type: string
+    since: v1.3.1
+    required: false
+    default: nextCandidateGroups
+    comment: 下一环节候选组变量名。
+    example: nextCandidateGroups
+    group: workflow.assignment.variable_keys
+    order: 60
+    merge_policy: add_if_missing

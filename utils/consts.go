@@ -70,6 +70,7 @@ var DBDsnMap = map[DBType]string{
 	DBTypeOracle:    "%s/%s@%s:%d/%s",
 	DBTypeMySQL:     "%s:%s@tcp(%s:%d)/%s?parseTime=True&loc=Local",
 	DBTypePostgres:  "user=%s password=%s host=%s port=%d dbname=%s sslmode=disable TimeZone=Asia/Shanghai",
+	DBTypeKingBase:  "user=%s password=%s host=%s port=%d dbname=%s sslmode=disable TimeZone=Asia/Shanghai",
 	DBTypeSqlserver: "user id=%s;password=%s;server=%s;port=%d;database=%s;encrypt=disable",
 	DBTypeMongo:     "mongodb://%s:%s@%s:%d/%s?maxPoolSize=%d&minPoolSize=%d&connectTimeoutMS=%d",
 	DBTypeRedis:     "redis://%s%s@%s:%d/%d?dial_timeout=%ds&read_timeout=%ds&write_timeout=%ds",

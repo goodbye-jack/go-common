@@ -3,9 +3,10 @@ package orm
 import (
 	"context"
 	"errors"
-	"github.com/goodbye-jack/go-common/config"
-	"gorm.io/gorm"
+	"os"
 	"testing"
+
+	"gorm.io/gorm"
 )
 
 type Tester struct {
@@ -15,7 +16,12 @@ type Tester struct {
 }
 
 func TestORM(t *testing.T) {
-	orm := NewOrm(config.GetConfigString("tidb_dsn"), "mysql", 5)
+	dsn := os.Getenv("GO_COMMON_TEST_TIDB_DSN")
+	if dsn == "" {
+		t.Skip("GO_COMMON_TEST_TIDB_DSN is not configured")
+	}
+
+	orm := NewOrm(dsn, "mysql", 5)
 	orm.AutoMigrate(&Tester{})
 	tr := Tester{
 		Name: "Tester",

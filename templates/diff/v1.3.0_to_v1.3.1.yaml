@@ -1,0 +1,81 @@
+from: v1.3.0
+to: v1.3.1
+
+added:
+  - key: workflow.api.enabled
+    module: workflow
+    default: false
+    comment: 是否启用工作流标准接口自动注册
+  - key: workflow.context.user_id_strategy
+    module: workflow
+    default: raw
+    comment: 工作流 userId 解析策略
+  - key: workflow.context.user_id_delimiter
+    module: workflow
+    default: "#"
+    comment: username_suffix 模式分隔符
+  - key: workflow.context.user_id_header
+    module: workflow
+    default: X-Workflow-User-ID
+    comment: header 模式下的 workflow userId 请求头
+  - key: workflow.identity.role_aliases
+    module: workflow
+    default: {}
+    comment: 角色别名映射
+  - key: workflow.identity.group_aliases
+    module: workflow
+    default: {}
+    comment: 组别名映射
+  - key: workflow.directory.provider
+    module: workflow_directory
+    default: none
+    comment: 工作流目录服务来源
+  - key: workflow.directory.ldap.addr
+    module: workflow_directory
+    comment: 命名空间化 LDAP 地址
+  - key: workflow.directory.ldap.bind_dn
+    module: workflow_directory
+    comment: 命名空间化 LDAP 绑定 DN
+  - key: workflow.directory.ldap.bind_password
+    module: workflow_directory
+    comment: 命名空间化 LDAP 绑定密码
+  - key: workflow.directory.ldap.base_dn
+    module: workflow_directory
+    comment: 命名空间化 LDAP 根 DN
+  - key: workflow.directory.ldap.people_ou
+    module: workflow_directory
+    comment: 命名空间化 LDAP 用户 OU
+  - key: workflow.directory.ldap.department_ou
+    module: workflow_directory
+    comment: 命名空间化 LDAP 部门 OU
+  - key: workflow.directory.ldap.position_ou
+    module: workflow_directory
+    comment: 命名空间化 LDAP 岗位 OU
+  - key: workflow.directory.ldap.use_tls
+    module: workflow_directory
+    default: false
+    comment: 命名空间化 LDAP TLS 开关
+  - key: workflow.assignment.provider
+    module: workflow_assignment
+    default: none
+    comment: 工作流自动分配来源
+  - key: workflow.assignment.variable_keys.assignee
+    module: workflow_assignment
+    default: nextAssignee
+    comment: 办理人变量名
+  - key: workflow.assignment.variable_keys.candidate_users
+    module: workflow_assignment
+    default: nextCandidateUsers
+    comment: 候选用户变量名
+  - key: workflow.assignment.variable_keys.candidate_groups
+    module: workflow_assignment
+    default: nextCandidateGroups
+    comment: 候选组变量名
+  - key: redis_password
+    module: rbac_compatibility
+    default: ""
+    comment: 历史 Redis 密码配置
+
+changed: []
+
+deprecated: []

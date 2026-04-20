@@ -246,7 +246,7 @@ func (m *Mongo) CollectionExport(collName string, path string) (error, string, s
 	if m.config == nil {
 		return fmt.Errorf("未查询到相关数据库配置信息"), "", ""
 	}
-	dumpCmd := fmt.Sprintf("mongoexport --forceTableScan -h %s:%s -d %s -c %s -o %s",
+	dumpCmd := fmt.Sprintf("mongoexport --forceTableScan -h %s:%d -d %s -c %s -o %s",
 		m.config.Host, m.config.Port, m.config.Database, collName, path+"/"+collName+".json")
 	return CmdExec(dumpCmd)
 }
@@ -256,7 +256,7 @@ func (m *Mongo) CollectionRestore(path string) (error, string, string) {
 	if m.config == nil {
 		return fmt.Errorf("未查询到相关数据库配置信息"), "", ""
 	}
-	restoreCmd := fmt.Sprintf("mongorestore -h %s:%s -d %s -o %s",
+	restoreCmd := fmt.Sprintf("mongorestore -h %s:%d -d %s -o %s",
 		m.config.Host, m.config.Port, m.config.Database, path)
 	return CmdExec(restoreCmd)
 }
@@ -271,17 +271,17 @@ func (m *Mongo) DbDump(path string) (error, string, string) {
 	}
 	if _, err := os.Stat(path); os.IsNotExist(err) { // 检查并创建备份目录
 		if err := os.MkdirAll(path, 0755); err != nil {
-			log.Error("DbDump 创建目录失败", errors.New(err.Error())) // 替换为你项目的日志
+			log.Errorf("DbDump 创建目录失败: %v", err)
 			return err, "", ""
 		}
 	}
 	mongoURI := GenMongoURI(m.config) // 生成mongodump命令（从Config获取URI/数据库名）
 	restoreCmd := fmt.Sprintf("mongodump --uri='%s' -d '%s' --out='%s'", mongoURI, m.config.Database, path)
-	log.Info("DbDump 执行命令", fmt.Sprintf("cmd", restoreCmd))
+	log.Infof("DbDump 执行命令: %s", restoreCmd)
 	err, str1, str2 := CmdExec(restoreCmd) // 执行命令（保持原有cmdExec逻辑）
-	log.Info("DbDump 执行结果", fmt.Sprintf("stdout", str1), fmt.Sprintf("stderr", str2))
+	log.Infof("DbDump 执行结果: stdout=%s stderr=%s", str1, str2)
 	if err != nil {
-		log.Error("DbDump 执行失败", errors.New(err.Error()))
+		log.Errorf("DbDump 执行失败: %v", err)
 	}
 	return err, str1, str2
 }
@@ -327,7 +327,7 @@ func (m *Mongo) aggregate(ctx context.Context, collectionName string, pipeline [
 			return
 		}
 		if err = cursor.Close(dbCtx); err != nil {
-			log.Error(fmt.Sprintf("聚合查询失败,%v", err))
+			log.Errorf("聚合查询失败, %v", err)
 		}
 	}()
 	var results []bson.M
@@ -382,7 +382,7 @@ func (m *Mongo) findPage(ctx context.Context, collectionName string, filter bson
 			return
 		}
 		if err = cursor.Close(dbCtx); err != nil {
-			log.Error(fmt.Sprintf("单表按条件查询失败,%v", err))
+			log.Errorf("单表按条件查询失败, %v", err)
 		}
 	}()
 	var results []bson.M
@@ -460,7 +460,7 @@ func (m *Mongo) findMany(ctx context.Context, collectionName string, filter bson
 			return
 		}
 		if err = cursor.Close(dbCtx); err != nil {
-			log.Error(fmt.Sprintf("单表按条件查询失败,%v", err))
+			log.Errorf("单表按条件查询失败, %v", err)
 		}
 	}()
 	var results []bson.M
@@ -505,7 +505,7 @@ func (m *Mongo) findManyWithOptions(collectionName string, ctx context.Context, 
 			return
 		}
 		if err = cursor.Close(dbCtx); err != nil {
-			log.Error(fmt.Sprintf("单表按条件查询失败,%v", err))
+			log.Errorf("单表按条件查询失败, %v", err)
 		}
 	}()
 	var results []bson.M
@@ -813,7 +813,7 @@ func (m *Mongo) DeleteManyWithCtx(collName string, ctx context.Context, filter b
 // CreateIndexWithModel 索引管理 通过IndexModel创建索引
 func (m *Mongo) CreateIndexWithModel(collName string, model mongo.IndexModel) error {
 	if m.client == nil {
-		return errors.New(fmt.Sprintf("未获取到(%s)对应的mongo客户端", m.config.DBName))
+		return fmt.Errorf("未获取到(%s)对应的mongo客户端", m.config.DBName)
 	}
 	dbCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -837,7 +837,7 @@ func (m *Mongo) CreateIndexWithCtx(collName string, ctx context.Context, column 
 // createIndex 创建索引底层方法
 func (m *Mongo) createIndex(collName string, ctx context.Context, column string, setUnique bool) error {
 	if m.client == nil {
-		return errors.New(fmt.Sprintf("未获取到(%s)对应的mongo客户端", m.config.DBName))
+		return fmt.Errorf("未获取到(%s)对应的mongo客户端", m.config.DBName)
 	}
 	if ctx == nil {
 		ctx = m.ctx
@@ -866,7 +866,7 @@ func (m *Mongo) createManyIndex(collName string, ctx context.Context, indexs []b
 		return fmt.Errorf("无待创建索引")
 	}
 	if m.client == nil {
-		return errors.New(fmt.Sprintf("未获取到(%s)对应的mongo客户端", m.config.DBName))
+		return fmt.Errorf("未获取到(%s)对应的mongo客户端", m.config.DBName)
 	}
 	if ctx == nil {
 		ctx = m.ctx
@@ -895,7 +895,7 @@ func (m *Mongo) DropIndex(collName string, name string) error {
 // dropIndex 删除索引底层方法
 func (m *Mongo) dropIndex(collName string, ctx context.Context, name string) error {
 	if m.client == nil {
-		return errors.New(fmt.Sprintf("未获取到(%s)对应的mongo客户端", m.config.DBName))
+		return fmt.Errorf("未获取到(%s)对应的mongo客户端", m.config.DBName)
 	}
 	if ctx == nil {
 		ctx = m.ctx

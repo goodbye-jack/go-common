@@ -55,6 +55,46 @@ type CompleteTaskRequest struct {
 	Variables     map[string]interface{} `json:"variables,omitempty"`
 }
 
+type AssignmentUserContext struct {
+	UserID     string   `json:"userId,omitempty"`
+	UserName   string   `json:"userName,omitempty"`
+	TenantID   string   `json:"tenantId,omitempty"`
+	SystemCode string   `json:"systemCode,omitempty"`
+	Groups     []string `json:"groups,omitempty"`
+	Roles      []string `json:"roles,omitempty"`
+}
+
+type AssignmentResolveRequest struct {
+	Action               string                 `json:"action,omitempty"`
+	ProcessDefinitionID  string                 `json:"processDefinitionId,omitempty"`
+	ProcessDefinitionKey string                 `json:"processDefinitionKey,omitempty"`
+	ProcessInstanceID    string                 `json:"processInstanceId,omitempty"`
+	BusinessKey          string                 `json:"businessKey,omitempty"`
+	BizID                string                 `json:"bizId,omitempty"`
+	BizType              string                 `json:"bizType,omitempty"`
+	Title                string                 `json:"title,omitempty"`
+	Name                 string                 `json:"name,omitempty"`
+	TaskID               string                 `json:"taskId,omitempty"`
+	ActivityID           string                 `json:"activityId,omitempty"`
+	Result               string                 `json:"result,omitempty"`
+	Comment              string                 `json:"comment,omitempty"`
+	ReworkComment        string                 `json:"reworkComment,omitempty"`
+	PayloadRef           string                 `json:"payloadRef,omitempty"`
+	NeedExpert           bool                   `json:"needExpert,omitempty"`
+	User                 AssignmentUserContext  `json:"user"`
+	Task                 *TaskInfo              `json:"task,omitempty"`
+	Business             *TaskBusinessContext   `json:"business,omitempty"`
+	Variables            map[string]interface{} `json:"variables,omitempty"`
+	CurrentVariables     map[string]interface{} `json:"currentVariables,omitempty"`
+}
+
+type AssignmentResolveResponse struct {
+	Variables       map[string]interface{} `json:"variables,omitempty"`
+	Assignee        string                 `json:"assignee,omitempty"`
+	CandidateUsers  []string               `json:"candidateUsers,omitempty"`
+	CandidateGroups []string               `json:"candidateGroups,omitempty"`
+}
+
 type TaskInfo struct {
 	TaskID                string                  `json:"taskId"`
 	TaskName              string                  `json:"taskName,omitempty"`

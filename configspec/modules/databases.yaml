@@ -1,0 +1,1061 @@
+module: databases
+title: 数据源配置
+description: 关系型数据库、Redis、Mongo 等统一数据源配置。
+owner: go-common/orm
+order: 40
+
+items:
+  - key: databases
+    kind: object
+    since: v1.2.0
+    comment: 数据源根配置对象。
+    group: databases
+    order: 10
+
+  - key: databases.mysql.default
+    kind: object
+    since: v1.2.0
+    comment: MySQL 默认实例，节点存在即视为启用并进入加载校验。
+    group: databases.mysql.default
+    order: 20
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.db_name
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: default_mysql
+    comment: MySQL 实例标识名。
+    example: default_mysql
+    group: databases.mysql.default
+    order: 30
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: single
+    comment: MySQL 运行模式。
+    example: single
+    enum:
+      - single
+      - cluster
+    group: databases.mysql.default
+    order: 40
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.host
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: true
+    comment: MySQL 主机地址。
+    example: 127.0.0.1
+    group: databases.mysql.default
+    order: 50
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.port
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: true
+    default: 3306
+    comment: MySQL 端口。
+    example: 3306
+    group: databases.mysql.default
+    order: 60
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.user
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: true
+    default: root
+    comment: MySQL 用户名。
+    example: root
+    group: databases.mysql.default
+    order: 70
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.password
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: true
+    sensitive: true
+    comment: MySQL 密码。
+    example: your_password
+    group: databases.mysql.default
+    order: 80
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.database
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: true
+    comment: MySQL 数据库名。
+    example: your_database
+    group: databases.mysql.default
+    order: 90
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.charset
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: utf8mb4
+    comment: MySQL 字符集。
+    example: utf8mb4
+    group: databases.mysql.default
+    order: 100
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.parse_time
+    kind: scalar
+    type: bool
+    since: v1.2.0
+    required: false
+    default: true
+    comment: MySQL parseTime 参数。
+    example: true
+    group: databases.mysql.default
+    order: 110
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.loc
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: Local
+    comment: MySQL loc 参数。
+    example: Local
+    group: databases.mysql.default
+    order: 120
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.params
+    kind: map
+    type: string_map
+    since: v1.2.0
+    required: false
+    comment: MySQL 额外 DSN 参数。
+    example:
+      allowNativePasswords: "true"
+    group: databases.mysql.default
+    order: 130
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.max_open_conn
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 100
+    comment: 最大连接数。
+    example: 100
+    group: databases.mysql.default
+    order: 140
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.max_idle_conn
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 10
+    comment: 最大空闲连接数。
+    example: 10
+    group: databases.mysql.default
+    order: 150
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.conn_max_life_time
+    kind: scalar
+    type: duration
+    since: v1.2.0
+    required: false
+    default: 300s
+    comment: 连接最大生存时间。
+    example: 300s
+    group: databases.mysql.default
+    order: 160
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.slow_time
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 5
+    comment: 慢查询阈值，单位秒。
+    example: 5
+    group: databases.mysql.default
+    order: 170
+    merge_policy: add_if_missing
+
+  - key: databases.mysql.default.log_mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: info
+    comment: 日志级别。
+    example: info
+    group: databases.mysql.default
+    order: 180
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default
+    kind: object
+    since: v1.2.0
+    comment: PostgreSQL 默认实例。
+    group: databases.postgres.default
+    order: 190
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.db_name
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: default_postgres
+    comment: PostgreSQL 实例标识名。
+    example: default_postgres
+    group: databases.postgres.default
+    order: 200
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: single
+    comment: PostgreSQL 运行模式。
+    example: single
+    group: databases.postgres.default
+    order: 210
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.host
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: PostgreSQL 主机地址。
+    example: 127.0.0.1
+    group: databases.postgres.default
+    order: 220
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.port
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 5432
+    comment: PostgreSQL 端口。
+    example: 5432
+    group: databases.postgres.default
+    order: 230
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.user
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: PostgreSQL 用户名。
+    example: postgres
+    group: databases.postgres.default
+    order: 240
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.password
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    sensitive: true
+    comment: PostgreSQL 密码。
+    example: postgres-password
+    group: databases.postgres.default
+    order: 250
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.database
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: PostgreSQL 数据库名。
+    example: your_database
+    group: databases.postgres.default
+    order: 260
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.ssl_mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: disable
+    comment: PostgreSQL sslmode 参数。
+    example: disable
+    group: databases.postgres.default
+    order: 270
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.time_zone
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: Asia/Shanghai
+    comment: PostgreSQL TimeZone 参数。
+    example: Asia/Shanghai
+    group: databases.postgres.default
+    order: 280
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.params
+    kind: map
+    type: string_map
+    since: v1.2.0
+    required: false
+    comment: PostgreSQL 额外参数。
+    example:
+      application_name: go-common
+    group: databases.postgres.default
+    order: 290
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.max_open_conn
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 100
+    comment: 最大连接数。
+    example: 100
+    group: databases.postgres.default
+    order: 300
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.max_idle_conn
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 10
+    comment: 最大空闲连接数。
+    example: 10
+    group: databases.postgres.default
+    order: 310
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.conn_max_life_time
+    kind: scalar
+    type: duration
+    since: v1.2.0
+    required: false
+    default: 300s
+    comment: 连接最大生存时间。
+    example: 300s
+    group: databases.postgres.default
+    order: 320
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.slow_time
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 5
+    comment: 慢查询阈值，单位秒。
+    example: 5
+    group: databases.postgres.default
+    order: 330
+    merge_policy: add_if_missing
+
+  - key: databases.postgres.default.log_mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: info
+    comment: 日志级别。
+    example: info
+    group: databases.postgres.default
+    order: 340
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default
+    kind: object
+    since: v1.2.0
+    comment: KingBase 默认实例。
+    group: databases.kingbase.default
+    order: 350
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.db_name
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: default_kingbase
+    comment: KingBase 实例标识名。
+    example: default_kingbase
+    group: databases.kingbase.default
+    order: 360
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: single
+    comment: KingBase 运行模式。
+    example: single
+    group: databases.kingbase.default
+    order: 370
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.host
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: KingBase 主机地址。
+    example: 127.0.0.1
+    group: databases.kingbase.default
+    order: 380
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.port
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 54321
+    comment: KingBase 端口。
+    example: 54321
+    group: databases.kingbase.default
+    order: 390
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.user
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: KingBase 用户名。
+    example: system
+    group: databases.kingbase.default
+    order: 400
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.password
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    sensitive: true
+    comment: KingBase 密码。
+    example: kingbase-password
+    group: databases.kingbase.default
+    order: 410
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.database
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: KingBase 数据库名。
+    example: your_database
+    group: databases.kingbase.default
+    order: 420
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.ssl_mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: disable
+    comment: KingBase sslmode 参数。
+    example: disable
+    group: databases.kingbase.default
+    order: 430
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.time_zone
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: Asia/Shanghai
+    comment: KingBase TimeZone 参数。
+    example: Asia/Shanghai
+    group: databases.kingbase.default
+    order: 440
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.params
+    kind: map
+    type: string_map
+    since: v1.2.0
+    required: false
+    comment: KingBase 额外参数。
+    example:
+      application_name: go-common
+    group: databases.kingbase.default
+    order: 450
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.max_open_conn
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 100
+    comment: 最大连接数。
+    example: 100
+    group: databases.kingbase.default
+    order: 460
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.max_idle_conn
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 10
+    comment: 最大空闲连接数。
+    example: 10
+    group: databases.kingbase.default
+    order: 470
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.conn_max_life_time
+    kind: scalar
+    type: duration
+    since: v1.2.0
+    required: false
+    default: 300s
+    comment: 连接最大生存时间。
+    example: 300s
+    group: databases.kingbase.default
+    order: 480
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.slow_time
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 5
+    comment: 慢查询阈值，单位秒。
+    example: 5
+    group: databases.kingbase.default
+    order: 490
+    merge_policy: add_if_missing
+
+  - key: databases.kingbase.default.log_mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: info
+    comment: 日志级别。
+    example: info
+    group: databases.kingbase.default
+    order: 500
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default
+    kind: object
+    since: v1.2.0
+    comment: 达梦默认实例。
+    group: databases.dm.default
+    order: 510
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.db_name
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: default_dm
+    comment: 达梦实例标识名。
+    example: default_dm
+    group: databases.dm.default
+    order: 520
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: single
+    comment: 达梦运行模式。
+    example: single
+    group: databases.dm.default
+    order: 530
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.host
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: 达梦主机地址。
+    example: 127.0.0.1
+    group: databases.dm.default
+    order: 540
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.port
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 5236
+    comment: 达梦端口。
+    example: 5236
+    group: databases.dm.default
+    order: 550
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.user
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: 达梦用户名。
+    example: SYSDBA
+    group: databases.dm.default
+    order: 560
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.password
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    sensitive: true
+    comment: 达梦密码。
+    example: dm-password
+    group: databases.dm.default
+    order: 570
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.database
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: 达梦数据库或 schema 名。
+    example: your_database
+    group: databases.dm.default
+    order: 580
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.schema
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: 达梦 schema。
+    example: your_schema
+    group: databases.dm.default
+    order: 590
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.params
+    kind: map
+    type: string_map
+    since: v1.2.0
+    required: false
+    comment: 达梦额外参数。
+    example:
+      compatibleMode: mysql
+    group: databases.dm.default
+    order: 600
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.max_open_conn
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 100
+    comment: 最大连接数。
+    example: 100
+    group: databases.dm.default
+    order: 610
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.max_idle_conn
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 10
+    comment: 最大空闲连接数。
+    example: 10
+    group: databases.dm.default
+    order: 620
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.conn_max_life_time
+    kind: scalar
+    type: duration
+    since: v1.2.0
+    required: false
+    default: 300s
+    comment: 连接最大生存时间。
+    example: 300s
+    group: databases.dm.default
+    order: 630
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.slow_time
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 5
+    comment: 慢查询阈值，单位秒。
+    example: 5
+    group: databases.dm.default
+    order: 640
+    merge_policy: add_if_missing
+
+  - key: databases.dm.default.log_mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: info
+    comment: 日志级别。
+    example: info
+    group: databases.dm.default
+    order: 650
+    merge_policy: add_if_missing
+
+  - key: databases.redis.default
+    kind: object
+    since: v1.2.0
+    comment: Redis 默认实例，当前 go-common 常用依赖建议保留该实例。
+    group: databases.redis.default
+    order: 660
+    merge_policy: add_if_missing
+
+  - key: databases.redis.default.db_name
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: default_redis
+    comment: Redis 实例标识名。
+    example: default_redis
+    group: databases.redis.default
+    order: 670
+    merge_policy: add_if_missing
+
+  - key: databases.redis.default.mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: single
+    enum:
+      - single
+      - cluster
+    comment: Redis 运行模式。
+    example: single
+    group: databases.redis.default
+    order: 680
+    merge_policy: add_if_missing
+
+  - key: databases.redis.default.host
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: true
+    default: 127.0.0.1
+    comment: Redis 主机地址，集群模式可用逗号分隔节点列表。
+    example: 127.0.0.1
+    group: databases.redis.default
+    order: 690
+    merge_policy: add_if_missing
+
+  - key: databases.redis.default.port
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: true
+    default: 6379
+    comment: Redis 端口。
+    example: 6379
+    group: databases.redis.default
+    order: 700
+    merge_policy: add_if_missing
+
+  - key: databases.redis.default.password
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    sensitive: true
+    comment: Redis 密码，测试环境可留空。
+    example: ""
+    group: databases.redis.default
+    order: 710
+    merge_policy: add_if_missing
+
+  - key: databases.redis.default.database
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 0
+    comment: Redis DB 索引。
+    example: 0
+    group: databases.redis.default
+    order: 720
+    merge_policy: add_if_missing
+
+  - key: databases.redis.default.timeout
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 5
+    comment: Redis 初始化超时，单位秒。
+    example: 5
+    group: databases.redis.default
+    order: 730
+    merge_policy: add_if_missing
+
+  - key: databases.redis.default.max_pool_size
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 100
+    comment: Redis 最大连接池。
+    example: 100
+    group: databases.redis.default
+    order: 740
+    merge_policy: add_if_missing
+
+  - key: databases.redis.default.min_pool_size
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 10
+    comment: Redis 最小连接池。
+    example: 10
+    group: databases.redis.default
+    order: 750
+    merge_policy: add_if_missing
+
+  - key: databases.redis.default.read_timeout
+    kind: scalar
+    type: duration
+    since: v1.2.0
+    required: false
+    default: 3s
+    comment: Redis 读超时。
+    example: 3s
+    group: databases.redis.default
+    order: 760
+    merge_policy: add_if_missing
+
+  - key: databases.redis.default.write_timeout
+    kind: scalar
+    type: duration
+    since: v1.2.0
+    required: false
+    default: 3s
+    comment: Redis 写超时。
+    example: 3s
+    group: databases.redis.default
+    order: 770
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default
+    kind: object
+    since: v1.2.0
+    comment: Mongo 默认实例。
+    group: databases.mongo.default
+    order: 780
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.db_name
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: default_mongo
+    comment: Mongo 实例标识名。
+    example: default_mongo
+    group: databases.mongo.default
+    order: 790
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    default: single
+    enum:
+      - single
+      - cluster
+    comment: Mongo 运行模式。
+    example: single
+    group: databases.mongo.default
+    order: 800
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.host
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: Mongo 主机地址。
+    example: 127.0.0.1
+    group: databases.mongo.default
+    order: 810
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.port
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 27017
+    comment: Mongo 端口。
+    example: 27017
+    group: databases.mongo.default
+    order: 820
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.user
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: Mongo 用户名。
+    example: root
+    group: databases.mongo.default
+    order: 830
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.password
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    sensitive: true
+    comment: Mongo 密码。
+    example: mongo-password
+    group: databases.mongo.default
+    order: 840
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.database
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: Mongo 数据库名。
+    example: your_database
+    group: databases.mongo.default
+    order: 850
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.auth_db
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: Mongo 认证库。
+    example: admin
+    group: databases.mongo.default
+    order: 860
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.ssl
+    kind: scalar
+    type: bool
+    since: v1.2.0
+    required: false
+    default: false
+    comment: Mongo 是否启用 SSL。
+    example: false
+    group: databases.mongo.default
+    order: 870
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.ssl_mode
+    kind: scalar
+    type: string
+    since: v1.2.0
+    required: false
+    comment: Mongo SSL 模式字符串。
+    example: disable
+    group: databases.mongo.default
+    order: 880
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.timeout
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 5
+    comment: Mongo 初始化超时，单位秒。
+    example: 5
+    group: databases.mongo.default
+    order: 890
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.max_pool_size
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 100
+    comment: Mongo 最大连接池。
+    example: 100
+    group: databases.mongo.default
+    order: 900
+    merge_policy: add_if_missing
+
+  - key: databases.mongo.default.min_pool_size
+    kind: scalar
+    type: int
+    since: v1.2.0
+    required: false
+    default: 10
+    comment: Mongo 最小连接池。
+    example: 10
+    group: databases.mongo.default
+    order: 910
+    merge_policy: add_if_missing

@@ -1,0 +1,63 @@
+# go-common v1.3.1 工作流模块模板
+
+workflow:
+  api:
+    enabled: false
+    prefix: "/api"
+    sso_enabled: true
+    roles: ""
+    callback_path: "/flowable/callback"
+    callback_secret: ""
+  flowable:
+    base_url: "http://127.0.0.1:8087/flowable-rest/service"
+    # Flowable REST 服务账号用户名。
+    username: "rest-admin"
+    # Flowable REST 服务账号密码。
+    password: "flowable-rest-password"
+    timeout_seconds: 15
+    group_prefix: ""
+    role_prefix: "role_"
+    summary_cache_ttl_seconds: 0
+    summary_cache_prefix: "workflow:summary:"
+    candidate_index_ttl_seconds: 0
+    candidate_index_prefix: "workflow:candidate:"
+    todo_projection_ttl_seconds: 604800
+    todo_projection_task_prefix: "workflow:todo-task:"
+    todo_projection_user_prefix: "workflow:user-todo:"
+    todo_projection_group_prefix: "workflow:group-todo:"
+    process_runtime_task_prefix: "workflow:process-runtime-tasks:"
+    done_projection_ttl_seconds: 604800
+    done_task_prefix: "workflow:done-task:"
+    done_user_prefix: "workflow:user-done:"
+  context:
+    user_id_strategy: raw
+    user_id_delimiter: "#"
+    user_id_header: "X-Workflow-User-ID"
+    user_name_header: "X-Workflow-User-Name"
+    system_code_header: "X-System-Code"
+    groups_header: "X-Workflow-Groups"
+    roles_header: "X-Workflow-Roles"
+  formref:
+    db_instance: "flowable_meta"
+  identity:
+    role_aliases:
+      LDAP_ROLE_CITY_REVIEWER: APP_ROLE_CITY_REVIEW
+    group_aliases:
+      CITY_REVIEWERS: city_reviewers
+  directory:
+    provider: none
+    ldap:
+      addr: "ldap://127.0.0.1:8389"
+      bind_dn: "cn=admin,dc=example,dc=com"
+      bind_password: "ldap-bind-password"
+      base_dn: "dc=example,dc=com"
+      people_ou: "ou=people"
+      department_ou: "ou=departments"
+      position_ou: "ou=positions"
+      use_tls: false
+  assignment:
+    provider: none
+    variable_keys:
+      assignee: "nextAssignee"
+      candidate_users: "nextCandidateUsers"
+      candidate_groups: "nextCandidateGroups"

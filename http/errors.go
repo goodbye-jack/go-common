@@ -154,7 +154,7 @@ func WrongPassErrorf(format string, opt ...interface{}) error {
 	return errors.Wrapf(err, format, opt...)
 }
 func whichError(err error) string {
-	log.Error("http error, %v", err)
+	log.Errorf("http error, %v", err)
 	for _, httpError := range []error{
 		&serverError{
 			message: serverErrorMessage,
@@ -177,10 +177,10 @@ func whichError(err error) string {
 	} {
 		if errors.As(err, httpError) {
 			log.Info(err)
-			log.Info("whichError, return %s", httpError.Error())
+			log.Infof("whichError, return %s", httpError.Error())
 			return httpError.Error()
 		}
 	}
-	log.Warn("whichError(%v) not match. go default", err)
+	log.Warnf("whichError(%v) not match. go default", err)
 	return err.Error()
 }
