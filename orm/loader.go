@@ -142,7 +142,7 @@ func initNoSQLDB(v *viper.Viper, dbType utils.DBType) error {
 				return fmt.Errorf("%s实例[%s]创建客户端失败", dbType, instanceName)
 			}
 		case utils.DBTypeMongo:
-			mongoInstance = mongodb.NewMongo(dsn, dbType, timeout)
+			mongoInstance = mongodb.NewMongo(dsn, dbType, timeout, cfg)
 			if mongoInstance == nil {
 				return fmt.Errorf("%s实例[%s]创建客户端失败", dbType, instanceName)
 			}

@@ -68,7 +68,7 @@ func ClientError(message string) error {
 		message = clientErrorMessage
 	}
 	err.message = message
-	return errors.Wrapf(err, message)
+	return errors.Wrap(err, message)
 }
 
 func ClientErrorf(format string, opt ...interface{}) error {
@@ -88,7 +88,7 @@ func ParamsError(message string) error {
 		message = paramsErrorMessage
 	}
 	err.message = message
-	return errors.Wrapf(err, message)
+	return errors.Wrap(err, message)
 }
 
 func ParamsErrorf(format string, opt ...interface{}) error {
@@ -108,7 +108,7 @@ func IntervalError(message string) error {
 		message = intervalErrorMessage
 	}
 	err.message = message
-	return errors.Wrapf(err, message)
+	return errors.Wrap(err, message)
 }
 
 func IntervalErrorf(format string, opt ...interface{}) error {
@@ -126,7 +126,7 @@ func DuplicateError(message string) error {
 	err := duplicateError{
 		message: duplicateErrorMessage,
 	}
-	return errors.Wrapf(err, message)
+	return errors.Wrap(err, message)
 }
 
 func DuplicateErrorf(format string, opt ...interface{}) error {
@@ -144,7 +144,7 @@ func WrongPassError(message string) error {
 	err := wrongPassError{
 		message: wrongPassErrorMessage,
 	}
-	return errors.Wrapf(err, message)
+	return errors.Wrap(err, message)
 }
 
 func WrongPassErrorf(format string, opt ...interface{}) error {

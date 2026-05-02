@@ -6,7 +6,7 @@
 
 - `releases/<version>/config.initial.yaml`
   - 新业务项目首次接入时可作为真实 `config.yaml` 的初始化模板
-  - 当前运行兼容结构仍使用 `service_name`、`addr`
+  - 当前主结构统一使用 `app / server / security / storage`
   - 默认生成 `MySQL + Redis + workflow 基础骨架`
 - `releases/<version>/config.latest.yaml`
   - 当前版本完整标准模板快照
@@ -19,13 +19,20 @@
 - `releases/<version>/config.databases.yaml`
   - 仅数据源模块模板
 - `releases/<version>/config.compatibility.yaml`
-  - 历史兼容配置模板，不建议新项目直接使用
+  - 历史兼容配置模板，仅用于旧项目迁移时对照新旧 key
+- `releases/<version>/config.layering.yaml`
+  - 环境覆盖规则的机器可读策略文件，会同步到业务项目用于校验与说明
+- `releases/<version>/config.rules.md`
+  - 环境覆盖规则的开发者说明文件，会同步到业务项目直接给开发查看
 - `diff/<from>_to_<to>.yaml`
   - 版本间新增 / 变更 / 废弃项说明
 
 当前阶段说明：
 
-- 模板体系第一轮只沉淀配置契约与模板产物，不改运行时读取逻辑
-- 因此模板内容必须与当前 `v1.3.1` 运行能力保持兼容
+- 模板体系从 `v1.3.3` 起与运行时新配置结构保持一致
+- 运行时不再直接兼容 `service_name / addr / cookie_token` 等旧 key
+- 如项目仍包含旧 key，请参考 `config.deprecated.yaml` 和 `config.compatibility.yaml` 迁移
 - `config.latest.yaml` 面向“读懂配置”，允许注释更详细
 - `config.missing.yaml` 面向“缺失项提示和人工合并”，建议保持简洁，不强行塞入大量解释性注释
+- `config.deprecated.yaml` 面向“已使用废弃 key 的迁移提示”，建议直接按映射改造真实配置
+- `config.layering.yaml` 面向“环境覆盖规则校验”，建议与 `config.rules.md` 一起查看

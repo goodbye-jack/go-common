@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goodbye-jack/go-common/configsync"
 	"gopkg.in/yaml.v3"
 )
 
@@ -87,9 +88,9 @@ func TestModuleSpecsBasicValidity(t *testing.T) {
 }
 
 func TestReleaseTemplatesContainExpectedSections(t *testing.T) {
-	initialPath := filepath.Join("..", "templates", "releases", "v1.3.1", "config.initial.yaml")
-	latestPath := filepath.Join("..", "templates", "releases", "v1.3.1", "config.latest.yaml")
-	compatibilityPath := filepath.Join("..", "templates", "releases", "v1.3.1", "config.compatibility.yaml")
+	initialPath := filepath.Join("..", "templates", "releases", configsync.CurrentVersion, "config.initial.yaml")
+	latestPath := filepath.Join("..", "templates", "releases", configsync.CurrentVersion, "config.latest.yaml")
+	compatibilityPath := filepath.Join("..", "templates", "releases", configsync.CurrentVersion, "config.compatibility.yaml")
 
 	initial, err := os.ReadFile(initialPath)
 	if err != nil {
@@ -97,8 +98,9 @@ func TestReleaseTemplatesContainExpectedSections(t *testing.T) {
 	}
 	initialText := string(initial)
 	requiredInitialFragments := []string{
-		"service_name:",
-		"addr:",
+		"app:",
+		"server:",
+		"security:",
 		"mysql:",
 		"redis:",
 		"enabled: false",
@@ -136,10 +138,10 @@ func TestReleaseTemplatesContainExpectedSections(t *testing.T) {
 	}
 	compatibilityText := string(compatibility)
 	requiredCompatibilityFragments := []string{
+		"service_name:",
+		"cookie_token:",
+		"base_path:",
 		"redis_addr:",
-		"redis_password:",
-		"ldap_addr:",
-		"db_dsn:",
 	}
 	for _, fragment := range requiredCompatibilityFragments {
 		if !strings.Contains(compatibilityText, fragment) {
@@ -149,7 +151,7 @@ func TestReleaseTemplatesContainExpectedSections(t *testing.T) {
 }
 
 func TestReleaseTemplateYAMLFilesAreParseable(t *testing.T) {
-	templateFiles, err := filepath.Glob(filepath.Join("..", "templates", "releases", "v1.3.1", "*.yaml"))
+	templateFiles, err := filepath.Glob(filepath.Join("..", "templates", "releases", configsync.CurrentVersion, "*.yaml"))
 	if err != nil {
 		t.Fatalf("glob release template files failed: %v", err)
 	}

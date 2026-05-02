@@ -1,4 +1,28 @@
-service_name: "go-common"
+app:
+  name: "go-common"
+  env: local
+
+server:
+  addr: ":9081"
+  host: 0.0.0.0
+  port: 9081
+  uc_addr: "0.0.0.0:8081"
+  http:
+    read_header_timeout: 15s
+    read_timeout: 30m
+    write_timeout: 30m
+    idle_timeout: 2m
+
+security:
+  cookie:
+    name: good_token
+    expired_seconds: 36000
+
+storage:
+  local:
+    base_path: ""
+    relative_path_prefix: ""
+    cleanup_after_upload: false
 
 s3_endpoint: "http://127.0.0.1:9000"
 s3_region: "cn-east-1"
@@ -10,4 +34,3 @@ s3_force_path_style: true
 s3_base_prefix: "uploads"
 s3_public: false
 s3_sign_expire_seconds: 600
-

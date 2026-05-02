@@ -14,6 +14,7 @@ go-common is a library for some common functions such as logging, configuration,
 - 工作流正式版发布执行步骤：`docs/工作流正式版发布执行步骤.md`
 - 工作流版本变更说明：`docs/工作流版本变更说明.md`
 - 工作流配置说明：`docs/工作流配置说明.md`
+- 配置加载与环境覆盖规则：`docs/配置加载与环境覆盖规则.md`
 - 工作流身份组契约说明：`docs/工作流身份组契约说明.md`
 - 配置模板系统设计说明：`docs/配置模板系统设计说明.md`
 - 配置模板使用说明：`docs/配置模板使用说明.md`
@@ -37,10 +38,11 @@ go-common is a library for some common functions such as logging, configuration,
 3. `docs/工作流配置说明.md`
 4. `docs/工作流版本变更说明.md`
 5. `docs/配置模板系统设计说明.md`
+6. `docs/配置加载与环境覆盖规则.md`
 
 版本化配置模板产物位于：
 
-- `templates/releases/v1.3.1/`
+- `templates/releases/v1.3.3/`
 - `templates/diff/`
 - `configspec/modules/`
 
@@ -58,8 +60,8 @@ import (
 )
 
 func main() {
-	addr := config.GetConfigString("addr")
-	serviceName := config.GetConfigString("service_name")
+	addr := config.GetServerAddr()
+	serviceName := config.GetAppName()
 
 	server := myhttp.NewHTTPServer(serviceName)
 	workflowapi.MustRegisterFromConfig(server)
@@ -122,9 +124,24 @@ go get github.com/goodbye-jack/go-common
 
 $cat  /opt/config.yml
 
-```
-server_name: go-common
-addr: ":8080"
+```yaml
+app:
+  name: go-common-demo
+  env: local
+
+server:
+  addr: ":8080"
+
+security:
+  cookie:
+    name: good_token
+    expired_seconds: 36000
+
+storage:
+  local:
+    base_path: ""
+    relative_path_prefix: ""
+    cleanup_after_upload: false
 ```
 
 ## 示例代码
@@ -140,9 +157,9 @@ import (
 )
 
 func main() {
-	addr := config.GetConfigString("addr")
-	service_name := config.GetConfigString("service_name")
-	server := http.NewHTTPServer(service_name)
+	addr := config.GetServerAddr()
+	serviceName := config.GetAppName()
+	server := http.NewHTTPServer(serviceName)
 	server.Run(addr)
 }
 ```
@@ -191,16 +208,21 @@ databases:
 - Redis 同时支持“无密码”和“有密码”两种模式
 - PostgreSQL / KingBase / DM / Mongo 也统一走 `databases.*` 结构
 
-历史 RBAC 模块仍兼容以下 Redis 配置键：
+历史项目如果仍保留以下 Redis 旧 key：
 
 - `redis_addr`
 - `redis_password`（可选，为空字符串表示无密码）
 
-示例：
+请迁移到：
 
 ```yaml
-redis_addr: "127.0.0.1:6379"
-redis_password: ""
+databases:
+  redis:
+    default:
+      host: 127.0.0.1
+      port: 6379
+      password: ""
+      database: 0
 ```
 
 ## Tag 发布与推送

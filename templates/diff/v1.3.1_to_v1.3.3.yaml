@@ -1,0 +1,105 @@
+from: v1.3.1
+to: v1.3.3
+
+added:
+  - key: app.name
+    module: service
+    default: your-service-name
+    comment: 应用名称，替代旧的 service_name
+  - key: app.env
+    module: service
+    default: local
+    comment: 当前运行环境标识
+  - key: server.addr
+    module: service
+    default: ":9081"
+    comment: 服务监听地址，替代旧的 addr
+  - key: server.host
+    module: service
+    default: 0.0.0.0
+    comment: 服务监听主机
+  - key: server.port
+    module: service
+    default: 9081
+    comment: 服务监听端口
+  - key: server.uc_addr
+    module: service
+    default: "0.0.0.0:8081"
+    comment: 统一控制口地址，替代旧的 uc
+  - key: server.http.read_header_timeout
+    module: service
+    default: 15s
+    comment: HTTP 读取 Header 超时
+  - key: server.http.read_timeout
+    module: service
+    default: 30m
+    comment: HTTP 读取请求体超时
+  - key: server.http.write_timeout
+    module: service
+    default: 30m
+    comment: HTTP 写响应超时
+  - key: server.http.idle_timeout
+    module: service
+    default: 2m
+    comment: HTTP 空闲连接超时
+  - key: server.http.gin_mode
+    module: service
+    default: release
+    comment: Gin 运行模式
+  - key: security.cookie.name
+    module: service
+    default: good_token
+    comment: Cookie / Token 名称，替代旧的 cookie_token
+  - key: security.cookie.expired_seconds
+    module: service
+    default: 36000
+    comment: Cookie / Token 过期时间，替代旧的 cookie_token_expired_seconds
+  - key: storage.local.base_path
+    module: service
+    default: ""
+    comment: 本地工作目录根路径，替代旧的 base_path
+  - key: storage.local.relative_path_prefix
+    module: service
+    default: ""
+    comment: 本地相对路径前缀，替代旧的 relative_path_prefix
+  - key: storage.local.cleanup_after_upload
+    module: service
+    default: false
+    comment: 上传完成后是否清理本地临时文件，替代旧的 production
+
+changed: []
+
+deprecated:
+  - key: service_name
+    new_key: app.name
+    comment: 服务名称已迁移到 app.name
+  - key: addr
+    new_key: server.addr
+    comment: 服务监听地址已迁移到 server.addr
+  - key: uc
+    new_key: server.uc_addr
+    comment: 统一控制口地址已迁移到 server.uc_addr
+  - key: cookie_token
+    new_key: security.cookie.name
+    comment: Cookie / Token 名称已迁移到 security.cookie.name
+  - key: cookie_token_expired_seconds
+    new_key: security.cookie.expired_seconds
+    comment: Cookie / Token 过期时间已迁移到 security.cookie.expired_seconds
+  - key: base_path
+    new_key: storage.local.base_path
+    comment: 本地工作目录根路径已迁移到 storage.local.base_path
+  - key: relative_path_prefix
+    new_key: storage.local.relative_path_prefix
+    comment: 本地相对路径前缀已迁移到 storage.local.relative_path_prefix
+  - key: production
+    new_key: storage.local.cleanup_after_upload
+    comment: 本地清理开关已迁移到 storage.local.cleanup_after_upload
+  - key: http.gin_mode
+    new_key: server.http.gin_mode
+    comment: Gin 运行模式已迁移到 server.http.gin_mode
+  - key: redis_addr
+    new_key: databases.redis.default.host + port
+    comment: Redis 地址已迁移到 databases.redis.default.host + port
+  - key: redis_password
+    new_key: databases.redis.default.password
+    comment: Redis 密码已迁移到 databases.redis.default.password

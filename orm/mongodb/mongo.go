@@ -34,7 +34,7 @@ type Mongo struct {
 //	dsn: Mongo连接字符串（如mongodb://127.0.0.1:27017/test_db?ssl=false）
 //	dbType: 数据库类型（必须是mongo/mongodb）
 //	timeout: 连接超时时间（秒）
-func NewMongo(dsn string, dbType utils.DBType, timeout int) *Mongo {
+func NewMongo(dsn string, dbType utils.DBType, timeout int, cfgFromYaml ...*dbconfig.Config) *Mongo {
 	// 1. 校验数据库类型
 	if dbType != utils.DBTypeMongo && dbType != utils.DBTypeMongoDB {
 		panic(fmt.Sprintf("unsupported db type: %s, expected: mongo/mongodb", dbType))
@@ -45,13 +45,24 @@ func NewMongo(dsn string, dbType utils.DBType, timeout int) *Mongo {
 		DBType:         dbType,
 		ConnectTimeout: time.Duration(timeout) * time.Second,
 	}
-	// 3. 关键步骤：从DSN中解析出数据库名（核心修复）
-	dbName, err := parseDBNameFromDSN(dsn)
-	if err != nil {
-		panic(fmt.Sprintf("parse database name from dsn failed: %v", err))
+	if len(cfgFromYaml) > 0 && cfgFromYaml[0] != nil {
+		tmp := *cfgFromYaml[0]
+		cfg = &tmp
+		cfg.DSN = dsn
+		cfg.DBType = dbType
+		if cfg.ConnectTimeout <= 0 {
+			cfg.ConnectTimeout = time.Duration(timeout) * time.Second
+		}
 	}
-	// 将解析出的数据库名赋值给Config的Database字段
-	cfg.Database = dbName
+	// 3. 关键步骤：从DSN中解析出数据库名（核心修复）
+	if cfg.Database == "" {
+		dbName, err := parseDBNameFromDSN(dsn)
+		if err != nil {
+			panic(fmt.Sprintf("parse database name from dsn failed: %v", err))
+		}
+		// 将解析出的数据库名赋值给Config的Database字段
+		cfg.Database = dbName
+	}
 	// 4. 校验数据库名非空（此时才是有效的校验）
 	if cfg.Database == "" {
 		panic("mongo config error: database name cannot be empty (check dsn: mongodb://host:port/[dbname]?xxx)")
@@ -93,6 +104,11 @@ func NewMongo(dsn string, dbType utils.DBType, timeout int) *Mongo {
 		ctx:        ctx,
 		cancelFunc: cancel,
 	}
+}
+
+// GetConfig 获取Mongo配置（供外部复用）
+func (m *Mongo) GetConfig() *Config {
+	return m.config
 }
 
 // parseDBNameFromDSN 从Mongo的DSN中解析数据库名

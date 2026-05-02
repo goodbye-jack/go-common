@@ -13,7 +13,7 @@ func TestSyncProjectInitializesMissingConfigInConfigDir(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(projectDir, "config"), 0o755); err != nil {
 		t.Fatalf("mkdir config dir failed: %v", err)
 	}
-	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common v1.3.1\n")
+	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common "+CurrentVersion+"\n")
 
 	result, err := SyncProject(Options{
 		ProjectDir:          projectDir,
@@ -33,21 +33,24 @@ func TestSyncProjectInitializesMissingConfigInConfigDir(t *testing.T) {
 	if want := filepath.Join(projectDir, "config", "config.yaml"); result.ConfigPath != want {
 		t.Fatalf("unexpected config path: got %s want %s", result.ConfigPath, want)
 	}
-	assertFileContains(t, result.ConfigPath, "service_name: your-service-name")
-	assertFileContains(t, result.LatestPath, "workflow:")
-	assertFileContains(t, result.MissingPath, "workflow:")
-	assertFileContains(t, result.MetaPath, "template_version: v1.3.1")
+	assertFileContains(t, result.ConfigPath, "app:")
+	assertFileContains(t, result.LatestPath, "server:")
+	assertFileContains(t, result.MissingPath, "当前未发现缺失的新版本配置项")
+	assertFileContains(t, result.DeprecatedPath, "当前未发现废弃配置项")
+	assertFileContains(t, result.LayeringPath, "forbidden_exact_keys:")
+	assertFileContains(t, result.RulesPath, "CONFIG_ENV")
+	assertFileContains(t, result.MetaPath, "template_version: "+CurrentVersion)
 	assertFileContains(t, result.MetaPath, "config_path: config.yaml")
-	if len(result.MissingKeys) == 0 {
-		t.Fatal("expected missing keys for initial config")
+	if len(result.MissingKeys) != 0 {
+		t.Fatalf("unexpected missing keys for initialized config: %v", result.MissingKeys)
 	}
 }
 
 func TestSyncProjectUsesExistingRootConfigAndDoesNotOverwrite(t *testing.T) {
 	projectDir := t.TempDir()
-	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common v1.3.1\n")
+	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common "+CurrentVersion+"\n")
 	configPath := filepath.Join(projectDir, "config.yaml")
-	original := "service_name: relics\naddr: \":9081\"\nworkflow:\n  api:\n    enabled: true\n"
+	original := "app:\n  name: relics\nserver:\n  addr: \":9081\"\nworkflow:\n  api:\n    enabled: true\n"
 	if err := os.WriteFile(configPath, []byte(original), 0o644); err != nil {
 		t.Fatalf("write config failed: %v", err)
 	}
@@ -72,7 +75,7 @@ func TestSyncProjectUsesExistingRootConfigAndDoesNotOverwrite(t *testing.T) {
 
 func TestSyncProjectRespectsMetaConfiguredPath(t *testing.T) {
 	projectDir := t.TempDir()
-	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common v1.3.1\n")
+	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common "+CurrentVersion+"\n")
 	customDir := filepath.Join(projectDir, "runtime")
 	if err := os.MkdirAll(customDir, 0o755); err != nil {
 		t.Fatalf("mkdir runtime dir failed: %v", err)
@@ -80,7 +83,7 @@ func TestSyncProjectRespectsMetaConfiguredPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, metaFileName), []byte("config_path: runtime/custom.yaml\ntemplate_version: v1.3.0\n"), 0o644); err != nil {
 		t.Fatalf("write meta failed: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(customDir, "custom.yaml"), []byte("service_name: custom\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(customDir, "custom.yaml"), []byte("app:\n  name: custom\n"), 0o644); err != nil {
 		t.Fatalf("write custom config failed: %v", err)
 	}
 
@@ -94,13 +97,21 @@ func TestSyncProjectRespectsMetaConfiguredPath(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(customDir, latestFileName)); err != nil {
 		t.Fatalf("expected latest file in runtime dir: %v", err)
 	}
+	if _, err := os.Stat(filepath.Join(customDir, layeringFileName)); err != nil {
+		t.Fatalf("expected layering file in runtime dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(customDir, rulesFileName)); err != nil {
+		t.Fatalf("expected rules doc in runtime dir: %v", err)
+	}
 }
 
 func TestSyncProjectWritesOnlyLocallyMissingAddedKeys(t *testing.T) {
 	projectDir := t.TempDir()
-	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common v1.3.1\n")
-	config := `service_name: relics
-addr: ":9081"
+	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common "+CurrentVersion+"\n")
+	config := `app:
+  name: relics
+server:
+  addr: ":9081"
 workflow:
   api:
     enabled: false
@@ -142,9 +153,11 @@ workflow:
 
 func TestSyncProjectKeepsMissingKeysUntilMerged(t *testing.T) {
 	projectDir := t.TempDir()
-	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common v1.3.1\n")
-	config := `service_name: relics
-addr: ":9081"
+	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common "+CurrentVersion+"\n")
+	config := `app:
+  name: relics
+server:
+  addr: ":9081"
 workflow:
   api:
     enabled: false
@@ -180,12 +193,12 @@ workflow:
 
 func TestDetectGoCommonVersionSupportsLocalReplace(t *testing.T) {
 	projectDir := t.TempDir()
-	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common v1.3.1\n\nreplace github.com/goodbye-jack/go-common => ../go-common\n")
+	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common "+CurrentVersion+"\n\nreplace github.com/goodbye-jack/go-common => ../go-common\n")
 	detected := detectGoCommonVersion(projectDir)
 	if detected.Source != "go.mod:replace_local_require" {
 		t.Fatalf("unexpected source: %s", detected.Source)
 	}
-	if detected.Version != "v1.3.1" {
+	if detected.Version != CurrentVersion {
 		t.Fatalf("unexpected version: %s", detected.Version)
 	}
 }
@@ -196,7 +209,7 @@ func TestInspectProjectFindsModuleRootFromNestedDir(t *testing.T) {
 	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
 		t.Fatalf("mkdir nested dir failed: %v", err)
 	}
-	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common v1.3.1\n")
+	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common "+CurrentVersion+"\n")
 	inspection, err := InspectProject(nestedDir)
 	if err != nil {
 		t.Fatalf("inspect project failed: %v", err)

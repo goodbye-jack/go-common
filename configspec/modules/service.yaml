@@ -1,28 +1,200 @@
 module: service
-title: 服务基础配置
-description: go-common 当前运行兼容的服务启动基础配置。
+title: 服务启动与基础配置
+description: 应用启动、监听地址、HTTP 超时、Cookie 和本地存储的统一配置。
 owner: go-common/config
 order: 10
 
 items:
-  - key: service_name
-    kind: scalar
-    type: string
-    since: v1.0.0
-    required: true
-    comment: 服务名称，当前运行时直接读取该字段。
-    example: your-service-name
-    group: service
+  - key: app
+    kind: object
+    since: v1.3.3
+    comment: 应用基础信息。
+    group: app
     order: 10
-    merge_policy: add_if_missing
 
-  - key: addr
+  - key: app.name
     kind: scalar
     type: string
-    since: v1.0.0
+    since: v1.3.3
     required: true
-    comment: 服务监听地址，当前运行时直接读取该字段。
-    example: :9081
-    group: service
+    comment: 应用名称，用于日志、菜单、权限等识别场景。
+    example: your-service-name
+    group: app
     order: 20
-    merge_policy: add_if_missing
+
+  - key: app.env
+    kind: scalar
+    type: string
+    since: v1.3.3
+    required: false
+    comment: 当前运行环境展示值；当 CONFIG_ENV 生效时由运行时自动修正。
+    example: local
+    group: app
+    order: 30
+
+  - key: server
+    kind: object
+    since: v1.3.3
+    comment: 服务监听配置。
+    group: server
+    order: 40
+
+  - key: server.addr
+    kind: scalar
+    type: string
+    since: v1.3.3
+    required: false
+    comment: 服务监听地址，优先使用该字段。
+    example: :9081
+    group: server
+    order: 50
+
+  - key: server.host
+    kind: scalar
+    type: string
+    since: v1.3.3
+    required: false
+    comment: 服务监听主机名。
+    example: 0.0.0.0
+    group: server
+    order: 60
+
+  - key: server.port
+    kind: scalar
+    type: int
+    since: v1.3.3
+    required: false
+    comment: 服务监听端口。
+    example: 9081
+    group: server
+    order: 70
+
+  - key: server.uc_addr
+    kind: scalar
+    type: string
+    since: v1.3.3
+    required: false
+    comment: UC / 统一控制口地址。
+    example: 0.0.0.0:8081
+    group: server
+    order: 80
+
+  - key: server.http.read_header_timeout
+    kind: scalar
+    type: duration
+    since: v1.3.3
+    required: false
+    default: 15s
+    comment: HTTP 读取 Header 超时。
+    example: 15s
+    group: server.http
+    order: 90
+
+  - key: server.http.read_timeout
+    kind: scalar
+    type: duration
+    since: v1.3.3
+    required: false
+    default: 30m
+    comment: HTTP 读取请求体超时。
+    example: 30m
+    group: server.http
+    order: 100
+
+  - key: server.http.write_timeout
+    kind: scalar
+    type: duration
+    since: v1.3.3
+    required: false
+    default: 30m
+    comment: HTTP 写响应超时。
+    example: 30m
+    group: server.http
+    order: 110
+
+  - key: server.http.idle_timeout
+    kind: scalar
+    type: duration
+    since: v1.3.3
+    required: false
+    default: 2m
+    comment: HTTP 空闲连接超时。
+    example: 2m
+    group: server.http
+    order: 120
+
+  - key: server.http.gin_mode
+    kind: scalar
+    type: string
+    since: v1.3.3
+    required: false
+    default: release
+    comment: Gin 运行模式，可选 debug / release / test。
+    example: release
+    group: server.http
+    order: 125
+
+  - key: security
+    kind: object
+    since: v1.3.3
+    comment: 安全相关配置。
+    group: security
+    order: 130
+
+  - key: security.cookie.name
+    kind: scalar
+    type: string
+    since: v1.3.3
+    required: true
+    comment: Cookie / Token 名称。
+    example: good_token
+    group: security.cookie
+    order: 140
+
+  - key: security.cookie.expired_seconds
+    kind: scalar
+    type: int
+    since: v1.3.3
+    required: true
+    comment: Cookie / Token 过期时间，单位秒。
+    example: 36000
+    group: security.cookie
+    order: 150
+
+  - key: storage
+    kind: object
+    since: v1.3.3
+    comment: 本地存储相关配置。
+    group: storage
+    order: 160
+
+  - key: storage.local.base_path
+    kind: scalar
+    type: string
+    since: v1.3.3
+    required: true
+    comment: 本地工作目录根路径。
+    example: /Users/santy/Desktop/SourceDir/krpaon
+    group: storage.local
+    order: 170
+
+  - key: storage.local.relative_path_prefix
+    kind: scalar
+    type: string
+    since: v1.3.3
+    required: false
+    comment: 对外返回相对路径时需要裁掉的本地前缀。
+    example: /Users/santy/
+    group: storage.local
+    order: 180
+
+  - key: storage.local.cleanup_after_upload
+    kind: scalar
+    type: bool
+    since: v1.3.3
+    required: false
+    default: false
+    comment: 上传完成后是否清理本地临时文件。
+    example: false
+    group: storage.local
+    order: 190

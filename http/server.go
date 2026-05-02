@@ -75,10 +75,7 @@ type HTTPServer struct {
 }
 
 func init() {
-	RbacClient = rbac.NewRbacClient(
-		config.GetConfigString(utils.CasbinRedisAddrName),
-		config.GetConfigString(utils.CasbinRedisPasswordName),
-	)
+	RbacClient = rbac.NewRbacClient()
 }
 
 // RegisterCollectedRoutes Server就绪后调用，批量注册预收集的路由
@@ -145,7 +142,7 @@ func applyGinModeFromConfig() {
 	}
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("GIN_MODE")))
 	if mode == "" {
-		mode = strings.ToLower(strings.TrimSpace(config.GetConfigString("http.gin_mode")))
+		mode = strings.ToLower(strings.TrimSpace(config.GetConfigString("server.http.gin_mode")))
 	}
 	if mode == "" {
 		mode = gin.ReleaseMode
@@ -161,6 +158,10 @@ func applyGinModeFromConfig() {
 
 func (s *HTTPServer) GetRoutes() []*Route {
 	return s.routes
+}
+
+func (s *HTTPServer) GetServiceName() string {
+	return s.service_name
 }
 
 func (s *HTTPServer) GetDefaultRoles() []string {
@@ -403,7 +404,11 @@ func (s *HTTPServer) Run(addr string) {
 		log.Errorf("server %v failed to listen: %v", addr, err)
 		return
 	}
-	log.Infof("server %v is running", addr)
+	LogStartupSuccess(StartupLogOptions{
+		ServiceName: s.service_name,
+		Addr:        addr,
+		RouteCount:  len(s.routes),
+	})
 	if err := s.router.RunListener(listener); err != nil {
 		log.Errorf("server %v exited with error: %v", addr, err)
 	}

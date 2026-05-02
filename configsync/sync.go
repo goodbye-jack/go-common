@@ -16,11 +16,14 @@ import (
 )
 
 const (
-	CurrentVersion  = "v1.3.1"
-	modulePath      = "github.com/goodbye-jack/go-common"
-	metaFileName    = ".go-common-config-meta.yaml"
-	latestFileName  = "config.latest.yaml"
-	missingFileName = "config.missing.yaml"
+	CurrentVersion     = "v1.3.3"
+	modulePath         = "github.com/goodbye-jack/go-common"
+	metaFileName       = ".go-common-config-meta.yaml"
+	latestFileName     = "config.latest.yaml"
+	missingFileName    = "config.missing.yaml"
+	deprecatedFileName = "config.deprecated.yaml"
+	layeringFileName   = "config.layering.yaml"
+	rulesFileName      = "config.rules.md"
 )
 
 var errGoModNotFound = errors.New("go.mod not found")
@@ -39,6 +42,9 @@ type Result struct {
 	ConfigPath         string
 	LatestPath         string
 	MissingPath        string
+	DeprecatedPath     string
+	LayeringPath       string
+	RulesPath          string
 	MetaPath           string
 	TargetVersion      string
 	DetectedVersion    string
@@ -47,6 +53,7 @@ type Result struct {
 	Initialized        bool
 	CreatedConfigPath  bool
 	MissingKeys        []string
+	DeprecatedKeys     []string
 	MissingFromVersion string
 }
 
@@ -75,10 +82,11 @@ type Meta struct {
 }
 
 type diffFile struct {
-	From    string     `yaml:"from"`
-	To      string     `yaml:"to"`
-	Added   []diffItem `yaml:"added"`
-	Changed []diffItem `yaml:"changed"`
+	From       string           `yaml:"from"`
+	To         string           `yaml:"to"`
+	Added      []diffItem       `yaml:"added"`
+	Changed    []diffItem       `yaml:"changed"`
+	Deprecated []deprecatedItem `yaml:"deprecated"`
 }
 
 type diffItem struct {
@@ -86,6 +94,12 @@ type diffItem struct {
 	Module  string      `yaml:"module"`
 	Default interface{} `yaml:"default"`
 	Comment string      `yaml:"comment"`
+}
+
+type deprecatedItem struct {
+	Key     string `yaml:"key"`
+	NewKey  string `yaml:"new_key,omitempty"`
+	Comment string `yaml:"comment,omitempty"`
 }
 
 type versionDetection struct {
@@ -196,6 +210,9 @@ func SyncProject(opts Options) (*Result, error) {
 		ConfigPath:        configPath,
 		LatestPath:        filepath.Join(artifactDir, latestFileName),
 		MissingPath:       filepath.Join(artifactDir, missingFileName),
+		DeprecatedPath:    filepath.Join(artifactDir, deprecatedFileName),
+		LayeringPath:      filepath.Join(artifactDir, layeringFileName),
+		RulesPath:         filepath.Join(artifactDir, rulesFileName),
 		MetaPath:          filepath.Join(artifactDir, metaFileName),
 		TargetVersion:     targetVersion,
 		CreatedConfigPath: resolved.CreatedConfigPath,
@@ -243,6 +260,10 @@ func SyncProject(opts Options) (*Result, error) {
 		}
 	}
 
+	if err := writeSupportArtifacts(result, targetVersion); err != nil {
+		return nil, err
+	}
+
 	configTree, err := loadYAMLTree(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("load runtime config failed: %w", err)
@@ -255,7 +276,7 @@ func SyncProject(opts Options) (*Result, error) {
 	missingRoot := newMappingNode()
 	if writeMissing {
 		if missingFrom != "" && missingFrom != targetVersion {
-			diff, err := loadDiff(missingFrom, targetVersion)
+			diff, err := loadUpgradeDiff(missingFrom, targetVersion)
 			if err == nil {
 				for _, item := range diff.Added {
 					if strings.TrimSpace(item.Key) == "" || hasConfigPath(configTree, item.Key) {
@@ -277,6 +298,36 @@ func SyncProject(opts Options) (*Result, error) {
 		if err := os.WriteFile(result.MissingPath, content, 0o644); err != nil {
 			return nil, fmt.Errorf("write missing config failed: %w", err)
 		}
+	}
+
+	deprecatedKeys := make([]string, 0)
+	deprecatedRoot := newMappingNode()
+	if missingFrom != "" {
+		diff, err := loadUpgradeDiff(missingFrom, targetVersion)
+		if err == nil {
+			for _, item := range diff.Deprecated {
+				if strings.TrimSpace(item.Key) == "" || !hasConfigPath(configTree, item.Key) {
+					continue
+				}
+				deprecatedKeys = append(deprecatedKeys, item.Key)
+				node := yamlNodeValue(item.NewKey)
+				if node == nil {
+					node = yamlNodeValue(item.Comment)
+				}
+				if err := insertNodeValue(deprecatedRoot, strings.Split(item.Key, "."), node); err != nil {
+					return nil, fmt.Errorf("build deprecated config for %s failed: %w", item.Key, err)
+				}
+			}
+		}
+	}
+	sort.Strings(deprecatedKeys)
+	result.DeprecatedKeys = deprecatedKeys
+	deprecatedContent, err := marshalDeprecatedFile(targetVersion, deprecatedKeys, deprecatedRoot)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(result.DeprecatedPath, deprecatedContent, 0o644); err != nil {
+		return nil, fmt.Errorf("write deprecated config failed: %w", err)
 	}
 
 	metaOut := Meta{
@@ -501,6 +552,139 @@ func loadDiff(fromVersion, toVersion string) (*diffFile, error) {
 	return &diff, nil
 }
 
+func loadUpgradeDiff(fromVersion, toVersion string) (*diffFile, error) {
+	directDiff, err := loadDiff(fromVersion, toVersion)
+	if err == nil {
+		return directDiff, nil
+	}
+
+	chain, chainErr := resolveDiffChain(fromVersion, toVersion)
+	if chainErr != nil {
+		return nil, err
+	}
+	return mergeDiffChain(fromVersion, toVersion, chain), nil
+}
+
+func resolveDiffChain(fromVersion, toVersion string) ([]diffFile, error) {
+	entries, err := fs.Glob(templatefs.FS, "diff/*.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("glob diff templates failed: %w", err)
+	}
+
+	diffsByFrom := make(map[string][]diffFile)
+	for _, entry := range entries {
+		data, readErr := templatefs.FS.ReadFile(entry)
+		if readErr != nil {
+			return nil, fmt.Errorf("read diff template failed: %w", readErr)
+		}
+		var diff diffFile
+		if err := yaml.Unmarshal(data, &diff); err != nil {
+			return nil, fmt.Errorf("parse diff template failed: %w", err)
+		}
+		from := strings.TrimSpace(diff.From)
+		to := strings.TrimSpace(diff.To)
+		if from == "" || to == "" {
+			continue
+		}
+		diffsByFrom[from] = append(diffsByFrom[from], diff)
+	}
+
+	visited := make(map[string]bool)
+	chain, ok := walkDiffChain(strings.TrimSpace(fromVersion), strings.TrimSpace(toVersion), diffsByFrom, visited)
+	if !ok {
+		return nil, fmt.Errorf("no diff chain found: %s -> %s", fromVersion, toVersion)
+	}
+	return chain, nil
+}
+
+func walkDiffChain(currentVersion, targetVersion string, diffsByFrom map[string][]diffFile, visited map[string]bool) ([]diffFile, bool) {
+	if currentVersion == targetVersion {
+		return []diffFile{}, true
+	}
+	if visited[currentVersion] {
+		return nil, false
+	}
+	visited[currentVersion] = true
+	defer delete(visited, currentVersion)
+
+	nextDiffs := append([]diffFile(nil), diffsByFrom[currentVersion]...)
+	sort.SliceStable(nextDiffs, func(i, j int) bool {
+		return nextDiffs[i].To < nextDiffs[j].To
+	})
+
+	for _, nextDiff := range nextDiffs {
+		nextVersion := strings.TrimSpace(nextDiff.To)
+		childChain, ok := walkDiffChain(nextVersion, targetVersion, diffsByFrom, visited)
+		if !ok {
+			continue
+		}
+		return append([]diffFile{nextDiff}, childChain...), true
+	}
+	return nil, false
+}
+
+func mergeDiffChain(fromVersion, toVersion string, chain []diffFile) *diffFile {
+	merged := &diffFile{
+		From: fromVersion,
+		To:   toVersion,
+	}
+	addedByKey := make(map[string]diffItem)
+	changedByKey := make(map[string]diffItem)
+	deprecatedByKey := make(map[string]deprecatedItem)
+
+	for _, diff := range chain {
+		for _, item := range diff.Added {
+			if strings.TrimSpace(item.Key) == "" {
+				continue
+			}
+			addedByKey[item.Key] = item
+		}
+		for _, item := range diff.Changed {
+			if strings.TrimSpace(item.Key) == "" {
+				continue
+			}
+			changedByKey[item.Key] = item
+		}
+		for _, item := range diff.Deprecated {
+			if strings.TrimSpace(item.Key) == "" {
+				continue
+			}
+			deprecatedByKey[item.Key] = item
+		}
+	}
+
+	merged.Added = sortDiffItems(addedByKey)
+	merged.Changed = sortDiffItems(changedByKey)
+	merged.Deprecated = sortDeprecatedItems(deprecatedByKey)
+	return merged
+}
+
+func sortDiffItems(items map[string]diffItem) []diffItem {
+	keys := make([]string, 0, len(items))
+	for key := range items {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]diffItem, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, items[key])
+	}
+	return out
+}
+
+func sortDeprecatedItems(items map[string]deprecatedItem) []deprecatedItem {
+	keys := make([]string, 0, len(items))
+	for key := range items {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]deprecatedItem, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, items[key])
+	}
+	return out
+}
+
 func readTemplate(version, name string) ([]byte, error) {
 	path := fmt.Sprintf("releases/%s/%s", version, name)
 	data, err := templatefs.FS.ReadFile(path)
@@ -508,6 +692,24 @@ func readTemplate(version, name string) ([]byte, error) {
 		return nil, fmt.Errorf("read template %s failed: %w", path, err)
 	}
 	return data, nil
+}
+
+func writeSupportArtifacts(result *Result, targetVersion string) error {
+	layeringContent, err := readTemplate(targetVersion, "config.layering.yaml")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(result.LayeringPath, layeringContent, 0o644); err != nil {
+		return fmt.Errorf("write layering policy failed: %w", err)
+	}
+	rulesContent, err := readTemplate(targetVersion, "config.rules.md")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(result.RulesPath, rulesContent, 0o644); err != nil {
+		return fmt.Errorf("write rules doc failed: %w", err)
+	}
+	return nil
 }
 
 func loadMeta(path string) (*Meta, error) {
@@ -581,6 +783,25 @@ func marshalMissingFile(fromVersion, toVersion string, missingKeys []string, con
 	body, err := yaml.Marshal(content)
 	if err != nil {
 		return nil, fmt.Errorf("marshal missing yaml failed: %w", err)
+	}
+	return append([]byte(strings.Join(head, "\n")), body...), nil
+}
+
+func marshalDeprecatedFile(toVersion string, deprecatedKeys []string, content *yaml.Node) ([]byte, error) {
+	head := []string{
+		"# -------------------------------------------------------------------",
+		fmt.Sprintf("# go-common 配置废弃项清单：目标版本 %s", toVersion),
+		"# 仅列出：当前配置中仍然存在的废弃 key 及迁移建议。",
+		"# -------------------------------------------------------------------",
+		"",
+	}
+	if len(deprecatedKeys) == 0 {
+		head = append(head, "# 当前未发现废弃配置项。", "")
+		return []byte(strings.Join(head, "\n")), nil
+	}
+	body, err := yaml.Marshal(content)
+	if err != nil {
+		return nil, fmt.Errorf("marshal deprecated yaml failed: %w", err)
 	}
 	return append([]byte(strings.Join(head, "\n")), body...), nil
 }

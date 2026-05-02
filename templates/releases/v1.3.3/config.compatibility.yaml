@@ -1,0 +1,41 @@
+# go-common v1.3.3 历史兼容配置模板
+#
+# 以下配置仅供旧项目迁移参考。
+# v1.3.3 起运行时不再直接读取这些旧 key，请迁移到新结构：
+# - service_name -> app.name
+# - addr -> server.addr
+# - uc -> server.uc_addr
+# - cookie_token -> security.cookie.name
+# - cookie_token_expired_seconds -> security.cookie.expired_seconds
+# - base_path -> storage.local.base_path
+# - relative_path_prefix -> storage.local.relative_path_prefix
+# - production -> storage.local.cleanup_after_upload
+# - http.gin_mode -> server.http.gin_mode
+# - redis_addr / redis_password -> databases.redis.default.*
+
+service_name: "your-service-name"
+addr: ":9081"
+uc: "0.0.0.0:8081"
+cookie_token: "good_token"
+cookie_token_expired_seconds: 36000
+base_path: "/data/your-project"
+relative_path_prefix: "/data/"
+production: false
+http:
+  gin_mode: release
+
+redis_addr: "127.0.0.1:6379"
+redis_password: ""
+
+db_dsn: "root:your_password@tcp(127.0.0.1:3306)/your_database?charset=utf8mb4&parseTime=True&loc=Local"
+db_type: "mysql"
+db_sql_execute_time: 5
+
+ldap_addr: "ldap://127.0.0.1:8389"
+ldap_bind_dn: "cn=admin,dc=example,dc=com"
+ldap_bind_password: "ldap-bind-password"
+ldap_base_dn: "dc=example,dc=com"
+ldap_people_ou: "ou=people"
+ldap_department_ou: "ou=departments"
+ldap_position_ou: "ou=positions"
+ldap_use_tls: false

@@ -1,4 +1,4 @@
-service_name: "go-common"
+app.name: "go-common"
 
 s3_endpoint: "http://127.0.0.1:9000"
 s3_region: "cn-east-1"
