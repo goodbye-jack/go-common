@@ -27,7 +27,7 @@
 
 当前阶段说明：
 
-- 模板体系从 `v1.3.3` 起与运行时新配置结构保持一致
+- 模板体系从 `v1.3.5` 起与运行时新配置结构保持一致
 - 运行时不再直接兼容 `service_name / addr / cookie_token` 等旧 key
 - 如项目仍包含旧 key，请参考自动生成的 `go-common-rules.vX.X.X.md` 中“这次需要处理的配置项”和 `config.compatibility.yaml` 迁移
 - `config.latest.yaml` 继续作为内部模板真源，允许注释更详细

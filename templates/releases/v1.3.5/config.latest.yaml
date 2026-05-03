@@ -1,0 +1,400 @@
+# -------------------------------------------------------------------
+# go-common v1.3.5 标准完整配置模板（带详细说明）
+# 用途：
+# 1. 让开发者清楚知道当前 tag 支持哪些配置项
+# 2. 让开发者理解每个字段的作用、何时需要配置、常见取值
+# 3. 作为真实 config.yaml 的参考来源，而不是建议直接整份照搬
+#
+# 推荐使用方式：
+# - 新项目：先参考 config.initial.yaml 起步，再按需从本文件拷贝模块
+# - 老项目：优先查看自动生成的 go-common-rules.vX.X.X.md，再回到本文件看字段级注释
+# - 不确定某个字段含义时，先看本文件注释，再结合 go-common 发布说明
+#
+# 模块逻辑总览：
+# - app / server / security / storage：服务自身基础配置
+# - workflow.api：是否注册 go-common 标准工作流接口
+# - workflow.flowable：Flowable REST 连接配置
+# - workflow.context：当前登录用户如何映射为流程用户
+# - workflow.formref：流程表单引用落在哪个数据库实例
+# - workflow.identity：LDAP / 本地身份编码之间做角色、组归一
+# - workflow.directory：目录查询能力，可走 none / ldap
+# - workflow.assignment：自动分配能力，可走 none / directory / ldap
+# - databases：统一数据库初始化配置，按“节点存在即尝试加载”的逻辑生效
+#
+# 数据源使用原则：
+# - 一个业务项目通常只保留一个主要关系型 default 实例
+# - Redis default 建议始终保留，因为 go-common 多个能力会依赖 Redis
+# - 如果你使用 PostgreSQL / KingBase / DM，请删除 mysql.default，改用对应块
+# - Mongo 不是强制项；只有业务显式配置了 mongo 节点时才会初始化
+# -------------------------------------------------------------------
+
+app:
+  # 应用名称：用于日志、权限、菜单、服务识别等场景，建议与业务项目唯一标识保持一致。
+  name: your-service-name
+  # 当前运行环境展示值；环境选择由 CONFIG_ENV / CONFIG_FILE 决定，运行时会自动修正该值。
+  env: local
+
+server:
+  # 服务监听地址：优先使用该字段。
+  # 常见写法：":9081"、"0.0.0.0:9081"。
+  addr: ":9081"
+  # 如果你希望把 host / port 分开配置，可使用下面两个字段。
+  host: 0.0.0.0
+  port: 9081
+  # 统一控制口 / UC 地址；没有该能力的业务项目可留空。
+  uc_addr: "0.0.0.0:8081"
+  http:
+    # HTTP 读取 Header 超时。
+    read_header_timeout: 15s
+    # HTTP 读取请求体超时。
+    read_timeout: 30m
+    # HTTP 写响应超时。
+    write_timeout: 30m
+    # HTTP 空闲连接超时。
+    idle_timeout: 2m
+    # Gin 运行模式，可选 debug / release / test。
+    gin_mode: release
+
+security:
+  cookie:
+    # Cookie / Token 名称。
+    name: good_token
+    # Cookie / Token 过期时间，单位秒。
+    expired_seconds: 36000
+
+storage:
+  local:
+    # 本地工作目录根路径。纯后端项目如果没有本地文件读写，可留空。
+    base_path: ""
+    # 对外返回相对路径时需要裁掉的本地前缀。
+    relative_path_prefix: ""
+    # 上传完成后是否自动清理本地临时文件。
+    cleanup_after_upload: false
+
+workflow:
+  # 工作流标准接口配置。
+  # 这里控制 go-common 是否自动注册统一的工作流 API。
+  api:
+    # 是否启用工作流标准接口。
+    # false：不注册 /workflow 相关接口；true：自动注册标准工作流路由。
+    enabled: false
+    # 工作流接口前缀。
+    # 如果业务总前缀是 /api/v1，这里通常配成 "/api/v1/workflow" 的前半段，例如 "/api/v1"。
+    prefix: "/api"
+    # 是否走 SSO / 登录态校验。
+    # true：要求登录上下文；false：一般只用于本地调试，不建议生产关闭。
+    sso_enabled: true
+    # 允许访问工作流接口的角色集合。
+    # 留空表示走 go-common 内置默认角色范围。
+    # 如需限制，可填写逗号分隔的角色编码。
+    roles: ""
+    # Flowable 主动回调业务系统时使用的入口路径。
+    callback_path: "/flowable/callback"
+    # Flowable 回调验签密钥。
+    # 留空表示不做回调签名校验；生产环境建议配置。
+    callback_secret: ""
+
+  # Flowable REST 客户端配置。
+  flowable:
+    # Flowable REST 根地址，必须指向 /flowable-rest/service。
+    base_url: "http://127.0.0.1:8087/flowable-rest/service"
+    # Flowable REST 服务账号用户名。
+    # 当前官方 flowable-rest.war 建议使用 rest-admin 之类的服务账号，而不是直接填 LDAP 登录用户。
+    username: "rest-admin"
+    # Flowable REST 服务账号密码。
+    password: "flowable-rest-password"
+    # 请求超时时间，单位秒。
+    timeout_seconds: 15
+    # Flowable 候选组统一前缀。
+    # 为空表示不自动加前缀；只有你的 Flowable 分组命名有统一前缀时才需要配置。
+    group_prefix: ""
+    # Flowable 角色前缀。
+    # 默认 role_，用于角色映射到候选组 / 角色表达式时保持一致。
+    role_prefix: "role_"
+    # 流程摘要缓存 TTL，单位秒；0 表示内部使用默认值。
+    summary_cache_ttl_seconds: 0
+    # 流程摘要缓存 key 前缀。
+    summary_cache_prefix: "workflow:summary:"
+    # 候选任务索引缓存 TTL，单位秒；0 表示内部使用默认值。
+    candidate_index_ttl_seconds: 0
+    # 候选任务索引 key 前缀。
+    candidate_index_prefix: "workflow:candidate:"
+    # 待办任务投影缓存 TTL，单位秒。
+    todo_projection_ttl_seconds: 604800
+    # 单任务待办投影 key 前缀。
+    todo_projection_task_prefix: "workflow:todo-task:"
+    # 按用户汇总待办的 key 前缀。
+    todo_projection_user_prefix: "workflow:user-todo:"
+    # 按候选组汇总待办的 key 前缀。
+    todo_projection_group_prefix: "workflow:group-todo:"
+    # 按流程实例维护运行中任务索引的 key 前缀。
+    process_runtime_task_prefix: "workflow:process-runtime-tasks:"
+    # 已办任务投影缓存 TTL，单位秒。
+    done_projection_ttl_seconds: 604800
+    # 单任务已办投影 key 前缀。
+    done_task_prefix: "workflow:done-task:"
+    # 按用户汇总已办的 key 前缀。
+    done_user_prefix: "workflow:user-done:"
+
+  # 工作流用户上下文提取策略。
+  context:
+    # 用户 ID 提取策略。
+    # raw：直接使用登录态中的 UserID
+    # username_suffix：从 tenant#user 结构中提取 user 部分
+    # header：从指定请求头中读取
+    user_id_strategy: raw
+    # 当 user_id_strategy=username_suffix 时使用的分隔符。
+    user_id_delimiter: "#"
+    # 当 user_id_strategy=header 时读取的用户 ID 请求头。
+    user_id_header: "X-Workflow-User-ID"
+    # 用户名请求头。
+    user_name_header: "X-Workflow-User-Name"
+    # 系统编码请求头，用于多系统复用工作流能力时做来源识别。
+    system_code_header: "X-System-Code"
+    # 用户所属组请求头，多个值通常用逗号分隔。
+    groups_header: "X-Workflow-Groups"
+    # 用户所属角色请求头，多个值通常用逗号分隔。
+    roles_header: "X-Workflow-Roles"
+
+  # 表单引用服务配置。
+  formref:
+    # 读取流程表单映射时使用的数据库实例名。
+    # 通常指向 Flowable 元数据库，比如 flowable_meta。
+    db_instance: "flowable_meta"
+
+  # 身份归一配置。
+  # 用于让 LDAP / 本地登录态两种来源尽量共用同一套 BPMN。
+  identity:
+    role_aliases:
+      # 角色别名映射：左边是目录返回值，右边是流程图 / 系统内统一识别值。
+      LDAP_ROLE_CITY_REVIEWER: APP_ROLE_CITY_REVIEW
+    group_aliases:
+      # 组别名映射：左边是目录返回值，右边是流程图 / 系统内统一识别值。
+      CITY_REVIEWERS: city_reviewers
+
+  # 目录服务配置：负责查询“我是谁、我的领导、我的部门、组织用户”等信息。
+  directory:
+    # 可选值：
+    # none：不启用目录能力
+    # ldap：直接连 LDAP
+    provider: none
+    ldap:
+      # LDAP 地址，例如 ldap://host:port
+      addr: "ldap://127.0.0.1:8389"
+      # LDAP 绑定账号 DN。
+      bind_dn: "cn=admin,dc=example,dc=com"
+      # LDAP 绑定账号密码。
+      bind_password: "ldap-bind-password"
+      # LDAP 根节点。
+      base_dn: "dc=example,dc=com"
+      # 人员 OU。
+      people_ou: "ou=people"
+      # 部门 OU。
+      department_ou: "ou=departments"
+      # 岗位 OU。
+      position_ou: "ou=positions"
+      # Flowable 原生 LDAP 组投影 OU。
+      # 这里不是“部门/岗位原始目录”，而是给 Flowable UI / candidateGroups 使用的真正 LDAP Group 容器。
+      # 目录同步成功后，会在这个 OU 下生成：
+      # - 部门组：dept:<departmentCode>
+      # - 岗位组：pos:<positionCode>
+      # 如果 Flowable UI 要正常显示“组”，这里应与 Flowable UI 的 group-base-dn 保持一致。
+      group_ou: "ou=groups"
+      # 是否启用 TLS。
+      use_tls: false
+
+  # 自动分配服务配置：负责开始流程或完成任务时自动求解下一节点办理人。
+  assignment:
+    # 可选值：
+    # none：不做自动分配
+    # directory：基于目录能力在 go-common 内部求解
+    # ldap：兼容旧方式，直接基于 LDAP 求解
+    provider: none
+    variable_keys:
+      # 自动分配结果回写到流程变量时使用的变量名。
+      # 建议保持默认值，这样 LDAP / directory provider 可以共用同一套 BPMN。
+      assignee: "nextAssignee"
+      candidate_users: "nextCandidateUsers"
+      candidate_groups: "nextCandidateGroups"
+
+
+# 业务侧 LDAP 全量同步配置。
+# 说明：
+# 1. 本段仅作用于“业务系统作为主数据源，向 Flowable 使用的 LDAP 目录做全量同步”。
+# 2. go-common 保持通用：只提供 directorysync 通用引擎与 LDAP Sink，不感知文保业务字段。
+# 3. 真正的人员、组织、岗位映射规则在业务项目内实现。
+# 4. 当前版本会额外把部门、岗位投影为真正 LDAP Group，默认落到 workflow.directory.ldap.group_ou / ldap_group_ou 指定的 OU。
+#    这样 Flowable UI 才能原生查询“组”，并在 BPMN 中稳定使用 candidateGroups。
+# 5. `/api/v1/ldap_sync/full` 当前为异步批次执行：
+#    - 首次调用会立即返回 batch_id / batch_no / status=pending
+#    - 真正同步在后台执行
+#    - 使用 /api/v1/ldap_sync/history 与 /api/v1/ldap_sync/get 查看进度和结果
+# 4. 若不配置本段，接口仍可调用，但会使用代码内默认值：
+#    - initial_password 回退到 user.default_reset_password / user.default_password / admin.default_reset_password / Aa13579@
+#    - flowable_db_instance 回退到 workflow.formref.db_instance / flowable_meta
+#    - organization.root_code 留空时，按 tenant:<tenant_code> 自动生成租户根节点
+#    - organization.root_name 留空时，按租户名称自动生成根节点名称
+ldap_sync:
+  # 全量同步时给 LDAP 用户初始化/重置的默认密码。
+  # 建议仅在测试、初始化导入时使用；生产环境建议导入后强制用户改密。
+  initial_password: "Aa13579@"
+
+  # Flowable 元数据库实例名。
+  # 业务侧会把用户的 Flowable UI 权限同步到该实例中的 ACT_ID_PRIV / ACT_ID_PRIV_MAPPING 表。
+  # 当前代码会自动兼容大写 / 小写表名，不要求业务方手动区分。
+  # 通常与 workflow.formref.db_instance 保持一致。
+  flowable_db_instance: "flowable_meta"
+
+  organization:
+    # 单租户场景可配置为固定省级根节点编码，例如 province:nmg。
+    # 多租户场景建议留空，让系统自动按 tenant:<tenant_code> 生成，避免不同租户互相冲突。
+    root_code: ""
+
+    # 固定根节点名称；留空时自动回退为租户名称。
+    root_name: ""
+
+databases:
+  # MySQL 默认实例。
+  # 如果你的主库就是 MySQL，通常保留这个块并删除 postgres / kingbase / dm 的 default。
+  mysql:
+    default:
+      # 数据库实例名；default 实例会注入 go-common 全局 orm.DB。
+      db_name: default_mysql
+      # 运行模式；当前主要使用 single。
+      mode: single
+      # 数据库主机。
+      host: 127.0.0.1
+      # 数据库端口。
+      port: 3306
+      # 用户名。
+      user: root
+      # 密码。
+      password: your_password
+      # 数据库名。
+      database: your_database
+      # 对应旧 DSN 中的 charset=utf8mb4。
+      charset: utf8mb4
+      # 对应旧 DSN 中的 parseTime=True。
+      parse_time: true
+      # 对应旧 DSN 中的 loc=Local。
+      loc: Local
+      # 额外 DSN 参数；仅在有额外驱动参数时配置。
+      params:
+        allowNativePasswords: "true"
+      # 最大打开连接数。
+      max_open_conn: 100
+      # 最大空闲连接数。
+      max_idle_conn: 10
+      # 连接最大生命周期。
+      conn_max_life_time: 300s
+      # 慢查询阈值，单位秒。
+      slow_time: 5
+      # SQL 日志级别，常用：silent / error / warn / info。
+      log_mode: info
+
+  # PostgreSQL 默认实例。
+  postgres:
+    default:
+      db_name: default_postgres
+      mode: single
+      host: 127.0.0.1
+      port: 5432
+      user: postgres
+      password: postgres-password
+      database: your_database
+      # SSL 模式；本地开发常用 disable，生产按实际环境调整。
+      ssl_mode: disable
+      # 时区配置。
+      time_zone: Asia/Shanghai
+      # 驱动额外参数。
+      params:
+        application_name: go-common
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5
+      log_mode: info
+
+  # KingBase（人大金仓）默认实例。
+  kingbase:
+    default:
+      db_name: default_kingbase
+      mode: single
+      host: 127.0.0.1
+      port: 54321
+      user: system
+      password: kingbase-password
+      database: your_database
+      ssl_mode: disable
+      time_zone: Asia/Shanghai
+      params:
+        application_name: go-common
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5
+      log_mode: info
+
+  # 达梦默认实例。
+  dm:
+    default:
+      db_name: default_dm
+      mode: single
+      host: 127.0.0.1
+      port: 5236
+      user: SYSDBA
+      password: dm-password
+      database: your_database
+      # 达梦 schema，部分项目需要明确指定。
+      schema: your_schema
+      params:
+        compatibleMode: mysql
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5
+      log_mode: info
+
+  # Redis 默认实例。
+  redis:
+    default:
+      # default 实例会注入 go-common 全局 orm.Redis。
+      db_name: default_redis
+      mode: single
+      host: 127.0.0.1
+      port: 6379
+      # 测试环境可留空；生产环境如有密码必须填写。
+      password:
+      # Redis 库索引。
+      database: 0
+      # 初始化 / 连接超时，单位秒。
+      timeout: 5
+      # 连接池最大连接数。
+      max_pool_size: 100
+      # 连接池最小空闲连接数。
+      min_pool_size: 10
+      # 读超时。
+      read_timeout: 3s
+      # 写超时。
+      write_timeout: 3s
+
+  # Mongo 默认实例。
+  mongo:
+    default:
+      db_name: default_mongo
+      mode: single
+      host: 127.0.0.1
+      port: 27017
+      user:
+      password:
+      database: your_database
+      # 认证库，常见为 admin。
+      auth_db: admin
+      # 是否启用 SSL。
+      ssl: false
+      # SSL 模式；通常与 ssl 一起使用。
+      ssl_mode: disable
+      # 连接超时，单位秒。
+      timeout: 5
+      max_pool_size: 100
+      min_pool_size: 10

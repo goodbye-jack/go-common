@@ -42,7 +42,7 @@ go-common is a library for some common functions such as logging, configuration,
 
 版本化配置模板产物位于：
 
-- `templates/releases/v1.3.3/`
+- `templates/releases/v1.3.5/`
 - `templates/diff/`
 - `configspec/modules/`
 

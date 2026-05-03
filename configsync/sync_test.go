@@ -252,6 +252,12 @@ func TestDetectGoCommonVersionSupportsLocalReplace(t *testing.T) {
 	}
 }
 
+func TestInferPreviousVersionPrefersLatestDiffBase(t *testing.T) {
+	if got := inferPreviousVersion("v1.3.5"); got != "v1.3.4" {
+		t.Fatalf("unexpected inferred previous version: got %s want %s", got, "v1.3.4")
+	}
+}
+
 func TestInspectProjectFindsModuleRootFromNestedDir(t *testing.T) {
 	projectDir := t.TempDir()
 	nestedDir := filepath.Join(projectDir, "internal", "bootstrap")

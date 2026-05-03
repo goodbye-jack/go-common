@@ -12,11 +12,12 @@ import (
 
 	templatefs "github.com/goodbye-jack/go-common/templates"
 	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/semver"
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	CurrentVersion      = "v1.3.3"
+	CurrentVersion      = "v1.3.5"
 	modulePath          = "github.com/goodbye-jack/go-common"
 	metaFileName        = ".go-common-config-meta.yaml"
 	latestFileName      = "config.latest.yaml"
@@ -524,6 +525,7 @@ func inferPreviousVersion(targetVersion string) string {
 	if err != nil {
 		return ""
 	}
+	bestFrom := ""
 	for _, entry := range entries {
 		data, err := templatefs.FS.ReadFile(entry)
 		if err != nil {
@@ -534,10 +536,16 @@ func inferPreviousVersion(targetVersion string) string {
 			continue
 		}
 		if strings.TrimSpace(diff.To) == targetVersion {
-			return strings.TrimSpace(diff.From)
+			fromVersion := strings.TrimSpace(diff.From)
+			if fromVersion == "" {
+				continue
+			}
+			if bestFrom == "" || semver.Compare(fromVersion, bestFrom) > 0 {
+				bestFrom = fromVersion
+			}
 		}
 	}
-	return ""
+	return bestFrom
 }
 
 func loadDiff(fromVersion, toVersion string) (*diffFile, error) {
