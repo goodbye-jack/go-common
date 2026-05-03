@@ -379,13 +379,12 @@ func logAutoSyncResult(result *configsync.Result, decision autoSyncDecision) {
 	}
 	if decision.forced {
 		log.Infof(
-			"go-common配置自动同步完成：project=%s, initialized=%t, missing=%d, deprecated=%d, latest=%s, todo=%s",
+			"go-common配置自动同步完成：project=%s, initialized=%t, missing=%d, deprecated=%d, rules=%s",
 			result.ProjectDir,
 			result.Initialized,
 			len(result.MissingKeys),
 			len(result.DeprecatedKeys),
-			result.LatestPath,
-			result.TodoPath,
+			result.RulesPath,
 		)
 		return
 	}
@@ -394,19 +393,19 @@ func logAutoSyncResult(result *configsync.Result, decision autoSyncDecision) {
 		log.Infof("go-common已初始化真实配置：config=%s", result.ConfigPath)
 	case result.PreviousVersion != "" && result.PreviousVersion != result.TargetVersion:
 		log.Infof(
-			"go-common检测到配置模板升级：from=%s, to=%s, missing=%d, deprecated=%d, todo=%s",
+			"go-common检测到配置模板升级：from=%s, to=%s, missing=%d, deprecated=%d, rules=%s",
 			result.PreviousVersion,
 			result.TargetVersion,
 			len(result.MissingKeys),
 			len(result.DeprecatedKeys),
-			result.TodoPath,
+			result.RulesPath,
 		)
 	case len(result.MissingKeys) > 0 || len(result.DeprecatedKeys) > 0:
 		log.Infof(
 			"go-common检测到配置待处理项：missing=%d, deprecated=%d, file=%s",
 			len(result.MissingKeys),
 			len(result.DeprecatedKeys),
-			result.TodoPath,
+			result.RulesPath,
 		)
 	}
 }

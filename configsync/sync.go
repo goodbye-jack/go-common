@@ -16,13 +16,13 @@ import (
 )
 
 const (
-	CurrentVersion     = "v1.3.3"
-	modulePath         = "github.com/goodbye-jack/go-common"
-	metaFileName       = ".go-common-config-meta.yaml"
-	latestFileName     = "config.latest.yaml"
-	todoFileName       = "config.todo.yaml"
-	layeringFileName   = "config.layering.yaml"
-	rulesFileName      = "config.rules.md"
+	CurrentVersion      = "v1.3.3"
+	modulePath          = "github.com/goodbye-jack/go-common"
+	metaFileName        = ".go-common-config-meta.yaml"
+	latestFileName      = "config.latest.yaml"
+	todoFileName        = "config.todo.yaml"
+	layeringFileName    = "config.layering.yaml"
+	legacyRulesFileName = "config.rules.md"
 )
 
 var errGoModNotFound = errors.New("go.mod not found")
@@ -209,7 +209,7 @@ func SyncProject(opts Options) (*Result, error) {
 		LatestPath:        filepath.Join(artifactDir, latestFileName),
 		TodoPath:          filepath.Join(artifactDir, todoFileName),
 		LayeringPath:      filepath.Join(artifactDir, layeringFileName),
-		RulesPath:         filepath.Join(artifactDir, rulesFileName),
+		RulesPath:         filepath.Join(artifactDir, buildRulesFileName(targetVersion)),
 		MetaPath:          filepath.Join(artifactDir, metaFileName),
 		TargetVersion:     targetVersion,
 		CreatedConfigPath: resolved.CreatedConfigPath,
@@ -247,17 +247,8 @@ func SyncProject(opts Options) (*Result, error) {
 		}
 	}
 
-	if writeLatest {
-		content, err := readTemplate(targetVersion, "config.latest.yaml")
-		if err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(result.LatestPath, content, 0o644); err != nil {
-			return nil, fmt.Errorf("write latest config failed: %w", err)
-		}
-	}
-
-	if err := writeSupportArtifacts(result, targetVersion); err != nil {
+	latestTemplateContent, err := readTemplate(targetVersion, "config.latest.yaml")
+	if err != nil {
 		return nil, err
 	}
 
@@ -271,11 +262,12 @@ func SyncProject(opts Options) (*Result, error) {
 
 	missingKeys := make([]string, 0)
 	missingRoot := newMappingNode()
+	var upgradeDiff *diffFile
 	if writeMissing {
 		if missingFrom != "" && missingFrom != targetVersion {
-			diff, err := loadUpgradeDiff(missingFrom, targetVersion)
+			upgradeDiff, err = loadUpgradeDiff(missingFrom, targetVersion)
 			if err == nil {
-				for _, item := range diff.Added {
+				for _, item := range upgradeDiff.Added {
 					if strings.TrimSpace(item.Key) == "" || hasConfigPath(configTree, item.Key) || satisfiesByAlternativeKey(configTree, item.Key) {
 						continue
 					}
@@ -293,9 +285,11 @@ func SyncProject(opts Options) (*Result, error) {
 	deprecatedKeys := make([]string, 0)
 	deprecatedRoot := newMappingNode()
 	if missingFrom != "" {
-		diff, err := loadUpgradeDiff(missingFrom, targetVersion)
-		if err == nil {
-			for _, item := range diff.Deprecated {
+		if upgradeDiff == nil {
+			upgradeDiff, _ = loadUpgradeDiff(missingFrom, targetVersion)
+		}
+		if upgradeDiff != nil {
+			for _, item := range upgradeDiff.Deprecated {
 				if strings.TrimSpace(item.Key) == "" || !hasConfigPath(configTree, item.Key) {
 					continue
 				}
@@ -312,12 +306,29 @@ func SyncProject(opts Options) (*Result, error) {
 	}
 	sort.Strings(deprecatedKeys)
 	result.DeprecatedKeys = deprecatedKeys
-	todoContent, err := marshalTodoFile(missingFrom, targetVersion, missingKeys, missingRoot, deprecatedKeys, deprecatedRoot)
+
+	rulesContent, err := renderRulesDocument(rulesDocumentInput{
+		TargetVersion:      targetVersion,
+		PreviousVersion:    missingFrom,
+		ConfigPath:         relativeOrBase(artifactDir, result.ConfigPath),
+		MetaPath:           relativeOrBase(artifactDir, result.MetaPath),
+		IncludeLatest:      writeLatest,
+		IncludeDiffSummary: writeMissing,
+		LatestTemplate:     latestTemplateContent,
+		UpgradeDiff:        upgradeDiff,
+		MissingKeys:        missingKeys,
+		MissingContent:     missingRoot,
+		DeprecatedKeys:     deprecatedKeys,
+		DeprecatedContent:  deprecatedRoot,
+	})
 	if err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(result.TodoPath, todoContent, 0o644); err != nil {
-		return nil, fmt.Errorf("write todo config failed: %w", err)
+	if err := os.WriteFile(result.RulesPath, rulesContent, 0o644); err != nil {
+		return nil, fmt.Errorf("write rules doc failed: %w", err)
+	}
+	if err := cleanupLegacySupportArtifacts(result); err != nil {
+		return nil, err
 	}
 
 	metaOut := Meta{
@@ -684,24 +695,41 @@ func readTemplate(version, name string) ([]byte, error) {
 	return data, nil
 }
 
-func writeSupportArtifacts(result *Result, targetVersion string) error {
-	rulesContent, err := readTemplate(targetVersion, "config.rules.md")
-	if err != nil {
-		return err
+func buildRulesFileName(version string) string {
+	trimmed := strings.TrimSpace(version)
+	if trimmed == "" {
+		trimmed = CurrentVersion
 	}
-	if err := os.WriteFile(result.RulesPath, rulesContent, 0o644); err != nil {
-		return fmt.Errorf("write rules doc failed: %w", err)
-	}
+	return fmt.Sprintf("go-common-rules.%s.md", trimmed)
+}
+
+func cleanupLegacySupportArtifacts(result *Result) error {
+	artifactDir := filepath.Dir(result.ConfigPath)
 	for _, path := range []string{
-		filepath.Join(filepath.Dir(result.ConfigPath), "config.missing.yaml"),
-		filepath.Join(filepath.Dir(result.ConfigPath), "config.deprecated.yaml"),
+		result.LatestPath,
+		result.TodoPath,
+		filepath.Join(artifactDir, "config.missing.yaml"),
+		filepath.Join(artifactDir, "config.deprecated.yaml"),
 		result.LayeringPath,
+		filepath.Join(artifactDir, legacyRulesFileName),
 	} {
 		if strings.TrimSpace(path) == "" {
 			continue
 		}
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("cleanup legacy support artifact failed: %w", err)
+		}
+	}
+	versionedRules, err := filepath.Glob(filepath.Join(artifactDir, "go-common-rules.v*.md"))
+	if err != nil {
+		return fmt.Errorf("glob versioned rules doc failed: %w", err)
+	}
+	for _, path := range versionedRules {
+		if filepath.Clean(path) == filepath.Clean(result.RulesPath) {
+			continue
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("cleanup old versioned rules doc failed: %w", err)
 		}
 	}
 	return nil
@@ -782,12 +810,12 @@ func marshalTodoFile(fromVersion, toVersion string, missingKeys []string, missin
 	}
 	root := newMappingNode()
 	summary := map[string]interface{}{
-		"from_version":          blankAsUnknown(fromVersion),
-		"to_version":            toVersion,
-		"missing_key_count":     len(missingKeys),
-		"deprecated_key_count":  len(deprecatedKeys),
-		"missing_keys":          missingKeys,
-		"deprecated_keys":       deprecatedKeys,
+		"from_version":         blankAsUnknown(fromVersion),
+		"to_version":           toVersion,
+		"missing_key_count":    len(missingKeys),
+		"deprecated_key_count": len(deprecatedKeys),
+		"missing_keys":         missingKeys,
+		"deprecated_keys":      deprecatedKeys,
 	}
 	summaryNode, err := toYAMLNode(summary)
 	if err != nil {

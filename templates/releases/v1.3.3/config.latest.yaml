@@ -7,7 +7,7 @@
 #
 # 推荐使用方式：
 # - 新项目：先参考 config.initial.yaml 起步，再按需从本文件拷贝模块
-# - 老项目：优先查看 config.todo.yaml 中的 missing/deprecated 部分，再回到本文件看注释
+# - 老项目：优先查看自动生成的 go-common-rules.vX.X.X.md，再回到本文件看字段级注释
 # - 不确定某个字段含义时，先看本文件注释，再结合 go-common 发布说明
 #
 # 模块逻辑总览：

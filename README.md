@@ -103,9 +103,7 @@ func main() {
 `go-common/config` 在源码项目目录下会先尝试安全自动同步配置模板，再读取真实配置：
 
 - 缺失时初始化 `config.yaml`
-- 刷新 `config.latest.yaml`
-- 刷新 `config.todo.yaml`
-- 刷新 `config.rules.md`
+- 刷新 `go-common-rules.vX.X.X.md`
 - 刷新 `.go-common-config-meta.yaml`
 
 如果是生产环境，建议显式设置：
