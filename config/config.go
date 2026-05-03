@@ -196,7 +196,7 @@ func validateConfigOverride(selection *overrideSelection, overrideViper *viper.V
 		}
 	}
 	if len(invalidKeys) > 0 {
-		return fmt.Errorf("覆盖文件 %s 包含禁止项：%s；请查看同步生成的 config.rules.md / config.layering.yaml", selection.ConfigFile, strings.Join(invalidKeys, ", "))
+		return fmt.Errorf("覆盖文件 %s 包含禁止项：%s；请按 go-common 配置分层规范处理覆盖文件", selection.ConfigFile, strings.Join(invalidKeys, ", "))
 	}
 	log.Infof("覆盖配置校验通过：file=%s, override_key_count=%d", selection.ConfigFile, len(overrideViper.AllKeys()))
 	return nil
@@ -379,11 +379,13 @@ func logAutoSyncResult(result *configsync.Result, decision autoSyncDecision) {
 	}
 	if decision.forced {
 		log.Infof(
-			"go-common配置自动同步完成：project=%s, initialized=%t, missing=%d, latest=%s",
+			"go-common配置自动同步完成：project=%s, initialized=%t, missing=%d, deprecated=%d, latest=%s, todo=%s",
 			result.ProjectDir,
 			result.Initialized,
 			len(result.MissingKeys),
+			len(result.DeprecatedKeys),
 			result.LatestPath,
+			result.TodoPath,
 		)
 		return
 	}
@@ -392,16 +394,20 @@ func logAutoSyncResult(result *configsync.Result, decision autoSyncDecision) {
 		log.Infof("go-common已初始化真实配置：config=%s", result.ConfigPath)
 	case result.PreviousVersion != "" && result.PreviousVersion != result.TargetVersion:
 		log.Infof(
-			"go-common检测到配置模板升级：from=%s, to=%s, missing=%d",
+			"go-common检测到配置模板升级：from=%s, to=%s, missing=%d, deprecated=%d, todo=%s",
 			result.PreviousVersion,
 			result.TargetVersion,
 			len(result.MissingKeys),
+			len(result.DeprecatedKeys),
+			result.TodoPath,
 		)
-	case len(result.MissingKeys) > 0:
-		log.Infof("go-common检测到配置缺失项：missing=%d, file=%s", len(result.MissingKeys), result.MissingPath)
-	}
-	if len(result.DeprecatedKeys) > 0 {
-		log.Infof("go-common检测到废弃配置项：deprecated=%d, file=%s", len(result.DeprecatedKeys), result.DeprecatedPath)
+	case len(result.MissingKeys) > 0 || len(result.DeprecatedKeys) > 0:
+		log.Infof(
+			"go-common检测到配置待处理项：missing=%d, deprecated=%d, file=%s",
+			len(result.MissingKeys),
+			len(result.DeprecatedKeys),
+			result.TodoPath,
+		)
 	}
 }
 

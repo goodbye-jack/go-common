@@ -5,11 +5,20 @@ import (
 	"github.com/goodbye-jack/go-common/config"
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/utils"
+	"strings"
 )
 
 func GetUser(c *gin.Context) string {
 	user := c.GetString("UserID")
-	log.Infof("GetUser(%s)", user)
+	if principal, ok := GetPrincipal(c); ok && principal != nil {
+		tokenSource := principal.TokenSource
+		if strings.TrimSpace(tokenSource) == "" {
+			tokenSource = "unknown"
+		}
+		log.Infof("GetUser(%s) principal_type=%s token_source=%s", user, principal.Type, tokenSource)
+	} else {
+		log.Infof("GetUser(%s)", user)
+	}
 	if user == "" {
 		user = utils.UserAnonymous
 	}
@@ -29,11 +38,7 @@ func GetTenant(c *gin.Context) string {
 }
 
 func AddTokenCookie(c *gin.Context, token string, tokenExpired int) {
-	tokenName := config.GetConfigString(utils.ConfigNameToken)
-	if tokenName == "" {
-		log.Warn("!!!!!!!!!!!token name is empty!!!!!!!")
-		tokenName = "good_token"
-	}
+	tokenName := ResolveCookieTokenName()
 	domainName := config.GetConfigString(utils.ConfigNameDomain)
 	log.Infof("token name = %s, domain = %s", tokenName, domainName)
 
@@ -41,11 +46,7 @@ func AddTokenCookie(c *gin.Context, token string, tokenExpired int) {
 }
 
 func SetTokenCookie(c *gin.Context, token string, tokenExpired int, domain string, secure, httpOnly bool) {
-	tokenName := config.GetConfigString(utils.ConfigNameToken)
-	if tokenName == "" {
-		log.Warn("!!!!!!!!!!!token name is empty!!!!!!!")
-		tokenName = "good_token"
-	}
+	tokenName := ResolveCookieTokenName()
 	log.Infof("token name = %s", tokenName)
 	c.SetCookie(tokenName, token, tokenExpired, "/", domain, secure, httpOnly)
 }

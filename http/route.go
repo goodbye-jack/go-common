@@ -13,6 +13,7 @@ type Route struct {
 	ServiceName      string            // 服务名称
 	Tips             string            // 路由说明
 	Sso              bool              // 是否需要SSO登录
+	AuthPolicy       *AuthPolicy       // 新认证策略
 	Url              string            // 路由路径
 	Methods          []string          // HTTP方法(GET,POST等)
 	DefaultRoles     []string          // 所需角色映射
@@ -67,6 +68,7 @@ func NewRoute(service_name string, url string, tips string, methods []string, ro
 		ServiceName:      service_name,
 		Tips:             tips,
 		Sso:              sso,
+		AuthPolicy:       nil,
 		Url:              url,
 		Methods:          methods,
 		DefaultRoles:     RoleMapping[role],
@@ -98,6 +100,7 @@ func NewRouteForRA(serviceName string, url string, tips string, methods []string
 		ServiceName:      serviceName,
 		Tips:             tips,
 		Sso:              sso,
+		AuthPolicy:       nil,
 		Url:              url,
 		Methods:          methods,
 		DefaultRoles:     newRoles,
@@ -129,6 +132,7 @@ func NewRouteCommon(serviceName string, url string, tips string, methods []strin
 		ServiceName:      serviceName,
 		Tips:             tips,
 		Sso:              sso,
+		AuthPolicy:       nil,
 		Url:              url,
 		Methods:          methods,
 		DefaultRoles:     newRoles,
@@ -171,6 +175,10 @@ func (r *Route) ToSso() ([]string, []string) {
 }
 
 func (r *Route) ToRbacPolicy() []rbac.Policy {
+	policy := r.EffectiveAuthPolicy()
+	if policy != nil && !policy.EnforceRBAC {
+		return nil
+	}
 	var ans []rbac.Policy
 	for _, method := range r.Methods {
 		if r.InternalRole != "" {
@@ -194,4 +202,45 @@ func (r *Route) ToRbacPolicy() []rbac.Policy {
 		}
 	}
 	return ans
+}
+
+func (r *Route) EffectiveAuthPolicy() *AuthPolicy {
+	if r == nil {
+		return nil
+	}
+	if r.AuthPolicy != nil {
+		return r.AuthPolicy
+	}
+	policy := AuthPolicy{
+		Name:           "legacy",
+		RequireAuth:    r.Sso,
+		AllowAnonymous: !r.Sso,
+		RequiredRoles:  append([]string{}, r.DefaultRoles...),
+		EnforceRBAC:    true,
+		FailureMode:    FailureModeUnauthorized,
+		Description:    "legacy route policy inferred from RouteAPI",
+	}
+	return &policy
+}
+
+func NewRouteWithPolicy(serviceName string, url string, tips string, methods []string, policy AuthPolicy, handlerFunc gin.HandlerFunc) *Route {
+	route := &Route{
+		ServiceName:      serviceName,
+		Tips:             tips,
+		Sso:              false,
+		AuthPolicy:       &policy,
+		Url:              url,
+		Methods:          methods,
+		DefaultRoles:     append([]string{}, policy.RequiredRoles...),
+		Resource:         "",
+		Action:           "",
+		InternalRole:     "",
+		handlerFunc:      handlerFunc,
+		BusinessApproval: false,
+		middlewares:      []gin.HandlerFunc{},
+	}
+	if len(route.DefaultRoles) == 0 && policy.EnforceRBAC {
+		route.DefaultRoles = []string{utils.UserAnonymous}
+	}
+	return route
 }

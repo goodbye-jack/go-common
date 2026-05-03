@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/goodbye-jack/go-common/config"
 	"github.com/goodbye-jack/go-common/log"
@@ -27,6 +26,8 @@ type SsoHandler interface {
 var ssoHandlers map[string]SsoHandler = map[string]SsoHandler{}
 var ssoMu sync.Mutex
 
+const currentRouteContextKey = "__current_route"
+
 func Register(name string, handler SsoHandler) {
 	ssoMu.Lock()
 	if _, ok := ssoHandlers[name]; ok {
@@ -46,9 +47,11 @@ func RbacMiddleware(serviceName string) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if strings.HasSuffix(routePath, "login") {
-			c.Next()
-			return
+		if route := getCurrentRoute(c); route != nil {
+			if policy := route.EffectiveAuthPolicy(); policy != nil && !policy.EnforceRBAC {
+				c.Next()
+				return
+			}
 		}
 		user := GetUser(c)
 		req := rbac.NewReq(
@@ -70,60 +73,145 @@ func RbacMiddleware(serviceName string) gin.HandlerFunc {
 }
 
 func LoginRequiredMiddleware(routes []*Route) gin.HandlerFunc {
-	uniq2sso := map[string]bool{}
-	for _, route := range routes {
-		sso, nonsso := route.ToSso()
-		for _, uniq := range sso {
-			uniq2sso[uniq] = true
-		}
-		for _, uniq := range nonsso {
-			uniq2sso[uniq] = false
-		}
-	}
-	tokenName := config.GetConfigString(utils.ConfigNameToken)
 	return func(c *gin.Context) {
 		routePath := c.FullPath()
 		if routePath == "" {
 			routePath = c.Request.URL.Path
 		}
-		sso := uniq2sso[fmt.Sprintf("%s_%s", routePath, c.Request.Method)]
-		token, err := c.Cookie(tokenName)
-		if sso { // 需要登录的逻辑
-			if err != nil || token == "" {
-				c.AbortWithStatus(http.StatusUnauthorized)
-				return
-			}
-			// ====以下  用于与统一登录对接时，需要每次都回调统一登录token验证====
-			ssoEnabled := config.GetConfigString(utils.SsoEnabledVerify)
-			if sso && ssoEnabled == "true" {
-				nowHandlerName := config.GetConfigString(utils.SsoVerifyHandlerName)
-				for name, handler := range ssoHandlers {
-					if name == nowHandlerName {
-						if !handler.Verify(c) {
-							c.AbortWithStatus(http.StatusUnauthorized)
-							return
-						}
-						break
-					}
-				}
-			}
-			// ====以上  用于与统一登录对接时，需要每次都回调统一登录token验证====
-			uid, errP := utils.ParseJWT(token)
-			if errP != nil {
-				log.Warnf("Token parse failed, err=%v", errP)
-				if sso {
-					c.AbortWithStatus(http.StatusUnauthorized)
-					return
-				}
-			}
-			log.Infof("LoginRequiredMiddleware(), uid=%s", uid)
-			SetUser(c, uid)
-			c.Next()
-			//return
-		} else { // 不需要登录
-			c.Next()
+		route := findRouteByPathAndMethod(routes, routePath, c.Request.Method)
+		if route != nil {
+			c.Set(currentRouteContextKey, route)
+			handleRouteAuthPolicy(c, route)
+			return
+		}
+		SetPrincipal(c, NewAnonymousPrincipal())
+		c.Next()
+	}
+}
+
+func runLegacySsoVerification(c *gin.Context, route *Route) bool {
+	if c == nil || route == nil || !route.Sso {
+		return true
+	}
+	ssoEnabled := config.GetConfigString(utils.SsoEnabledVerify)
+	if ssoEnabled != "true" {
+		return true
+	}
+	nowHandlerName := config.GetConfigString(utils.SsoVerifyHandlerName)
+	for name, handler := range ssoHandlers {
+		if name == nowHandlerName {
+			return handler.Verify(c)
 		}
 	}
+	return true
+}
+
+func handleRouteAuthPolicy(c *gin.Context, route *Route) {
+	policy := route.EffectiveAuthPolicy()
+	if policy == nil {
+		c.Next()
+		return
+	}
+
+	principal, err := ResolvePrincipalFromRequest(c)
+	if err != nil {
+		logAuthResolveFailure(route.Url, err)
+		if policy.RequireAuth {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		principal = NewAnonymousPrincipal()
+	}
+
+	if principal == nil {
+		if policy.RequireAuth {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		principal = NewAnonymousPrincipal()
+	}
+	if !runLegacySsoVerification(c, route) {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	if err := validateRoutePolicy(c, principal, route); err != nil {
+		principalType := PrincipalAnonymous
+		tokenSource := "anonymous"
+		if principal != nil {
+			principalType = principal.Type
+			if strings.TrimSpace(principal.TokenSource) != "" {
+				tokenSource = principal.TokenSource
+			}
+		}
+		log.Warnf("auth policy denied, path=%s, principal_type=%s, token_source=%s, err=%v", route.Url, principalType, tokenSource, err)
+		statusCode := http.StatusForbidden
+		if principal.Type == PrincipalAnonymous {
+			statusCode = http.StatusUnauthorized
+		}
+		if policy.FailureMode == FailureModeUnauthorized {
+			statusCode = http.StatusUnauthorized
+		}
+		c.AbortWithStatus(statusCode)
+		return
+	}
+
+	SetPrincipal(c, principal)
+	if principal.Subject != "" {
+		SetUser(c, principal.Subject)
+	}
+	c.Next()
+}
+
+func validateRoutePolicy(c *gin.Context, principal *Principal, route *Route) error {
+	if route == nil {
+		return nil
+	}
+	policy := route.EffectiveAuthPolicy()
+	if policy == nil {
+		return nil
+	}
+	if err := ValidateAuthPolicy(principal, policy); err != nil {
+		return err
+	}
+	for _, guard := range policy.Guards {
+		if guard == nil {
+			continue
+		}
+		if err := guard.Check(c, principal); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func findRouteByPathAndMethod(routes []*Route, routePath string, method string) *Route {
+	for _, route := range routes {
+		if route.Url != routePath {
+			continue
+		}
+		for _, routeMethod := range route.Methods {
+			if strings.EqualFold(routeMethod, method) {
+				return route
+			}
+		}
+	}
+	return nil
+}
+
+func getCurrentRoute(c *gin.Context) *Route {
+	if c == nil {
+		return nil
+	}
+	value, ok := c.Get(currentRouteContextKey)
+	if !ok || value == nil {
+		return nil
+	}
+	route, ok := value.(*Route)
+	if !ok {
+		return nil
+	}
+	return route
 }
 
 func TenantMiddleware() gin.HandlerFunc {

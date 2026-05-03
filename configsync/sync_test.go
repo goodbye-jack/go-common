@@ -1,6 +1,7 @@
 package configsync
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,12 +36,21 @@ func TestSyncProjectInitializesMissingConfigInConfigDir(t *testing.T) {
 	}
 	assertFileContains(t, result.ConfigPath, "app:")
 	assertFileContains(t, result.LatestPath, "server:")
-	assertFileContains(t, result.MissingPath, "当前未发现缺失的新版本配置项")
-	assertFileContains(t, result.DeprecatedPath, "当前未发现废弃配置项")
-	assertFileContains(t, result.LayeringPath, "forbidden_exact_keys:")
+	assertFileContains(t, result.TodoPath, "summary:")
+	assertFileContains(t, result.TodoPath, "missing_key_count: 0")
+	assertFileContains(t, result.TodoPath, "deprecated_key_count: 0")
 	assertFileContains(t, result.RulesPath, "CONFIG_ENV")
 	assertFileContains(t, result.MetaPath, "template_version: "+CurrentVersion)
 	assertFileContains(t, result.MetaPath, "config_path: config.yaml")
+	if _, err := os.Stat(result.LayeringPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected layering artifact to be removed, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(result.ConfigPath), "config.missing.yaml")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected legacy missing artifact to be removed, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(result.ConfigPath), "config.deprecated.yaml")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected legacy deprecated artifact to be removed, err=%v", err)
+	}
 	if len(result.MissingKeys) != 0 {
 		t.Fatalf("unexpected missing keys for initialized config: %v", result.MissingKeys)
 	}
@@ -97,11 +107,17 @@ func TestSyncProjectRespectsMetaConfiguredPath(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(customDir, latestFileName)); err != nil {
 		t.Fatalf("expected latest file in runtime dir: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(customDir, layeringFileName)); err != nil {
-		t.Fatalf("expected layering file in runtime dir: %v", err)
-	}
 	if _, err := os.Stat(filepath.Join(customDir, rulesFileName)); err != nil {
 		t.Fatalf("expected rules doc in runtime dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(customDir, layeringFileName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected no layering artifact in runtime dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(customDir, "config.missing.yaml")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected no legacy missing artifact in runtime dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(customDir, "config.deprecated.yaml")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected no legacy deprecated artifact in runtime dir: %v", err)
 	}
 }
 
@@ -138,12 +154,13 @@ workflow:
 	if result.MissingFromVersion != "v1.3.0" {
 		t.Fatalf("unexpected missing from version: %s", result.MissingFromVersion)
 	}
-	missingText := readFile(t, result.MissingPath)
-	if strings.Contains(missingText, "enabled: false") {
+	todoText := readFile(t, result.TodoPath)
+	if strings.Contains(todoText, "enabled: false") {
 		t.Fatal("workflow.api.enabled already exists and should not be in missing file")
 	}
-	assertFileContains(t, result.MissingPath, "role_aliases:")
-	assertFileContains(t, result.MissingPath, "candidate_users: nextCandidateUsers")
+	assertFileContains(t, result.TodoPath, "missing:")
+	assertFileContains(t, result.TodoPath, "role_aliases:")
+	assertFileContains(t, result.TodoPath, "candidate_users: nextCandidateUsers")
 	for _, key := range result.MissingKeys {
 		if key == "workflow.api.enabled" {
 			t.Fatal("workflow.api.enabled should not remain missing")
@@ -184,10 +201,43 @@ workflow:
 	if len(second.MissingKeys) == 0 {
 		t.Fatal("expected second sync to keep missing keys until config is merged")
 	}
-	missingText := readFile(t, second.MissingPath)
-	assertFileContains(t, second.MissingPath, "group_aliases: {}")
-	if !strings.Contains(missingText, "workflow:") {
-		t.Fatalf("unexpected missing file content: %s", missingText)
+	todoText := readFile(t, second.TodoPath)
+	assertFileContains(t, second.TodoPath, "group_aliases: {}")
+	if !strings.Contains(todoText, "workflow:") {
+		t.Fatalf("unexpected todo file content: %s", todoText)
+	}
+}
+
+func TestSyncProjectDoesNotReportHostPortMissingWhenAddrExists(t *testing.T) {
+	projectDir := t.TempDir()
+	writeGoMod(t, projectDir, "module example.com/test\n\nrequire github.com/goodbye-jack/go-common "+CurrentVersion+"\n")
+	config := `app:
+  name: relics
+server:
+  addr: ":9081"
+`
+	if err := os.WriteFile(filepath.Join(projectDir, "config.yaml"), []byte(config), 0o644); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, metaFileName), []byte("template_version: v1.3.1\nconfig_path: config.yaml\n"), 0o644); err != nil {
+		t.Fatalf("write meta failed: %v", err)
+	}
+
+	result, err := SyncProject(Options{ProjectDir: projectDir, WriteLatest: true, WriteMissing: true})
+	if err != nil {
+		t.Fatalf("sync project failed: %v", err)
+	}
+	for _, key := range result.MissingKeys {
+		if key == "server.host" || key == "server.port" {
+			t.Fatalf("addr exists, but key still reported missing: %s", key)
+		}
+	}
+	todoText := readFile(t, result.TodoPath)
+	if strings.Contains(todoText, "server:\n    host:") || strings.Contains(todoText, "server:\n        host:") {
+		t.Fatalf("unexpected server.host missing entry in todo file: %s", todoText)
+	}
+	if strings.Contains(todoText, "port: 9081") {
+		t.Fatalf("unexpected server.port missing entry in todo file: %s", todoText)
 	}
 }
 

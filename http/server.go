@@ -301,6 +301,14 @@ func (s *HTTPServer) RouteAPI(path string, tips string, methods []string, roles 
 	//log.Infof("[自动注册路由] url=%s, methods=%v", path, methods)
 }
 
+func (s *HTTPServer) RouteWithPolicy(path string, tips string, methods []string, policy AuthPolicy, fn gin.HandlerFunc) {
+	if len(methods) == 0 {
+		methods = append(methods, "GET")
+	}
+	route := NewRouteWithPolicy(s.service_name, path, tips, methods, policy, fn)
+	s.routes = append(s.routes, route)
+}
+
 func asGinHandlerFunc(value interface{}) (gin.HandlerFunc, bool) {
 	switch typedValue := value.(type) {
 	case gin.HandlerFunc:
@@ -361,7 +369,7 @@ func (s *HTTPServer) Prepare() {
 		s.router.Use(s.extraMiddlewares...)
 	}
 	s.router.Use(
-		LoginRequiredMiddleware(s.routes),                                 // 登录检查
+		LoginRequiredMiddleware(s.routes),                                 // 登录检查/新认证策略
 		RbacMiddleware(s.service_name),                                    // RBAC鉴权
 		TenantMiddleware(),                                                // 租户隔离
 		RecordRequestMiddleware(s.routes, s.opRecordFn, s.accessRecordFn), // 操作/访问记录
@@ -381,6 +389,7 @@ func (s *HTTPServer) Prepare() {
 			s.MarkRouteRegistered(route.Url, method)
 		}
 	}
+	WriteAuthRouteRegistrySnapshot(s.service_name, s.routes)
 }
 
 // Use 注册额外的全局中间件(将在 Prepare 时最先挂载)

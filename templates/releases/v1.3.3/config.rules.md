@@ -66,6 +66,5 @@
 - 如果环境覆盖文件里出现禁止项，服务启动时会直接拒绝启动
 - 如果项目升级了 `go-common` 模板版本，请同时查看：
   - `config.latest.yaml`
-  - `config.missing.yaml`
-  - `config.deprecated.yaml`
-  - `config.layering.yaml`
+  - `config.todo.yaml`
+  - `config.rules.md`

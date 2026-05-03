@@ -104,7 +104,8 @@ func main() {
 
 - 缺失时初始化 `config.yaml`
 - 刷新 `config.latest.yaml`
-- 刷新 `config.missing.yaml`
+- 刷新 `config.todo.yaml`
+- 刷新 `config.rules.md`
 - 刷新 `.go-common-config-meta.yaml`
 
 如果是生产环境，建议显式设置：

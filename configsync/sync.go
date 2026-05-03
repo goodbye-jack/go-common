@@ -20,8 +20,7 @@ const (
 	modulePath         = "github.com/goodbye-jack/go-common"
 	metaFileName       = ".go-common-config-meta.yaml"
 	latestFileName     = "config.latest.yaml"
-	missingFileName    = "config.missing.yaml"
-	deprecatedFileName = "config.deprecated.yaml"
+	todoFileName       = "config.todo.yaml"
 	layeringFileName   = "config.layering.yaml"
 	rulesFileName      = "config.rules.md"
 )
@@ -41,8 +40,7 @@ type Result struct {
 	ProjectDir         string
 	ConfigPath         string
 	LatestPath         string
-	MissingPath        string
-	DeprecatedPath     string
+	TodoPath           string
 	LayeringPath       string
 	RulesPath          string
 	MetaPath           string
@@ -209,8 +207,7 @@ func SyncProject(opts Options) (*Result, error) {
 		ProjectDir:        absProjectDir,
 		ConfigPath:        configPath,
 		LatestPath:        filepath.Join(artifactDir, latestFileName),
-		MissingPath:       filepath.Join(artifactDir, missingFileName),
-		DeprecatedPath:    filepath.Join(artifactDir, deprecatedFileName),
+		TodoPath:          filepath.Join(artifactDir, todoFileName),
 		LayeringPath:      filepath.Join(artifactDir, layeringFileName),
 		RulesPath:         filepath.Join(artifactDir, rulesFileName),
 		MetaPath:          filepath.Join(artifactDir, metaFileName),
@@ -279,7 +276,7 @@ func SyncProject(opts Options) (*Result, error) {
 			diff, err := loadUpgradeDiff(missingFrom, targetVersion)
 			if err == nil {
 				for _, item := range diff.Added {
-					if strings.TrimSpace(item.Key) == "" || hasConfigPath(configTree, item.Key) {
+					if strings.TrimSpace(item.Key) == "" || hasConfigPath(configTree, item.Key) || satisfiesByAlternativeKey(configTree, item.Key) {
 						continue
 					}
 					if err := insertNodeValue(missingRoot, strings.Split(item.Key, "."), yamlNodeValue(item.Default)); err != nil {
@@ -290,15 +287,8 @@ func SyncProject(opts Options) (*Result, error) {
 			}
 		}
 		sort.Strings(missingKeys)
-		result.MissingKeys = missingKeys
-		content, err := marshalMissingFile(missingFrom, targetVersion, missingKeys, missingRoot)
-		if err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(result.MissingPath, content, 0o644); err != nil {
-			return nil, fmt.Errorf("write missing config failed: %w", err)
-		}
 	}
+	result.MissingKeys = missingKeys
 
 	deprecatedKeys := make([]string, 0)
 	deprecatedRoot := newMappingNode()
@@ -322,12 +312,12 @@ func SyncProject(opts Options) (*Result, error) {
 	}
 	sort.Strings(deprecatedKeys)
 	result.DeprecatedKeys = deprecatedKeys
-	deprecatedContent, err := marshalDeprecatedFile(targetVersion, deprecatedKeys, deprecatedRoot)
+	todoContent, err := marshalTodoFile(missingFrom, targetVersion, missingKeys, missingRoot, deprecatedKeys, deprecatedRoot)
 	if err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(result.DeprecatedPath, deprecatedContent, 0o644); err != nil {
-		return nil, fmt.Errorf("write deprecated config failed: %w", err)
+	if err := os.WriteFile(result.TodoPath, todoContent, 0o644); err != nil {
+		return nil, fmt.Errorf("write todo config failed: %w", err)
 	}
 
 	metaOut := Meta{
@@ -695,19 +685,24 @@ func readTemplate(version, name string) ([]byte, error) {
 }
 
 func writeSupportArtifacts(result *Result, targetVersion string) error {
-	layeringContent, err := readTemplate(targetVersion, "config.layering.yaml")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(result.LayeringPath, layeringContent, 0o644); err != nil {
-		return fmt.Errorf("write layering policy failed: %w", err)
-	}
 	rulesContent, err := readTemplate(targetVersion, "config.rules.md")
 	if err != nil {
 		return err
 	}
 	if err := os.WriteFile(result.RulesPath, rulesContent, 0o644); err != nil {
 		return fmt.Errorf("write rules doc failed: %w", err)
+	}
+	for _, path := range []string{
+		filepath.Join(filepath.Dir(result.ConfigPath), "config.missing.yaml"),
+		filepath.Join(filepath.Dir(result.ConfigPath), "config.deprecated.yaml"),
+		result.LayeringPath,
+	} {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("cleanup legacy support artifact failed: %w", err)
+		}
 	}
 	return nil
 }
@@ -767,41 +762,51 @@ func hasConfigPath(tree map[string]interface{}, dotKey string) bool {
 	return true
 }
 
-func marshalMissingFile(fromVersion, toVersion string, missingKeys []string, content *yaml.Node) ([]byte, error) {
+func satisfiesByAlternativeKey(tree map[string]interface{}, dotKey string) bool {
+	switch strings.TrimSpace(dotKey) {
+	case "server.host", "server.port":
+		return hasConfigPath(tree, "server.addr")
+	default:
+		return false
+	}
+}
+
+func marshalTodoFile(fromVersion, toVersion string, missingKeys []string, missingContent *yaml.Node, deprecatedKeys []string, deprecatedContent *yaml.Node) ([]byte, error) {
 	head := []string{
 		"# -------------------------------------------------------------------",
-		fmt.Sprintf("# go-common 配置补缺清单：%s -> %s", blankAsUnknown(fromVersion), toVersion),
-		"# 仅列出：当前版本新增且本地真实配置中缺失的配置项。",
+		fmt.Sprintf("# go-common 配置待处理清单：%s -> %s", blankAsUnknown(fromVersion), toVersion),
+		"# 三部分：summary / missing / deprecated。",
 		"# 默认安全模式不会自动写回真实 config.yaml，请人工确认后合并。",
 		"# -------------------------------------------------------------------",
 		"",
 	}
-	if len(missingKeys) == 0 {
-		head = append(head, "# 当前未发现缺失的新版本配置项。", "")
-		return []byte(strings.Join(head, "\n")), nil
+	root := newMappingNode()
+	summary := map[string]interface{}{
+		"from_version":          blankAsUnknown(fromVersion),
+		"to_version":            toVersion,
+		"missing_key_count":     len(missingKeys),
+		"deprecated_key_count":  len(deprecatedKeys),
+		"missing_keys":          missingKeys,
+		"deprecated_keys":       deprecatedKeys,
 	}
-	body, err := yaml.Marshal(content)
+	summaryNode, err := toYAMLNode(summary)
 	if err != nil {
-		return nil, fmt.Errorf("marshal missing yaml failed: %w", err)
+		return nil, fmt.Errorf("marshal todo summary failed: %w", err)
 	}
-	return append([]byte(strings.Join(head, "\n")), body...), nil
-}
-
-func marshalDeprecatedFile(toVersion string, deprecatedKeys []string, content *yaml.Node) ([]byte, error) {
-	head := []string{
-		"# -------------------------------------------------------------------",
-		fmt.Sprintf("# go-common 配置废弃项清单：目标版本 %s", toVersion),
-		"# 仅列出：当前配置中仍然存在的废弃 key 及迁移建议。",
-		"# -------------------------------------------------------------------",
-		"",
+	upsertNodePair(root, "summary", summaryNode)
+	if missingContent == nil || len(missingContent.Content) == 0 {
+		upsertNodePair(root, "missing", newMappingNode())
+	} else {
+		upsertNodePair(root, "missing", missingContent)
 	}
-	if len(deprecatedKeys) == 0 {
-		head = append(head, "# 当前未发现废弃配置项。", "")
-		return []byte(strings.Join(head, "\n")), nil
+	if deprecatedContent == nil || len(deprecatedContent.Content) == 0 {
+		upsertNodePair(root, "deprecated", newMappingNode())
+	} else {
+		upsertNodePair(root, "deprecated", deprecatedContent)
 	}
-	body, err := yaml.Marshal(content)
+	body, err := yaml.Marshal(root)
 	if err != nil {
-		return nil, fmt.Errorf("marshal deprecated yaml failed: %w", err)
+		return nil, fmt.Errorf("marshal todo yaml failed: %w", err)
 	}
 	return append([]byte(strings.Join(head, "\n")), body...), nil
 }
