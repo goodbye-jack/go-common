@@ -1,0 +1,152 @@
+from: v1.3.5
+to: v1.3.6
+
+added:
+  - key: notifications.sms.enabled
+    module: notifications
+    default: false
+    comment: 统一短信发送总开关
+  - key: notifications.sms.provider
+    module: notifications
+    default: mock
+    comment: 当前启用的短信供应商
+  - key: notifications.sms.default_sign
+    module: notifications
+    default: ""
+    comment: 默认短信签名
+  - key: notifications.sms.default_template
+    module: notifications
+    default: "{{content}}"
+    comment: 默认文本短信模板
+  - key: notifications.sms.providers.mock.enabled
+    module: notifications
+    default: true
+    comment: mock 短信供应商开关
+  - key: notifications.sms.providers.luosimao.enabled
+    module: notifications
+    default: false
+    comment: Luosimao 短信供应商开关
+  - key: notifications.sms.providers.luosimao.endpoint
+    module: notifications
+    default: https://sms-api.luosimao.com/v1/send.json
+    comment: Luosimao 短信发送地址
+  - key: notifications.sms.providers.luosimao.api_key
+    module: notifications
+    default: ""
+    comment: Luosimao API Key
+  - key: notifications.sms.providers.luosimao.sign_name
+    module: notifications
+    default: ""
+    comment: Luosimao 短信签名
+  - key: notifications.sms.providers.aliyun.enabled
+    module: notifications
+    default: false
+    comment: 阿里云短信供应商开关
+  - key: notifications.sms.providers.aliyun.endpoint
+    module: notifications
+    default: dysmsapi.aliyuncs.com
+    comment: 阿里云短信服务地址
+  - key: notifications.sms.providers.aliyun.access_key_id
+    module: notifications
+    default: ""
+    comment: 阿里云 AccessKey ID
+  - key: notifications.sms.providers.aliyun.access_key_secret
+    module: notifications
+    default: ""
+    comment: 阿里云 AccessKey Secret
+  - key: notifications.sms.providers.aliyun.sign_name
+    module: notifications
+    default: ""
+    comment: 阿里云短信签名
+  - key: notifications.sms.providers.aliyun.template_code
+    module: notifications
+    default: ""
+    comment: 阿里云短信模板编码
+  - key: changeguard.enabled
+    module: changeguard
+    default: false
+    comment: 关键资源保护总开关
+  - key: changeguard.runtime.auto_start_workers
+    module: changeguard
+    default: true
+    comment: 是否自动启动后台 worker
+  - key: changeguard.runtime.notification_poll_interval
+    module: changeguard
+    default: 1m
+    comment: 通知 worker 轮询周期
+  - key: changeguard.runtime.drift_poll_interval
+    module: changeguard
+    default: 10m
+    comment: drift worker 轮询周期
+  - key: changeguard.providers.sms.enabled
+    module: changeguard
+    default: false
+    comment: 普通变更通知短信提供方开关
+  - key: changeguard.providers.sms.config_prefix
+    module: changeguard
+    default: notifications.sms
+    comment: 普通变更通知短信配置前缀
+  - key: changeguard.providers.second_factor_sms.enabled
+    module: changeguard
+    default: false
+    comment: 提交前短信二次验证开关
+  - key: changeguard.providers.second_factor_sms.config_prefix
+    module: changeguard
+    default: notifications.sms
+    comment: 二次验证短信配置前缀
+  - key: changeguard.providers.second_factor_sms.template
+    module: changeguard
+    default: "【关键资源保护】您正在执行{{resource_name}}{{action_name}}操作，摘要：{{summary_text}}。短信验证码：{{code}}，{{ttl_minutes}}分钟内有效。"
+    comment: sms_code 模式短信模板
+  - key: changeguard.providers.second_factor_sms.reply_template
+    module: changeguard
+    default: "【关键资源保护】您正在执行{{resource_name}}{{action_name}}操作，摘要：{{summary_text}}。同意请回复 1#{{reply_token}}，拒绝请回复 0#{{reply_token}}。"
+    comment: sms_reply 模式短信模板
+  - key: changeguard.providers.second_factor_sms.code_ttl
+    module: changeguard
+    default: 5m
+    comment: 验证码有效期
+  - key: changeguard.providers.second_factor_sms.resend_interval
+    module: changeguard
+    default: 60s
+    comment: 短信重发间隔
+  - key: changeguard.providers.second_factor_sms.verified_ttl
+    module: changeguard
+    default: 10m
+    comment: 验证通过后保持有效的时长
+  - key: changeguard.providers.second_factor_sms.challenge_header
+    module: changeguard
+    default: X-ChangeGuard-Challenge-Id
+    comment: 前端提交 challenge id 的请求头
+  - key: changeguard.providers.second_factor_sms.code_header
+    module: changeguard
+    default: X-ChangeGuard-Verify-Code
+    comment: 前端提交短信验证码的请求头
+  - key: changeguard.providers.second_factor_sms.reply_callback_path
+    module: changeguard
+    default: /internal/changeguard/second-factor/sms-reply
+    comment: 短信上行回复回调路径
+  - key: changeguard.providers.recipient_profiles.default_admins.mode
+    module: changeguard
+    default: admin_users
+    comment: 默认管理员收件人模式
+  - key: changeguard.providers.recipient_profiles.default_admins.user_type
+    module: changeguard
+    default: admin
+    comment: 默认管理员用户类型
+  - key: changeguard.providers.recipient_profiles.default_admins.status
+    module: changeguard
+    default: normal
+    comment: 默认管理员状态过滤
+  - key: changeguard.providers.recipient_profiles.default_admins.phone_field
+    module: changeguard
+    default: phone
+    comment: 默认管理员手机号字段
+  - key: changeguard.providers.recipient_profiles.default_admins.tenant_field
+    module: changeguard
+    default: tenant_code
+    comment: 默认管理员租户字段
+
+changed: []
+
+deprecated: []

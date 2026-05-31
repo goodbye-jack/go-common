@@ -444,6 +444,30 @@ func buildConfigPaths(inspection *configsync.Inspection) []string {
 func GetConfigString(name string) string { return viper.GetString(name) }
 func GetConfigInt(name string) int       { return viper.GetInt(name) }
 func GetConfigBool(name string) bool     { return viper.GetBool(name) }
+func GetConfigStringSlice(name string) []string {
+	values := viper.GetStringSlice(name)
+	if len(values) == 0 {
+		raw := strings.TrimSpace(viper.GetString(name))
+		if raw == "" {
+			return nil
+		}
+		values = strings.Split(raw, ",")
+	}
+	result := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
 
 func GetConfigDuration(name string, fallback time.Duration) time.Duration {
 	raw := viper.Get(name)

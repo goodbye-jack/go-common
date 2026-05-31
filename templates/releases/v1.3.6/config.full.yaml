@@ -1,0 +1,306 @@
+# -------------------------------------------------------------------
+# go-common v1.3.6 交付总览模板
+# 说明：
+# - 本文件保留与 config.latest.yaml 一致的可运行配置面
+# - 如果你想看“字段级详细解释”，请优先查看 config.latest.yaml
+# - 如果你想快速起步，请优先查看 config.initial.yaml
+# -------------------------------------------------------------------
+
+app:
+  name: your-service-name
+  env: local
+
+server:
+  addr: ":9081"
+  host: 0.0.0.0
+  port: 9081
+  uc_addr: "0.0.0.0:8081"
+  http:
+    read_header_timeout: 15s
+    read_timeout: 30m
+    write_timeout: 30m
+    idle_timeout: 2m
+    gin_mode: release
+
+security:
+  cookie:
+    name: good_token
+    expired_seconds: 36000
+
+storage:
+  local:
+    base_path: ""
+    relative_path_prefix: ""
+    cleanup_after_upload: false
+
+workflow:
+  api:
+    # 是否启用工作流标准接口自动注册。
+    enabled: false
+    # 工作流接口前缀。
+    prefix: "/api"
+    # 是否开启登录态校验。
+    sso_enabled: true
+    # 留空表示使用默认角色范围。
+    roles: ""
+    callback_path: "/flowable/callback"
+    callback_secret: ""
+  flowable:
+    # Flowable REST 根地址。
+    base_url: "http://127.0.0.1:8087/flowable-rest/service"
+    # Flowable REST 服务账号用户名。
+    username: "rest-admin"
+    # Flowable REST 服务账号密码。
+    password: "flowable-rest-password"
+    timeout_seconds: 15
+    group_prefix: ""
+    role_prefix: "role_"
+    summary_cache_ttl_seconds: 0
+    summary_cache_prefix: "workflow:summary:"
+    candidate_index_ttl_seconds: 0
+    candidate_index_prefix: "workflow:candidate:"
+    todo_projection_ttl_seconds: 604800
+    todo_projection_task_prefix: "workflow:todo-task:"
+    todo_projection_user_prefix: "workflow:user-todo:"
+    todo_projection_group_prefix: "workflow:group-todo:"
+    process_runtime_task_prefix: "workflow:process-runtime-tasks:"
+    done_projection_ttl_seconds: 604800
+    done_task_prefix: "workflow:done-task:"
+    done_user_prefix: "workflow:user-done:"
+  context:
+    # 用户 ID 提取策略：raw / username_suffix / header。
+    user_id_strategy: raw
+    user_id_delimiter: "#"
+    user_id_header: "X-Workflow-User-ID"
+    user_name_header: "X-Workflow-User-Name"
+    system_code_header: "X-System-Code"
+    groups_header: "X-Workflow-Groups"
+    roles_header: "X-Workflow-Roles"
+  formref:
+    db_instance: "flowable_meta"
+  identity:
+    role_aliases:
+      LDAP_ROLE_CITY_REVIEWER: APP_ROLE_CITY_REVIEW
+    group_aliases:
+      CITY_REVIEWERS: city_reviewers
+  directory:
+    # 目录 provider：none / ldap。
+    provider: none
+    ldap:
+      addr: "ldap://127.0.0.1:8389"
+      bind_dn: "cn=admin,dc=example,dc=com"
+      bind_password: "ldap-bind-password"
+      base_dn: "dc=example,dc=com"
+      people_ou: "ou=people"
+      department_ou: "ou=departments"
+      position_ou: "ou=positions"
+      use_tls: false
+  assignment:
+    # 自动分配 provider：none / directory / ldap。
+    provider: none
+    variable_keys:
+      # 建议保持默认值，以便不同 provider 共用同一套 BPMN。
+      assignee: "nextAssignee"
+      candidate_users: "nextCandidateUsers"
+      candidate_groups: "nextCandidateGroups"
+
+databases:
+  mysql:
+    default:
+      # MySQL default 实例。
+      db_name: default_mysql
+      mode: single
+      host: 127.0.0.1
+      port: 3306
+      user: root
+      password: your_password
+      database: your_database
+      charset: utf8mb4
+      parse_time: true
+      loc: Local
+      params:
+        allowNativePasswords: "true"
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5
+      log_mode: info
+  postgres:
+    default:
+      # PostgreSQL default 实例。
+      db_name: default_postgres
+      mode: single
+      host: 127.0.0.1
+      port: 5432
+      user: postgres
+      password: postgres-password
+      database: your_database
+      ssl_mode: disable
+      time_zone: Asia/Shanghai
+      params:
+        application_name: go-common
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5
+      log_mode: info
+  kingbase:
+    default:
+      # KingBase（人大金仓）default 实例。
+      db_name: default_kingbase
+      mode: single
+      host: 127.0.0.1
+      port: 54321
+      user: system
+      password: kingbase-password
+      database: your_database
+      ssl_mode: disable
+      time_zone: Asia/Shanghai
+      params:
+        application_name: go-common
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5
+      log_mode: info
+  dm:
+    default:
+      # 达梦 default 实例。
+      db_name: default_dm
+      mode: single
+      host: 127.0.0.1
+      port: 5236
+      user: SYSDBA
+      password: dm-password
+      database: your_database
+      schema: your_schema
+      params:
+        compatibleMode: mysql
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5
+      log_mode: info
+  redis:
+    default:
+      # Redis default 实例，建议保留。
+      db_name: default_redis
+      mode: single
+      host: 127.0.0.1
+      port: 6379
+      password:
+      database: 0
+      timeout: 5
+      max_pool_size: 100
+      min_pool_size: 10
+      read_timeout: 3s
+      write_timeout: 3s
+  mongo:
+    default:
+      # Mongo default 实例；只有配置了才会初始化。
+      db_name: default_mongo
+      mode: single
+      host: 127.0.0.1
+      port: 27017
+      user:
+      password:
+      database: your_database
+      auth_db: admin
+      ssl: false
+      ssl_mode: disable
+      timeout: 5
+      max_pool_size: 100
+      min_pool_size: 10
+
+notifications:
+  sms:
+    enabled: false
+    provider: mock
+    default_sign: ""
+    default_template: "{{content}}"
+    providers:
+      mock:
+        enabled: true
+      luosimao:
+        enabled: false
+        endpoint: "https://sms-api.luosimao.com/v1/send.json"
+        api_key: ""
+        sign_name: ""
+      aliyun:
+        enabled: false
+        endpoint: "dysmsapi.aliyuncs.com"
+        access_key_id: ""
+        access_key_secret: ""
+        sign_name: ""
+        template_code: ""
+
+changeguard:
+  enabled: false
+  runtime:
+    auto_start_workers: true
+    notification_worker_enabled: true
+    drift_worker_enabled: true
+    notification_poll_interval: "1m"
+    drift_poll_interval: "10m"
+    fail_mode: "fail_open"
+    default_notify_channels: ["sms"]
+    default_version_enabled: true
+    default_rollback_enabled: true
+    default_drift_enabled: true
+  providers:
+    sms:
+      enabled: false
+      config_prefix: "notifications.sms"
+    second_factor_sms:
+      enabled: false
+      config_prefix: "notifications.sms"
+      template: "【关键资源保护】您正在执行{{resource_name}}{{action_name}}操作，摘要：{{summary_text}}。短信验证码：{{code}}，{{ttl_minutes}}分钟内有效。"
+      reply_template: "【关键资源保护】您正在执行{{resource_name}}{{action_name}}操作，摘要：{{summary_text}}。同意请回复 1#{{reply_token}}，拒绝请回复 0#{{reply_token}}。"
+      code_ttl: "5m"
+      resend_interval: "60s"
+      verified_ttl: "10m"
+      max_verify_attempts: 5
+      challenge_header: "X-ChangeGuard-Challenge-Id"
+      code_header: "X-ChangeGuard-Verify-Code"
+      reply_callback_path: "/internal/changeguard/second-factor/sms-reply"
+      reply_token_size: 2
+      reply_approve_prefix: "1#"
+      reply_reject_prefix: "0#"
+      user_id_field: "id"
+      phone_field: "phone"
+      tenant_field: "tenant_code"
+      user_type_field: "user_type"
+      status_field: "status"
+      required_user_type: "admin"
+      required_status: "normal"
+    recipient_profiles:
+      default_admins:
+        mode: "admin_users"
+        user_type: "admin"
+        status: "normal"
+        phone_field: "phone"
+        tenant_field: "tenant_code"
+  scenarios:
+    - key: "membership_plan_guard"
+      kind: "price_resource"
+      name: "会员套餐"
+      source:
+        type: "gorm_entity"
+        model: "membership_plan"
+        request_keys: ["id", "plan_code"]
+        lookup_keys: ["id"]
+      notify:
+        recipient_profile: "default_admins"
+      routes:
+        - path: "/api/v1/admin/membership/plan/save"
+          action: "save"
+      overrides:
+        second_factor_enabled: true
+        second_factor_mode: "sms_reply"
+        second_factor_on_actions: ["save"]
+        display_names:
+          plan_name: "套餐名称"
+          plan_code: "套餐编码"
+          sale_price_fen: "销售价"
+          list_price_fen: "原价"
+          duration_days: "有效期"

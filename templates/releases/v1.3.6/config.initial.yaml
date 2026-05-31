@@ -1,0 +1,179 @@
+# -------------------------------------------------------------------
+# go-common 初始化配置（新项目起步模板）
+# 当前版本：v1.3.6
+#
+# 适用场景：
+# 1. 新项目首次接入 go-common
+# 2. 希望先跑起来，再逐步补工作流 / LDAP 等高级能力
+#
+# 使用原则：
+# - 这个文件只保留“最常用、最容易跑通”的基础配置
+# - 更完整的升级说明、覆盖规则和常用配置示例，请看同目录下自动生成的 go-common-rules.vX.X.X.md
+# -------------------------------------------------------------------
+
+app:
+  # 应用名称：建议写成业务项目唯一标识。
+  name: your-service-name
+  # 当前环境展示值：未指定 CONFIG_ENV 时可作为默认值；指定后会由运行时自动修正。
+  env: local
+
+server:
+  # 服务监听地址：优先使用 addr。
+  addr: ":9081"
+  # 可选：如需拆分配置，可改为 host + port。
+  host: 0.0.0.0
+  port: 9081
+  # 可选：统一控制口 / UC 地址。
+  uc_addr: "0.0.0.0:8081"
+  http:
+    read_header_timeout: 15s
+    read_timeout: 30m
+    write_timeout: 30m
+    idle_timeout: 2m
+    gin_mode: release
+
+security:
+  cookie:
+    name: good_token
+    expired_seconds: 36000
+
+storage:
+  local:
+    # 本地工作目录根路径。纯后端项目如无本地文件能力，可保留为空字符串。
+    base_path: ""
+    relative_path_prefix: ""
+    cleanup_after_upload: false
+
+databases:
+  # 默认主库：MySQL。
+  mysql:
+    default:
+      # 默认数据库实例名。
+      db_name: default_mysql
+      # 运行模式，通常 single 即可。
+      mode: single
+      host: 127.0.0.1
+      port: 3306
+      user: root
+      password: your_password
+      database: your_database
+      # 等价于旧 DSN 中的 charset=utf8mb4。
+      charset: utf8mb4
+      # 等价于旧 DSN 中的 parseTime=True。
+      parse_time: true
+      # 等价于旧 DSN 中的 loc=Local。
+      loc: Local
+      max_open_conn: 100
+      max_idle_conn: 10
+      conn_max_life_time: 300s
+      slow_time: 5
+      log_mode: info
+
+  # 默认 Redis：建议保留。
+  redis:
+    default:
+      db_name: default_redis
+      mode: single
+      host: 127.0.0.1
+      port: 6379
+      # 测试环境可留空，生产环境如配置密码请填写。
+      password:
+      database: 0
+      timeout: 5
+      max_pool_size: 100
+      min_pool_size: 10
+
+workflow:
+  api:
+    # 是否启用工作流标准接口。
+    enabled: false
+    # 工作流接口前缀。
+    prefix: "/api"
+    # 是否要求登录态。
+    sso_enabled: true
+    # 留空表示走默认角色集合。
+    roles: ""
+    callback_path: "/flowable/callback"
+    callback_secret: ""
+
+  flowable:
+    # 只有启用工作流并接入 Flowable 时才需要填写。
+    base_url: ""
+    username: ""
+    password: ""
+    timeout_seconds: 15
+    group_prefix: ""
+    role_prefix: "role_"
+
+  context:
+    # raw：直接使用登录态用户 ID。
+    user_id_strategy: raw
+    # username_suffix 策略时使用的分隔符。
+    user_id_delimiter: "#"
+    user_id_header: "X-Workflow-User-ID"
+    user_name_header: "X-Workflow-User-Name"
+    system_code_header: "X-System-Code"
+    groups_header: "X-Workflow-Groups"
+    roles_header: "X-Workflow-Roles"
+
+  directory:
+    # none / ldap。
+    provider: none
+
+  assignment:
+    # none / directory / ldap。
+    provider: none
+
+notifications:
+  sms:
+    # 可选：普通通知短信与 changeguard 短信二次验证共用。
+    enabled: false
+    provider: mock
+    default_sign: ""
+    default_template: "{{content}}"
+    providers:
+      mock:
+        enabled: true
+      luosimao:
+        enabled: false
+        endpoint: "https://sms-api.luosimao.com/v1/send.json"
+        api_key: ""
+        sign_name: ""
+      aliyun:
+        enabled: false
+        endpoint: "dysmsapi.aliyuncs.com"
+        access_key_id: ""
+        access_key_secret: ""
+        sign_name: ""
+        template_code: ""
+
+changeguard:
+  # 可选：关键资源保护框架，默认关闭，按需开启。
+  enabled: false
+  runtime:
+    auto_start_workers: true
+    notification_poll_interval: "1m"
+    drift_poll_interval: "10m"
+  providers:
+    sms:
+      enabled: false
+      config_prefix: "notifications.sms"
+    second_factor_sms:
+      enabled: false
+      config_prefix: "notifications.sms"
+      template: "【关键资源保护】您正在执行{{resource_name}}{{action_name}}操作，摘要：{{summary_text}}。短信验证码：{{code}}，{{ttl_minutes}}分钟内有效。"
+      reply_template: "【关键资源保护】您正在执行{{resource_name}}{{action_name}}操作，摘要：{{summary_text}}。同意请回复 1#{{reply_token}}，拒绝请回复 0#{{reply_token}}。"
+      code_ttl: "5m"
+      resend_interval: "60s"
+      verified_ttl: "10m"
+      challenge_header: "X-ChangeGuard-Challenge-Id"
+      code_header: "X-ChangeGuard-Verify-Code"
+      reply_callback_path: "/internal/changeguard/second-factor/sms-reply"
+    recipient_profiles:
+      default_admins:
+        mode: "admin_users"
+        user_type: "admin"
+        status: "normal"
+        phone_field: "phone"
+        tenant_field: "tenant_code"
+  scenarios: []

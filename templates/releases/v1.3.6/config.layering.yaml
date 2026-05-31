@@ -1,0 +1,64 @@
+version: v1.3.6
+title: go-common 配置分层与环境覆盖规范
+summary: 基础配置负责公共默认值，环境文件只负责差异覆盖；环境选择由外部环境变量决定。
+
+selectors:
+  primary: CONFIG_ENV
+  explicit: CONFIG_FILE
+  precedence:
+    - 先读取 config.yaml
+    - 如果存在 CONFIG_FILE，则读取 config.yaml + CONFIG_FILE，并忽略 CONFIG_ENV
+    - 否则如果存在 CONFIG_ENV，则读取 config.yaml + config.<env>.yaml
+    - 两者都不存在时，仅读取 config.yaml
+
+runtime:
+  app_env:
+    role: 运行时展示值
+    note: 不参与环境选择；当 CONFIG_ENV 生效时由运行时自动覆盖。
+
+base_config:
+  file: config.yaml
+  role: 公共基线
+  rules:
+    - 放所有环境通用的默认值
+    - 不建议堆放明显只属于 dev/test/prod 的差异值
+
+override_config:
+  files:
+    - config.dev.yaml
+    - config.test.yaml
+    - config.prod.yaml
+  role: 差异覆盖
+  rules:
+    - 仅放差异项，不复制 config.yaml 全量内容
+    - 可以覆盖 server.* / security.* / storage.* / databases.* 以及业务自定义差异项
+    - 不允许把环境选择职责写回覆盖文件
+
+validation:
+  forbidden_exact_keys:
+    - app.name
+    - app.env
+  recommended_prefixes:
+    - server.
+    - security.
+    - storage.
+    - databases.
+    - workflow.
+    - notifications.
+    - changeguard.
+    - wechat.
+    - minIO.
+    - krpano.
+    - capacity.
+    - panoVideo.
+    - video.
+    - image.
+    - modelTexture.
+    - model3d.
+    - music.
+    - ffmpeg.
+
+developer_tips:
+  - 开发环境切换请修改启动参数 CONFIG_ENV，不要通过修改 app.env 选环境
+  - Docker 或挂载外部配置时请优先使用 CONFIG_FILE
+  - 若环境文件出现 forbidden_exact_keys 中的项，运行时会拒绝启动
