@@ -5,7 +5,9 @@ import (
 
 	commonhttp "github.com/goodbye-jack/go-common/http"
 	"github.com/goodbye-jack/go-common/utils"
+	"github.com/goodbye-jack/go-common/workflow/contract"
 	"github.com/goodbye-jack/go-common/workflow/types"
+	"github.com/spf13/viper"
 )
 
 func TestResolveNeedExpertForAssignment(t *testing.T) {
@@ -67,8 +69,8 @@ func TestDefaultModuleRouteDefinitions(t *testing.T) {
 	}
 
 	routes := module.routeDefinitions()
-	if len(routes) != 20 {
-		t.Fatalf("routeDefinitions() len=%d, want 20", len(routes))
+	if len(routes) != 30 {
+		t.Fatalf("routeDefinitions() len=%d, want 30", len(routes))
 	}
 	if routes[0].Path != "/api/me" {
 		t.Fatalf("first route path=%s, want /api/me", routes[0].Path)
@@ -95,8 +97,8 @@ func TestDefaultModuleRegisterAddsWorkflowRoutes(t *testing.T) {
 	module.Register(server)
 
 	routes := server.GetRoutes()
-	if len(routes) != 21 {
-		t.Fatalf("registered route count=%d, want 21 including ping", len(routes))
+	if len(routes) != 31 {
+		t.Fatalf("registered route count=%d, want 31 including ping", len(routes))
 	}
 	seen := map[string]bool{}
 	for _, route := range routes {
@@ -107,7 +109,70 @@ func TestDefaultModuleRegisterAddsWorkflowRoutes(t *testing.T) {
 	if !seen["/api/process/start|POST"] {
 		t.Fatalf("missing workflow start route")
 	}
+	if !seen["/api/tasks/:id/claim|POST"] {
+		t.Fatalf("missing workflow claim route")
+	}
+	if !seen["/api/tasks/:id/delegate|POST"] {
+		t.Fatalf("missing workflow delegate route")
+	}
+	if !seen["/api/tasks/:id/transfer|POST"] {
+		t.Fatalf("missing workflow transfer route")
+	}
+	if !seen["/api/process-instances/:id/action-timeline|GET"] {
+		t.Fatalf("missing workflow action timeline route")
+	}
+	if !seen["/api/process-instances/:id/task-records|GET"] {
+		t.Fatalf("missing workflow task records route")
+	}
+	if !seen["/api/biz/:bizId/action-timeline|GET"] {
+		t.Fatalf("missing workflow biz action timeline route")
+	}
+	if !seen["/api/biz/:bizId/task-records|GET"] {
+		t.Fatalf("missing workflow biz task records route")
+	}
+	if !seen["/api/me/task-records|GET"] {
+		t.Fatalf("missing workflow my task records route")
+	}
 	if !seen["/flowable/callback|POST"] {
 		t.Fatalf("missing workflow callback route")
 	}
+}
+
+func TestDefaultModuleValidateContractAllowsStandardKeys(t *testing.T) {
+	setAssignmentVariableKeysForTest(t, "nextAssignee", "nextCandidateUsers", "nextCandidateGroups")
+	module := &DefaultModule{
+		contract: contract.DefaultPolicy(),
+	}
+	if err := module.validateContract(); err != nil {
+		t.Fatalf("validateContract() error=%v, want nil", err)
+	}
+}
+
+func TestDefaultModuleValidateContractFailsInStrictMode(t *testing.T) {
+	setAssignmentVariableKeysForTest(t, "bureauAdminId", "candidateUsersCustom", "candidateGroupsCustom")
+	module := &DefaultModule{
+		contract: &contract.Policy{
+			Mode:                            contract.ModeStrict,
+			EnforceStandardAssignmentKeys:   true,
+			FailOnNonstandardAssignmentKeys: true,
+		},
+	}
+	if err := module.validateContract(); err == nil {
+		t.Fatalf("validateContract() error=nil, want non-nil")
+	}
+}
+
+func setAssignmentVariableKeysForTest(t *testing.T, assignee, candidateUsers, candidateGroups string) {
+	t.Helper()
+	originalAssignee := viper.Get("workflow.assignment.variable_keys.assignee")
+	originalCandidateUsers := viper.Get("workflow.assignment.variable_keys.candidate_users")
+	originalCandidateGroups := viper.Get("workflow.assignment.variable_keys.candidate_groups")
+	t.Cleanup(func() {
+		viper.Set("workflow.assignment.variable_keys.assignee", originalAssignee)
+		viper.Set("workflow.assignment.variable_keys.candidate_users", originalCandidateUsers)
+		viper.Set("workflow.assignment.variable_keys.candidate_groups", originalCandidateGroups)
+	})
+	viper.Set("workflow.assignment.variable_keys.assignee", assignee)
+	viper.Set("workflow.assignment.variable_keys.candidate_users", candidateUsers)
+	viper.Set("workflow.assignment.variable_keys.candidate_groups", candidateGroups)
 }

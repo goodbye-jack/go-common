@@ -43,6 +43,7 @@ type runtimeTaskProjection struct {
 	CreatedAt             string   `json:"createdAt,omitempty"`
 	Assignee              string   `json:"assignee,omitempty"`
 	Owner                 string   `json:"owner,omitempty"`
+	DelegationState       string   `json:"delegationState,omitempty"`
 	TenantID              string   `json:"tenantId,omitempty"`
 	SystemCode            string   `json:"systemCode,omitempty"`
 	FormKey               string   `json:"formKey,omitempty"`
@@ -66,6 +67,7 @@ func (p runtimeTaskProjection) toTaskInfo() types.TaskInfo {
 		CreatedAt:             p.CreatedAt,
 		Assignee:              p.Assignee,
 		Owner:                 p.Owner,
+		DelegationState:       p.DelegationState,
 		TenantID:              p.TenantID,
 		FormKey:               p.FormKey,
 	}
@@ -183,6 +185,7 @@ func (c *RESTClient) buildRuntimeTaskProjection(task runtimeTaskRecord, variable
 		CreatedAt:             task.CreateTimeRaw,
 		Assignee:              task.Assignee,
 		Owner:                 task.Owner,
+		DelegationState:       task.DelegationState,
 		TenantID:              firstNonBlank(stringValue(merged["tenantId"]), task.TenantID),
 		SystemCode:            stringValue(merged["systemCode"]),
 		FormKey:               task.FormKey,

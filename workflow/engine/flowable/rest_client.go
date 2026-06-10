@@ -47,24 +47,26 @@ const (
 )
 
 type RESTClient struct {
-	baseURL                  string
-	username                 string
-	password                 string
-	groupPrefix              string
-	rolePrefix               string
-	summaryCacheTTL          time.Duration
-	summaryCachePrefix       string
-	candidateIndexTTL        time.Duration
-	candidateIndexKey        string
-	doneProjectionTTL        time.Duration
-	doneTaskPrefix           string
-	doneUserPrefix           string
-	todoProjectionTTL        time.Duration
-	todoTaskPrefix           string
-	todoUserPrefix           string
-	todoGroupPrefix          string
-	processRuntimeTaskPrefix string
-	httpClient               *http.Client
+	baseURL                   string
+	username                  string
+	password                  string
+	groupPrefix               string
+	rolePrefix                string
+	summaryCacheTTL           time.Duration
+	summaryCachePrefix        string
+	actionTimelineCacheTTL    time.Duration
+	actionTimelineCachePrefix string
+	candidateIndexTTL         time.Duration
+	candidateIndexKey         string
+	doneProjectionTTL         time.Duration
+	doneTaskPrefix            string
+	doneUserPrefix            string
+	todoProjectionTTL         time.Duration
+	todoTaskPrefix            string
+	todoUserPrefix            string
+	todoGroupPrefix           string
+	processRuntimeTaskPrefix  string
+	httpClient                *http.Client
 }
 
 func NewRESTClient(cfg Config) (*RESTClient, error) {
@@ -105,6 +107,12 @@ func NewRESTClientFromConfig() (*RESTClient, error) {
 	}
 	client.summaryCacheTTL = time.Duration(cacheTTLSeconds) * time.Second
 	client.summaryCachePrefix = firstNonBlank(config.GetConfigString(configSummaryCachePrefix), defaultSummaryCachePrefix)
+	actionTimelineTTLSeconds := config.GetConfigInt(configActionTimelineCacheTTLSeconds)
+	if actionTimelineTTLSeconds <= 0 {
+		actionTimelineTTLSeconds = defaultActionTimelineCacheTTLSeconds
+	}
+	client.actionTimelineCacheTTL = time.Duration(actionTimelineTTLSeconds) * time.Second
+	client.actionTimelineCachePrefix = firstNonBlank(config.GetConfigString(configActionTimelineCachePrefix), defaultActionTimelineCachePrefix)
 	candidateTTLSeconds := config.GetConfigInt(configCandidateIndexTTL)
 	if candidateTTLSeconds <= 0 {
 		candidateTTLSeconds = defaultCandidateIndexTTL
@@ -181,6 +189,7 @@ func (c *RESTClient) StartProcess(ctx stdcontext.Context, req *types.StartProces
 		TenantID:            stringValue(result["tenantId"]),
 	}
 	c.invalidateProcessSummaryCache(ctx, response.ProcessInstanceID)
+	c.recordProcessStart(ctx, req, response)
 	return response, nil
 }
 
@@ -558,14 +567,17 @@ func (c *RESTClient) CompleteTask(ctx stdcontext.Context, taskID string, req *ty
 	if err != nil {
 		return err
 	}
-	if task.Assignee == "" && user != nil && user.UserID != "" {
-		_, err = c.doJSON(ctx, http.MethodPost, "/runtime/tasks/"+taskID, nil, map[string]interface{}{
-			"action":   "claim",
-			"assignee": user.UserID,
-		})
-		if err != nil {
+	if strings.EqualFold(strings.TrimSpace(task.DelegationState), "PENDING") {
+		return errors.New("forbidden: delegated task must be resolved before complete")
+	}
+	if err := c.ensureTaskAssignedToCurrentUser(ctx, task, user, true); err != nil {
+		return err
+	}
+	if strings.TrimSpace(task.Assignee) == "" {
+		if err := c.claimRuntimeTask(ctx, taskID, strings.TrimSpace(user.UserID)); err != nil {
 			return err
 		}
+		task.Assignee = strings.TrimSpace(user.UserID)
 	}
 
 	variables := map[string]interface{}{}
@@ -590,11 +602,199 @@ func (c *RESTClient) CompleteTask(ctx stdcontext.Context, taskID string, req *ty
 	_, err = c.completeTaskWithRetry(ctx, taskID, payload)
 	if err == nil {
 		c.storeDoneTaskProjection(ctx, c.buildDoneTaskProjection(task, variables, user, req))
+		comment := ""
+		reason := ""
+		if req != nil {
+			comment = firstNonBlank(req.Comment, req.ReworkComment)
+			reason = strings.TrimSpace(req.Result)
+		}
+		afterTask := task
+		if user != nil && strings.TrimSpace(afterTask.Assignee) == "" {
+			afterTask.Assignee = strings.TrimSpace(user.UserID)
+		}
+		c.recordTaskActionRecord(ctx, types.TaskActionTypeComplete, task, afterTask, user, comment, reason)
+		c.invalidateActionTimelineCache(ctx, task.ProcessInstanceID)
 		c.invalidateProcessSummaryCache(ctx, task.ProcessInstanceID)
 		c.invalidateCandidateTaskIndex(ctx, taskID)
 		c.removeRuntimeTaskProjection(ctx, taskID)
 	}
 	return err
+}
+
+func (c *RESTClient) ClaimTask(ctx stdcontext.Context, taskID string, user *workflowcontext.UserContext) (*types.TaskActionResponse, error) {
+	task, err := c.getRuntimeTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	beforeTask := task
+	if err := c.ensureTaskAssignedToCurrentUser(ctx, task, user, true); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(task.Assignee) == "" {
+		if err := c.claimRuntimeTask(ctx, taskID, strings.TrimSpace(user.UserID)); err != nil {
+			return nil, err
+		}
+		task, err = c.getRuntimeTask(ctx, taskID)
+		if err != nil {
+			return nil, err
+		}
+		c.syncRuntimeTaskProjection(ctx, taskID, task.ProcessInstanceID)
+		recordBefore := beforeTask
+		if strings.TrimSpace(recordBefore.Assignee) == "" && user != nil {
+			recordBefore.Assignee = ""
+		}
+		c.recordWorkflowAction(ctx, types.TaskActionTypeClaim, recordBefore, task, user, "")
+		c.recordTaskActionRecord(ctx, types.TaskActionTypeClaim, recordBefore, task, user, "", "")
+	}
+	return buildTaskActionResponse(task, "claimed"), nil
+}
+
+func (c *RESTClient) UnclaimTask(ctx stdcontext.Context, taskID string, user *workflowcontext.UserContext) (*types.TaskActionResponse, error) {
+	task, err := c.getRuntimeTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	beforeTask := task
+	if strings.EqualFold(strings.TrimSpace(task.DelegationState), "PENDING") {
+		return nil, errors.New("forbidden: delegated task cannot be unclaimed")
+	}
+	if err := c.ensureTaskAssignedToCurrentUser(ctx, task, user, false); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(task.Assignee) == "" {
+		return nil, errors.New("invalid task state: task is not claimed")
+	}
+	if err := c.unclaimRuntimeTask(ctx, taskID); err != nil {
+		return nil, err
+	}
+	task, err = c.getRuntimeTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	c.syncRuntimeTaskProjection(ctx, taskID, task.ProcessInstanceID)
+	c.invalidateCandidateTaskIndex(ctx, taskID)
+	c.recordWorkflowAction(ctx, types.TaskActionTypeUnclaim, beforeTask, task, user, "")
+	c.recordTaskActionRecord(ctx, types.TaskActionTypeUnclaim, beforeTask, task, user, "", "")
+	return buildTaskActionResponse(task, "unclaimed"), nil
+}
+
+func (c *RESTClient) DelegateTask(ctx stdcontext.Context, taskID string, req *types.TaskDelegateRequest, user *workflowcontext.UserContext) (*types.TaskActionResponse, error) {
+	if req == nil || strings.TrimSpace(req.Assignee) == "" {
+		return nil, errors.New("assignee is required")
+	}
+	task, err := c.getRuntimeTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	beforeTask := task
+	if strings.EqualFold(strings.TrimSpace(task.DelegationState), "PENDING") {
+		return nil, errors.New("forbidden: task is already delegated")
+	}
+	if err := c.ensureTaskAssignedToCurrentUser(ctx, task, user, true); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(task.Assignee) == "" {
+		if err := c.claimRuntimeTask(ctx, taskID, strings.TrimSpace(user.UserID)); err != nil {
+			return nil, err
+		}
+		beforeTask.Assignee = strings.TrimSpace(user.UserID)
+	}
+	_, err = c.doJSON(ctx, http.MethodPost, "/runtime/tasks/"+taskID, nil, map[string]interface{}{
+		"action":   "delegate",
+		"assignee": strings.TrimSpace(req.Assignee),
+	})
+	if err != nil {
+		return nil, err
+	}
+	task, err = c.getRuntimeTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	c.syncRuntimeTaskProjection(ctx, taskID, task.ProcessInstanceID)
+	c.invalidateCandidateTaskIndex(ctx, taskID)
+	c.recordWorkflowAction(ctx, types.TaskActionTypeDelegate, beforeTask, task, user, "")
+	c.recordTaskActionRecord(ctx, types.TaskActionTypeDelegate, beforeTask, task, user, "", "")
+	return buildTaskActionResponse(task, "delegated"), nil
+}
+
+func (c *RESTClient) ResolveTask(ctx stdcontext.Context, taskID string, req *types.TaskResolveRequest, user *workflowcontext.UserContext) (*types.TaskActionResponse, error) {
+	task, err := c.getRuntimeTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	beforeTask := task
+	if !strings.EqualFold(strings.TrimSpace(task.DelegationState), "PENDING") {
+		return nil, errors.New("forbidden: task is not in delegated pending state")
+	}
+	if err := c.ensureTaskAssignedToCurrentUser(ctx, task, user, false); err != nil {
+		return nil, err
+	}
+	payload := map[string]interface{}{
+		"action": "resolve",
+	}
+	if req != nil && len(req.Variables) > 0 {
+		payload["variables"] = toFlowableVariables(req.Variables)
+	}
+	_, err = c.doJSON(ctx, http.MethodPost, "/runtime/tasks/"+taskID, nil, payload)
+	if err != nil {
+		return nil, err
+	}
+	task, err = c.getRuntimeTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	c.syncRuntimeTaskProjection(ctx, taskID, task.ProcessInstanceID)
+	c.invalidateCandidateTaskIndex(ctx, taskID)
+	c.recordWorkflowAction(ctx, types.TaskActionTypeResolve, beforeTask, task, user, "")
+	c.recordTaskActionRecord(ctx, types.TaskActionTypeResolve, beforeTask, task, user, "", "")
+	return buildTaskActionResponse(task, "resolved"), nil
+}
+
+func (c *RESTClient) TransferTask(ctx stdcontext.Context, taskID string, req *types.TaskTransferRequest, user *workflowcontext.UserContext) (*types.TaskActionResponse, error) {
+	if req == nil || strings.TrimSpace(req.Assignee) == "" {
+		return nil, errors.New("assignee is required")
+	}
+	targetAssignee := strings.TrimSpace(req.Assignee)
+	task, err := c.getRuntimeTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	beforeTask := task
+	if strings.EqualFold(strings.TrimSpace(task.DelegationState), "PENDING") {
+		return nil, errors.New("forbidden: delegated task cannot be transferred")
+	}
+	if err := c.ensureTaskAssignedToCurrentUser(ctx, task, user, true); err != nil {
+		return nil, err
+	}
+	currentUserID := ""
+	if user != nil {
+		currentUserID = strings.TrimSpace(user.UserID)
+	}
+	if targetAssignee == currentUserID {
+		return nil, errors.New("invalid transfer target: assignee cannot be current user")
+	}
+	if strings.TrimSpace(task.Assignee) == "" {
+		if err := c.claimRuntimeTask(ctx, taskID, currentUserID); err != nil {
+			return nil, err
+		}
+		beforeTask.Assignee = currentUserID
+	}
+	if err := c.assignRuntimeTask(ctx, taskID, targetAssignee); err != nil {
+		return nil, err
+	}
+	comment := buildTransferComment(currentUserID, targetAssignee, firstNonBlank(req.Reason, ""))
+	if comment != "" {
+		_ = c.addTaskComment(ctx, taskID, comment)
+	}
+	task, err = c.getRuntimeTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	c.syncRuntimeTaskProjection(ctx, taskID, task.ProcessInstanceID)
+	c.invalidateCandidateTaskIndex(ctx, taskID)
+	c.recordWorkflowAction(ctx, types.TaskActionTypeTransfer, beforeTask, task, user, req.Reason)
+	c.recordTaskActionRecord(ctx, types.TaskActionTypeTransfer, beforeTask, task, user, "", req.Reason)
+	return buildTaskActionResponse(task, "transferred"), nil
 }
 
 func mergeOptionalNeedExpert(target map[string]interface{}, req *types.CompleteTaskRequest) {
@@ -622,6 +822,82 @@ func (c *RESTClient) completeTaskWithRetry(ctx stdcontext.Context, taskID string
 	return c.doJSON(ctx, http.MethodPost, "/runtime/tasks/"+taskID, nil, payload)
 }
 
+func (c *RESTClient) ensureTaskAssignedToCurrentUser(ctx stdcontext.Context, task runtimeTaskRecord, user *workflowcontext.UserContext, allowCandidate bool) error {
+	if user == nil || strings.TrimSpace(user.UserID) == "" {
+		return errors.New("workflow user context is required")
+	}
+	userID := strings.TrimSpace(user.UserID)
+	assignee := strings.TrimSpace(task.Assignee)
+	if assignee == userID {
+		return nil
+	}
+	if assignee != "" {
+		return errors.New("forbidden: task not assigned to current user")
+	}
+	if !allowCandidate {
+		return errors.New("forbidden: task not assigned to current user")
+	}
+	allowed, err := c.matchesCandidateRuntimeTask(ctx, task, user)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return errors.New("forbidden: current user cannot operate this task")
+	}
+	return nil
+}
+
+func (c *RESTClient) claimRuntimeTask(ctx stdcontext.Context, taskID, assignee string) error {
+	if strings.TrimSpace(taskID) == "" || strings.TrimSpace(assignee) == "" {
+		return errors.New("task id and assignee are required")
+	}
+	_, err := c.doJSON(ctx, http.MethodPost, "/runtime/tasks/"+taskID, nil, map[string]interface{}{
+		"action":   "claim",
+		"assignee": strings.TrimSpace(assignee),
+	})
+	return err
+}
+
+func (c *RESTClient) assignRuntimeTask(ctx stdcontext.Context, taskID, assignee string) error {
+	if strings.TrimSpace(taskID) == "" || strings.TrimSpace(assignee) == "" {
+		return errors.New("task id and assignee are required")
+	}
+	_, err := c.doJSON(ctx, http.MethodPut, "/runtime/tasks/"+taskID, nil, map[string]interface{}{
+		"assignee": strings.TrimSpace(assignee),
+	})
+	return err
+}
+
+func (c *RESTClient) unclaimRuntimeTask(ctx stdcontext.Context, taskID string) error {
+	if strings.TrimSpace(taskID) == "" {
+		return errors.New("task id is required")
+	}
+	_, err := c.doJSON(ctx, http.MethodPut, "/runtime/tasks/"+taskID, nil, map[string]interface{}{
+		"assignee": nil,
+	})
+	return err
+}
+
+func (c *RESTClient) addTaskComment(ctx stdcontext.Context, taskID, message string) error {
+	if strings.TrimSpace(taskID) == "" || strings.TrimSpace(message) == "" {
+		return nil
+	}
+	_, err := c.doJSON(ctx, http.MethodPost, "/runtime/tasks/"+taskID+"/comments", nil, map[string]interface{}{
+		"message": strings.TrimSpace(message),
+	})
+	return err
+}
+
+func buildTaskActionResponse(task runtimeTaskRecord, status string) *types.TaskActionResponse {
+	return &types.TaskActionResponse{
+		TaskID:          strings.TrimSpace(task.ID),
+		Status:          strings.TrimSpace(status),
+		Assignee:        strings.TrimSpace(task.Assignee),
+		Owner:           strings.TrimSpace(task.Owner),
+		DelegationState: strings.TrimSpace(task.DelegationState),
+	}
+}
+
 func shouldRetryFlowableDeadlock(err error) bool {
 	if err == nil {
 		return false
@@ -629,6 +905,19 @@ func shouldRetryFlowableDeadlock(err error) bool {
 	message := strings.ToLower(strings.TrimSpace(err.Error()))
 	return strings.Contains(message, "deadlock found when trying to get lock") ||
 		strings.Contains(message, "mysqltransactionrollbackexception")
+}
+
+func buildTransferComment(fromUserID, toUserID, reason string) string {
+	fromUserID = strings.TrimSpace(fromUserID)
+	toUserID = strings.TrimSpace(toUserID)
+	reason = strings.TrimSpace(reason)
+	if fromUserID == "" || toUserID == "" {
+		return ""
+	}
+	if reason == "" {
+		return fmt.Sprintf("[TRANSFER] from=%s to=%s", fromUserID, toUserID)
+	}
+	return fmt.Sprintf("[TRANSFER] from=%s to=%s reason=%s", fromUserID, toUserID, reason)
 }
 
 func (c *RESTClient) getRawDefinitionXML(ctx stdcontext.Context, processInstanceID string) ([]byte, error) {
@@ -986,6 +1275,7 @@ type doneTaskProjection struct {
 	CompletedAt           string `json:"completedAt,omitempty"`
 	Assignee              string `json:"assignee,omitempty"`
 	Owner                 string `json:"owner,omitempty"`
+	DelegationState       string `json:"delegationState,omitempty"`
 	TenantID              string `json:"tenantId,omitempty"`
 	SystemCode            string `json:"systemCode,omitempty"`
 	FormKey               string `json:"formKey,omitempty"`
@@ -1027,6 +1317,7 @@ func (p doneTaskProjection) toTaskInfo() types.TaskInfo {
 		CompletedAt:           p.CompletedAt,
 		Assignee:              p.Assignee,
 		Owner:                 p.Owner,
+		DelegationState:       p.DelegationState,
 		TenantID:              p.TenantID,
 		FormKey:               p.FormKey,
 	}
@@ -1130,6 +1421,7 @@ func (c *RESTClient) buildDoneTaskProjection(task runtimeTaskRecord, variables m
 		CompletedAt:          completedAt,
 		Assignee:             assignee,
 		Owner:                task.Owner,
+		DelegationState:      task.DelegationState,
 		TenantID:             firstNonBlank(stringValue(merged["tenantId"]), task.TenantID),
 		SystemCode:           stringValue(merged["systemCode"]),
 		FormKey:              task.FormKey,
@@ -1428,6 +1720,7 @@ func (c *RESTClient) toTaskInfo(runtimeTask runtimeTaskRecord, historicTask *his
 		info.CompletedAt = historicTask.EndTimeRaw
 		info.Assignee = historicTask.Assignee
 		info.Owner = historicTask.Owner
+		info.DelegationState = historicTask.DelegationState
 		info.TenantID = historicTask.TenantID
 		info.FormKey = historicTask.FormKey
 		info.BizID = firstNonBlank(stringValue(historicTask.ProcessVariables["bizId"]), historicTask.BusinessKey)
@@ -1446,6 +1739,7 @@ func (c *RESTClient) toTaskInfo(runtimeTask runtimeTaskRecord, historicTask *his
 	info.CreatedAt = runtimeTask.CreateTimeRaw
 	info.Assignee = runtimeTask.Assignee
 	info.Owner = runtimeTask.Owner
+	info.DelegationState = runtimeTask.DelegationState
 	info.TenantID = runtimeTask.TenantID
 	info.FormKey = runtimeTask.FormKey
 	info.BizID = firstNonBlank(stringValue(runtimeTask.ProcessVariables["bizId"]), runtimeTask.BusinessKey)
@@ -1852,6 +2146,7 @@ type runtimeTaskRecord struct {
 	TaskDefinitionKey   string
 	Assignee            string
 	Owner               string
+	DelegationState     string
 	CandidateUsers      []string
 	CandidateGroups     []string
 	ProcessInstanceID   string
@@ -1877,6 +2172,7 @@ type historicTaskRecord struct {
 	TaskDefinitionKey   string
 	Assignee            string
 	Owner               string
+	DelegationState     string
 	ProcessInstanceID   string
 	ProcessDefinitionID string
 	TenantID            string
@@ -1950,6 +2246,7 @@ func parseRuntimeTask(raw map[string]interface{}) runtimeTaskRecord {
 		TaskDefinitionKey:   stringValue(raw["taskDefinitionKey"]),
 		Assignee:            stringValue(raw["assignee"]),
 		Owner:               stringValue(raw["owner"]),
+		DelegationState:     stringValue(raw["delegationState"]),
 		ProcessInstanceID:   stringValue(raw["processInstanceId"]),
 		ProcessDefinitionID: stringValue(raw["processDefinitionId"]),
 		TenantID:            stringValue(raw["tenantId"]),
@@ -2041,6 +2338,7 @@ func parseHistoricTasks(body []byte) ([]historicTaskRecord, error) {
 			TaskDefinitionKey:   stringValue(item["taskDefinitionKey"]),
 			Assignee:            stringValue(item["assignee"]),
 			Owner:               stringValue(item["owner"]),
+			DelegationState:     stringValue(item["delegationState"]),
 			ProcessInstanceID:   stringValue(item["processInstanceId"]),
 			ProcessDefinitionID: stringValue(item["processDefinitionId"]),
 			TenantID:            stringValue(item["tenantId"]),

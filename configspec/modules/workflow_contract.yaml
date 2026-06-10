@@ -1,0 +1,111 @@
+module: workflow_contract
+title: 工作流平台契约配置
+description: workflow 平台级变量契约与治理策略配置。
+owner: go-common/workflow/contract
+order: 36
+
+items:
+  - key: workflow.contract
+    kind: object
+    since: v1.3.6
+    comment: 工作流平台契约配置对象。
+    group: workflow.contract
+    order: 10
+
+  - key: workflow.contract.mode
+    kind: scalar
+    type: string
+    since: v1.3.6
+    required: false
+    default: compatible
+    enum:
+      - compatible
+      - standard
+      - strict
+    comment: 工作流平台契约治理模式；`compatible` 以兼容和告警为主，`strict` 会对非标准契约直接失败。
+    example: standard
+    group: workflow.contract
+    order: 20
+    merge_policy: add_if_missing
+
+  - key: workflow.contract.enforce_standard_assignment_keys
+    kind: scalar
+    type: bool
+    since: v1.3.6
+    required: false
+    default: true
+    comment: 是否启用标准 assignment variable key 校验。
+    example: true
+    group: workflow.contract
+    order: 30
+    merge_policy: add_if_missing
+
+  - key: workflow.contract.warn_on_nonstandard_assignment_keys
+    kind: scalar
+    type: bool
+    since: v1.3.6
+    required: false
+    default: true
+    comment: 检测到非标准 assignment variable key 时是否输出告警日志。
+    example: true
+    group: workflow.contract
+    order: 40
+    merge_policy: add_if_missing
+
+  - key: workflow.contract.fail_on_nonstandard_assignment_keys
+    kind: scalar
+    type: bool
+    since: v1.3.6
+    required: false
+    default: false
+    comment: 检测到非标准 assignment variable key 时是否直接返回启动失败。
+    example: false
+    group: workflow.contract
+    order: 50
+    merge_policy: add_if_missing
+
+  - key: workflow.contract.enable_bpmn_lint
+    kind: scalar
+    type: bool
+    since: v1.3.6
+    required: false
+    default: false
+    comment: 是否启用 BPMN assignment lint 策略开关；当前版本主要用于平台治理能力声明与扩展接入。
+    example: false
+    group: workflow.contract
+    order: 60
+    merge_policy: add_if_missing
+
+  - key: workflow.contract.fail_on_private_bpmn_vars
+    kind: scalar
+    type: bool
+    since: v1.3.6
+    required: false
+    default: false
+    comment: BPMN lint 发现私有变量表达式时是否按失败处理。
+    example: false
+    group: workflow.contract
+    order: 70
+    merge_policy: add_if_missing
+
+  - key: workflow.contract.allowed_bpmn_assignment_vars
+    kind: array
+    item_type: string
+    since: v1.3.6
+    required: false
+    default:
+      - starterId
+      - managerId
+      - nextAssignee
+      - nextCandidateUsers
+      - nextCandidateGroups
+    comment: BPMN assignment 表达式白名单变量集合。
+    example:
+      - starterId
+      - managerId
+      - nextAssignee
+      - nextCandidateUsers
+      - nextCandidateGroups
+    group: workflow.contract
+    order: 80
+    merge_policy: add_if_missing

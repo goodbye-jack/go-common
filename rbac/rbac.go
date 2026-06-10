@@ -12,6 +12,7 @@ import (
 	"github.com/goodbye-jack/go-common/orm"
 	"github.com/redis/go-redis/v9"
 	"strings"
+	"sync"
 )
 
 type Req struct{ dom, sub, obj, act string }
@@ -22,6 +23,7 @@ type RolePolicy struct{ User, Role string }
 type RbacClient struct {
 	e *casbin.Enforcer
 	w persist.Watcher
+	m sync.Mutex
 }
 
 var rbacClient *RbacClient = nil
@@ -622,6 +624,8 @@ func (c *RbacClient) AddRolePolicy(rp *RolePolicy) error {
 }
 
 func (c *RbacClient) UpdateRolePolicy(rp *RolePolicy, role string) error {
+	c.m.Lock()
+	defer c.m.Unlock()
 	newRp := &RolePolicy{
 		User: rp.User,
 		Role: role,
@@ -640,6 +644,8 @@ func (c *RbacClient) UpdateRolePolicy(rp *RolePolicy, role string) error {
 }
 
 func (c *RbacClient) DeleteRolePolicy(rp *RolePolicy) error {
+	c.m.Lock()
+	defer c.m.Unlock()
 	removed, err := c.e.RemoveFilteredGroupingPolicy(0, rp.User)
 	if err != nil {
 		return err
@@ -656,13 +662,20 @@ func (c *RbacClient) save() error {
 		log.Errorf("save/SavePolicy, %v", err)
 		return err
 	}
+	return c.notifyWatcher()
+}
+
+func (c *RbacClient) notifyWatcher() error {
 	if err := c.w.Update(); err != nil {
 		log.Errorf("save/Update, %v", err)
+		return err
 	}
 	return nil
 }
 
 func (c *RbacClient) AddActionPolicies(policies []Policy) error {
+	c.m.Lock()
+	defer c.m.Unlock()
 	if len(policies) == 0 {
 		return nil
 	}
@@ -708,6 +721,8 @@ func (c *RbacClient) GetActionPolicies(role string) ([]*ActionPolicy, error) {
 }
 
 func (c *RbacClient) DeleteActionPolicy(ap *ActionPolicy) error {
+	c.m.Lock()
+	defer c.m.Unlock()
 	removed, err := c.e.RemovePolicy(ap.ToArr())
 	if err != nil {
 		log.Errorf("DeleteActionPolicy/RemovePolicy, error %v", err)
@@ -732,6 +747,8 @@ func (c *RbacClient) Enforce(r *Req) (bool, error) {
 }
 
 func (c *RbacClient) DeletePoliciesByService(service string) error {
+	c.m.Lock()
+	defer c.m.Unlock()
 	removed, err := c.e.RemoveFilteredPolicy(1, service)
 	if err != nil {
 		log.Errorf("DeletePoliciesByService(%s) error, %v", service, err)
@@ -745,37 +762,43 @@ func (c *RbacClient) DeletePoliciesByService(service string) error {
 }
 
 func (c *RbacClient) AddGroupingPolicy(sub, role string) error {
+	c.m.Lock()
+	defer c.m.Unlock()
 	added, err := c.e.AddGroupingPolicy(sub, role)
 	if err != nil {
 		log.Errorf("AddGroupingPolicy(%s,%s) error, %v", sub, role, err)
 		return err
 	}
 	if added {
-		return c.save()
+		return c.notifyWatcher()
 	}
 	return nil
 }
 
 func (c *RbacClient) RemoveGroupingPoliciesForSubject(sub string) error {
+	c.m.Lock()
+	defer c.m.Unlock()
 	removed, err := c.e.RemoveFilteredGroupingPolicy(0, sub)
 	if err != nil {
 		log.Errorf("RemoveGroupingPoliciesForSubject(%s) error, %v", sub, err)
 		return err
 	}
 	if removed {
-		return c.save()
+		return c.notifyWatcher()
 	}
 	return nil
 }
 
 func (c *RbacClient) RemoveGroupingPoliciesForRole(role string) error {
+	c.m.Lock()
+	defer c.m.Unlock()
 	removed, err := c.e.RemoveFilteredGroupingPolicy(1, role)
 	if err != nil {
 		log.Errorf("RemoveGroupingPoliciesForRole(%s) error, %v", role, err)
 		return err
 	}
 	if removed {
-		return c.save()
+		return c.notifyWatcher()
 	}
 	return nil
 }

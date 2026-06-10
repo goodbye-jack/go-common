@@ -8,6 +8,7 @@ type TaskQuery struct {
 	BizType              string `json:"bizType,omitempty"`
 	ProcessDefinitionKey string `json:"processDefinitionKey,omitempty"`
 	ActivityID           string `json:"activityId,omitempty"`
+	ActionType           string `json:"actionType,omitempty"`
 	Status               string `json:"status,omitempty"`
 	CreatedAfter         string `json:"createdAfter,omitempty"`
 	CreatedBefore        string `json:"createdBefore,omitempty"`
@@ -53,6 +54,36 @@ type CompleteTaskRequest struct {
 	PayloadRef    string                 `json:"payloadRef,omitempty"`
 	NeedExpert    bool                   `json:"needExpert,omitempty"`
 	Variables     map[string]interface{} `json:"variables,omitempty"`
+}
+
+// TaskDelegateRequest 表示“委派任务”请求。
+// Assignee 是要委派给的目标办理人工作流用户 ID。
+type TaskDelegateRequest struct {
+	Assignee string `json:"assignee,omitempty"`
+}
+
+// TaskResolveRequest 表示“解决委派”请求。
+// Variables 是受托人处理时回写到流程实例的变量集合。
+type TaskResolveRequest struct {
+	Variables map[string]interface{} `json:"variables,omitempty"`
+}
+
+// TaskTransferRequest 表示“转办任务”请求。
+// Assignee 是转办后的新办理人工作流用户 ID。
+// Reason 是转办原因，用于接口审计和注释说明。
+type TaskTransferRequest struct {
+	Assignee string `json:"assignee,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// TaskActionResponse 表示任务管理动作执行结果。
+// Status 取值由具体动作决定，例如 claimed、unclaimed、delegated、resolved、transferred。
+type TaskActionResponse struct {
+	TaskID          string `json:"taskId"`
+	Status          string `json:"status"`
+	Assignee        string `json:"assignee,omitempty"`
+	Owner           string `json:"owner,omitempty"`
+	DelegationState string `json:"delegationState,omitempty"`
 }
 
 type AssignmentUserContext struct {
@@ -111,6 +142,7 @@ type TaskInfo struct {
 	CompletedAt           string                  `json:"completedAt,omitempty"`
 	Assignee              string                  `json:"assignee,omitempty"`
 	Owner                 string                  `json:"owner,omitempty"`
+	DelegationState       string                  `json:"delegationState,omitempty"`
 	TenantID              string                  `json:"tenantId,omitempty"`
 	FormKey               string                  `json:"formKey,omitempty"`
 	FormName              string                  `json:"formName,omitempty"`
@@ -221,6 +253,8 @@ type ProcessProgressSummary struct {
 	Title                  string   `json:"title,omitempty"`
 	TenantID               string   `json:"tenantId,omitempty"`
 	SystemCode             string   `json:"systemCode,omitempty"`
+	StartUserID            string   `json:"startUserId,omitempty"`
+	StartUserName          string   `json:"startUserName,omitempty"`
 	Status                 string   `json:"status"`
 	ProgressPercent        int      `json:"progressPercent"`
 	CompletedTaskCount     int      `json:"completedTaskCount"`
@@ -236,22 +270,74 @@ type ProcessProgressSummary struct {
 	DiagramURL             string   `json:"diagramUrl,omitempty"`
 }
 
+type WorkflowTaskRecordItem struct {
+	Sequence              int    `json:"sequence"`
+	RecordID              uint   `json:"recordId,omitempty"`
+	ActionType            string `json:"actionType"`
+	Time                  string `json:"time,omitempty"`
+	ProcessInstanceID     string `json:"processInstanceId,omitempty"`
+	RootProcessInstanceID string `json:"rootProcessInstanceId,omitempty"`
+	ProcessDefinitionID   string `json:"processDefinitionId,omitempty"`
+	ProcessDefinitionKey  string `json:"processDefinitionKey,omitempty"`
+	TaskID                string `json:"taskId,omitempty"`
+	TaskName              string `json:"taskName,omitempty"`
+	ActivityID            string `json:"activityId,omitempty"`
+	ActivityName          string `json:"activityName,omitempty"`
+	BizID                 string `json:"bizId,omitempty"`
+	BizType               string `json:"bizType,omitempty"`
+	Title                 string `json:"title,omitempty"`
+	TenantID              string `json:"tenantId,omitempty"`
+	SystemCode            string `json:"systemCode,omitempty"`
+	OperatorUserID        string `json:"operatorUserId,omitempty"`
+	OperatorUserName      string `json:"operatorUserName,omitempty"`
+	FromAssignee          string `json:"fromAssignee,omitempty"`
+	ToAssignee            string `json:"toAssignee,omitempty"`
+	FromOwner             string `json:"fromOwner,omitempty"`
+	ToOwner               string `json:"toOwner,omitempty"`
+	Comment               string `json:"comment,omitempty"`
+	Reason                string `json:"reason,omitempty"`
+	Source                string `json:"source,omitempty"`
+}
+
+type WorkflowTaskRecordPage struct {
+	Items []WorkflowTaskRecordItem `json:"items"`
+	Total int64                    `json:"total"`
+	Start int                      `json:"start"`
+	Size  int                      `json:"size"`
+}
+
+type ProcessProgressExecution struct {
+	Sequence          int                      `json:"sequence"`
+	TaskID            string                   `json:"taskId,omitempty"`
+	ProcessInstanceID string                   `json:"processInstanceId,omitempty"`
+	Status            string                   `json:"status"`
+	Assignee          string                   `json:"assignee,omitempty"`
+	Owner             string                   `json:"owner,omitempty"`
+	CandidateUsers    []string                 `json:"candidateUsers"`
+	CandidateGroups   []string                 `json:"candidateGroups"`
+	StartTime         string                   `json:"startTime,omitempty"`
+	EndTime           string                   `json:"endTime,omitempty"`
+	DurationInMillis  int64                    `json:"durationInMillis,omitempty"`
+	Records           []WorkflowTaskRecordItem `json:"records"`
+}
+
 type ProcessProgressStep struct {
-	Order            int      `json:"order"`
-	ActivityID       string   `json:"activityId"`
-	ActivityName     string   `json:"activityName,omitempty"`
-	ActivityType     string   `json:"activityType,omitempty"`
-	Status           string   `json:"status"`
-	OccurrenceCount  int      `json:"occurrenceCount,omitempty"`
-	TaskID           string   `json:"taskId,omitempty"`
-	Assignee         string   `json:"assignee,omitempty"`
-	Owner            string   `json:"owner,omitempty"`
-	CandidateUsers   []string `json:"candidateUsers,omitempty"`
-	CandidateGroups  []string `json:"candidateGroups,omitempty"`
-	FormKey          string   `json:"formKey,omitempty"`
-	StartTime        string   `json:"startTime,omitempty"`
-	EndTime          string   `json:"endTime,omitempty"`
-	DurationInMillis int64    `json:"durationInMillis,omitempty"`
+	Order            int                        `json:"order"`
+	ActivityID       string                     `json:"activityId"`
+	ActivityName     string                     `json:"activityName,omitempty"`
+	ActivityType     string                     `json:"activityType,omitempty"`
+	Status           string                     `json:"status"`
+	OccurrenceCount  int                        `json:"occurrenceCount,omitempty"`
+	TaskID           string                     `json:"taskId,omitempty"`
+	Assignee         string                     `json:"assignee,omitempty"`
+	Owner            string                     `json:"owner,omitempty"`
+	CandidateUsers   []string                   `json:"candidateUsers,omitempty"`
+	CandidateGroups  []string                   `json:"candidateGroups,omitempty"`
+	FormKey          string                     `json:"formKey,omitempty"`
+	StartTime        string                     `json:"startTime,omitempty"`
+	EndTime          string                     `json:"endTime,omitempty"`
+	DurationInMillis int64                      `json:"durationInMillis,omitempty"`
+	Executions       []ProcessProgressExecution `json:"executions"`
 }
 
 type ProcessProgressViewResponse struct {
@@ -283,7 +369,57 @@ type ProcessProgressTimelineItem struct {
 
 type ProcessProgressTimelineResponse struct {
 	Summary ProcessProgressSummary        `json:"summary"`
-	Items   []ProcessProgressTimelineItem `json:"items,omitempty"`
+	Items   []ProcessProgressTimelineItem `json:"items"`
+}
+
+const (
+	TaskActionTypeStartProcess              = "START_PROCESS"
+	ProcessActionTimelineItemTypeTaskAction = "TASK_ACTION"
+	TaskActionTypeClaim                     = "CLAIM"
+	TaskActionTypeUnclaim                   = "UNCLAIM"
+	TaskActionTypeDelegate                  = "DELEGATE"
+	TaskActionTypeResolve                   = "RESOLVE"
+	TaskActionTypeTransfer                  = "TRANSFER"
+	TaskActionTypeComplete                  = "COMPLETE"
+)
+
+// ProcessActionTimelineSummary 复用流程摘要语义。
+// 动作时间线本质上仍然挂载在同一个流程实例范围上，因此摘要字段与进度时间线保持一致。
+type ProcessActionTimelineSummary = ProcessProgressSummary
+
+// ProcessActionTimelineItem 表示一次任务管理动作记录。
+// 它只描述“谁来办”的动作轨迹，不负责表达 BPMN 节点推进路径。
+type ProcessActionTimelineItem struct {
+	Sequence              int    `json:"sequence"`
+	ItemType              string `json:"itemType"`
+	ActionType            string `json:"actionType"`
+	Time                  string `json:"time,omitempty"`
+	ProcessInstanceID     string `json:"processInstanceId,omitempty"`
+	RootProcessInstanceID string `json:"rootProcessInstanceId,omitempty"`
+	TaskID                string `json:"taskId,omitempty"`
+	TaskName              string `json:"taskName,omitempty"`
+	ActivityID            string `json:"activityId,omitempty"`
+	ActivityName          string `json:"activityName,omitempty"`
+	OperatorUserID        string `json:"operatorUserId,omitempty"`
+	OperatorUserName      string `json:"operatorUserName,omitempty"`
+	FromAssignee          string `json:"fromAssignee,omitempty"`
+	ToAssignee            string `json:"toAssignee,omitempty"`
+	FromOwner             string `json:"fromOwner,omitempty"`
+	ToOwner               string `json:"toOwner,omitempty"`
+	Reason                string `json:"reason,omitempty"`
+	CommentID             string `json:"commentId,omitempty"`
+}
+
+// ProcessActionTimelineResponse 表示流程动作时间线。
+// 与 progress-timeline 并列存在，语义上只承载任务动作审计，不混入节点推进事件。
+type ProcessActionTimelineResponse struct {
+	Summary ProcessActionTimelineSummary `json:"summary"`
+	Items   []ProcessActionTimelineItem  `json:"items"`
+}
+
+type ProcessTaskRecordResponse struct {
+	Summary ProcessProgressSummary   `json:"summary"`
+	Items   []WorkflowTaskRecordItem `json:"items"`
 }
 
 type ProcessCompositeDiagramChild struct {

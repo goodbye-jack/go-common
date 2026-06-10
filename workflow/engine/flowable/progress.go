@@ -22,7 +22,11 @@ func (c *RESTClient) GetProgressView(ctx stdcontext.Context, processInstanceID s
 	}
 	summary := buildSummary(snapshot)
 	c.storeProcessSummaryCache(ctx, &summary)
-	steps := buildSteps(snapshot)
+	recordItems, recordErr := c.loadTaskRecordItemsByRootProcessInstanceID(ctx, summary.ProcessInstanceID)
+	if recordErr != nil {
+		recordItems = []types.WorkflowTaskRecordItem{}
+	}
+	steps := buildSteps(snapshot, recordItems)
 	return &types.ProcessProgressViewResponse{
 		Summary:              summary,
 		Steps:                steps,
@@ -519,6 +523,8 @@ func buildSummary(snapshot *processSnapshot) types.ProcessProgressSummary {
 		Title:                  stringValue(snapshot.variables["title"]),
 		TenantID:               firstNonBlank(snapshot.process.TenantID, stringValue(snapshot.variables["tenantId"])),
 		SystemCode:             stringValue(snapshot.variables["systemCode"]),
+		StartUserID:            firstNonBlank(stringValue(snapshot.variables["starterId"]), stringValue(snapshot.variables["startUserId"])),
+		StartUserName:          firstNonBlank(stringValue(snapshot.variables["starterName"]), stringValue(snapshot.variables["startUserName"])),
 		Status:                 processStatus(snapshot.process),
 		ProgressPercent:        progressPercent,
 		CompletedTaskCount:     completedUserTasks,
@@ -535,7 +541,7 @@ func buildSummary(snapshot *processSnapshot) types.ProcessProgressSummary {
 	}
 }
 
-func buildSteps(snapshot *processSnapshot) []types.ProcessProgressStep {
+func buildSteps(snapshot *processSnapshot, recordItems []types.WorkflowTaskRecordItem) []types.ProcessProgressStep {
 	historicByActivity := map[string][]historicTaskRecord{}
 	for _, task := range snapshot.historicTasks {
 		historicByActivity[task.TaskDefinitionKey] = append(historicByActivity[task.TaskDefinitionKey], task)
@@ -550,6 +556,17 @@ func buildSteps(snapshot *processSnapshot) []types.ProcessProgressStep {
 	for _, task := range snapshot.runtimeTasks {
 		runtimeByActivity[task.TaskDefinitionKey] = append(runtimeByActivity[task.TaskDefinitionKey], task)
 	}
+	recordsByTaskID := map[string][]types.WorkflowTaskRecordItem{}
+	startRecords := make([]types.WorkflowTaskRecordItem, 0)
+	for _, item := range recordItems {
+		if strings.TrimSpace(item.TaskID) != "" {
+			recordsByTaskID[strings.TrimSpace(item.TaskID)] = append(recordsByTaskID[strings.TrimSpace(item.TaskID)], item)
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(item.ActionType), types.TaskActionTypeStartProcess) {
+			startRecords = append(startRecords, item)
+		}
+	}
 
 	current := currentActivityIDs(snapshot)
 	completed := completedActivityIDs(snapshot)
@@ -562,6 +579,7 @@ func buildSteps(snapshot *processSnapshot) []types.ProcessProgressStep {
 			ActivityType: node.Type,
 			FormKey:      node.FormKey,
 			Status:       "PENDING",
+			Executions:   []types.ProcessProgressExecution{},
 		}
 		step.OccurrenceCount = len(historicByActivity[node.ID]) + len(runtimeByActivity[node.ID])
 		if contains(current, node.ID) {
@@ -571,8 +589,28 @@ func buildSteps(snapshot *processSnapshot) []types.ProcessProgressStep {
 		}
 
 		if node.Type == "startEvent" {
+			step.Assignee = stringValue(snapshot.variables["starterId"])
+			step.Owner = stringValue(snapshot.variables["starterName"])
 			step.StartTime = formatTime(snapshot.process.StartTime)
 			step.EndTime = formatTime(snapshot.process.StartTime)
+			if step.Status == "PENDING" {
+				step.Status = "COMPLETED"
+			}
+			if step.OccurrenceCount == 0 {
+				step.OccurrenceCount = 1
+			}
+			step.Executions = append(step.Executions, types.ProcessProgressExecution{
+				Sequence:          1,
+				ProcessInstanceID: snapshot.process.ID,
+				Status:            "COMPLETED",
+				Assignee:          step.Assignee,
+				Owner:             step.Owner,
+				CandidateUsers:    []string{},
+				CandidateGroups:   []string{},
+				StartTime:         step.StartTime,
+				EndTime:           step.EndTime,
+				Records:           append([]types.WorkflowTaskRecordItem(nil), startRecords...),
+			})
 		}
 		if historicActivities := historicActivitiesByID[node.ID]; len(historicActivities) > 0 {
 			activity := historicActivities[len(historicActivities)-1]
@@ -597,9 +635,75 @@ func buildSteps(snapshot *processSnapshot) []types.ProcessProgressStep {
 			step.EndTime = historicTask.EndTimeRaw
 			step.DurationInMillis = historicTask.DurationInMillis
 		}
+		for _, historicTask := range historicByActivity[node.ID] {
+			step.Executions = append(step.Executions, buildHistoricStepExecution(historicTask, recordsByTaskID[strings.TrimSpace(historicTask.ID)]))
+		}
+		for _, runtimeTask := range runtimeByActivity[node.ID] {
+			step.Executions = append(step.Executions, buildRuntimeStepExecution(runtimeTask, recordsByTaskID[strings.TrimSpace(runtimeTask.ID)]))
+		}
+		assignExecutionSequence(step.Executions)
 		steps = append(steps, step)
 	}
 	return steps
+}
+
+func buildHistoricStepExecution(task historicTaskRecord, records []types.WorkflowTaskRecordItem) types.ProcessProgressExecution {
+	return types.ProcessProgressExecution{
+		TaskID:            task.ID,
+		ProcessInstanceID: task.ProcessInstanceID,
+		Status:            "COMPLETED",
+		Assignee:          task.Assignee,
+		Owner:             task.Owner,
+		CandidateUsers:    []string{},
+		CandidateGroups:   []string{},
+		StartTime:         task.StartTimeRaw,
+		EndTime:           task.EndTimeRaw,
+		DurationInMillis:  task.DurationInMillis,
+		Records:           cloneTaskRecordItems(records),
+	}
+}
+
+func buildRuntimeStepExecution(task runtimeTaskRecord, records []types.WorkflowTaskRecordItem) types.ProcessProgressExecution {
+	return types.ProcessProgressExecution{
+		TaskID:            task.ID,
+		ProcessInstanceID: task.ProcessInstanceID,
+		Status:            "ACTIVE",
+		Assignee:          task.Assignee,
+		Owner:             task.Owner,
+		CandidateUsers:    append([]string(nil), task.CandidateUsers...),
+		CandidateGroups:   append([]string(nil), task.CandidateGroups...),
+		StartTime:         task.CreateTimeRaw,
+		Records:           cloneTaskRecordItems(records),
+	}
+}
+
+func assignExecutionSequence(executions []types.ProcessProgressExecution) {
+	for index := range executions {
+		executions[index].Sequence = index + 1
+		if executions[index].CandidateUsers == nil {
+			executions[index].CandidateUsers = []string{}
+		}
+		if executions[index].CandidateGroups == nil {
+			executions[index].CandidateGroups = []string{}
+		}
+		if executions[index].Records == nil {
+			executions[index].Records = []types.WorkflowTaskRecordItem{}
+		}
+		for recordIndex := range executions[index].Records {
+			if executions[index].Records[recordIndex].Sequence == 0 {
+				executions[index].Records[recordIndex].Sequence = recordIndex + 1
+			}
+		}
+	}
+}
+
+func cloneTaskRecordItems(records []types.WorkflowTaskRecordItem) []types.WorkflowTaskRecordItem {
+	if len(records) == 0 {
+		return []types.WorkflowTaskRecordItem{}
+	}
+	result := make([]types.WorkflowTaskRecordItem, len(records))
+	copy(result, records)
+	return result
 }
 
 func buildTimeline(snapshot *processSnapshot) []types.ProcessProgressTimelineItem {
