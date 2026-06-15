@@ -191,6 +191,18 @@ flowable.idm.ldap.attribute.group-id=${FLOWABLE_IDM_LDAP_ATTRIBUTE_GROUP_ID:cn}
 flowable.idm.ldap.attribute.group-name=${FLOWABLE_IDM_LDAP_ATTRIBUTE_GROUP_NAME:cn}
 ```
 
+上面这份 properties 是“可运行示例”，不是“生产默认值模板”。
+
+第一次照着抄时，至少要主动确认下面几项：
+
+1. `host.docker.internal`
+   - 这个写法适合 Docker Desktop 场景
+   - 如果你的 Docker 环境不支持 `host.docker.internal`，需要改成宿主机可达地址
+2. `admin / test`
+   - 只是本地演示示例，不应直接作为长期环境口令
+3. `ldap.example.com / change_me`
+   - 只是占位值，必须换成真实 LDAP 参数
+
 ### 2.3 `flowable-rest.properties` 完整示例
 
 ```properties
@@ -229,6 +241,15 @@ flowable.rest.app.admin.firstname=${FLOWABLE_REST_APP_ADMIN_FIRSTNAME:Rest}
 flowable.rest.app.admin.lastname=${FLOWABLE_REST_APP_ADMIN_LASTNAME:Admin}
 ```
 
+同样提醒：
+
+- `rest-admin / test`
+  - 是本地演示示例账号
+  - 不是生产推荐值
+- `flowable.history-level=full`
+  - 是当前 go-common 工作流能力推荐值
+  - 因为待办、已办、步骤、办理记录、时间线等能力依赖完整历史信息
+
 ---
 
 ## 3. 本地全量测试推荐模式
@@ -255,6 +276,19 @@ workflow:
 - Flowable UI 只负责画流程图、发布流程定义
 - 业务系统运行时的“查人、查部门、找下一环节办理人”由 LDAP / directory provider 负责
 - 所以本地测试时，UI 与业务系统都应保持 LDAP 主链路一致
+
+为了防止第一次接入时概念混掉，这里再拆开说一次：
+
+1. Flowable UI 用 LDAP 登录
+   - 解决的是“谁能登录 Flowable UI、谁能在 UI 里选人选组”
+2. Flowable REST 用 `rest-admin` 服务账号
+   - 解决的是“业务系统调用引擎运行时接口时，用什么账号访问 REST”
+3. 业务系统 `workflow.directory.provider=ldap`
+   - 解决的是“业务系统运行时查用户、查部门、查上级从哪里来”
+4. 业务系统 `workflow.assignment.provider=directory`
+   - 解决的是“平台自动分配下一办理人时，复用哪种目录服务”
+
+这四件事是相关的，但不是同一个概念。
 
 ---
 

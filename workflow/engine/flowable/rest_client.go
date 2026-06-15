@@ -1872,7 +1872,7 @@ func sortTaskInfos(items []types.TaskInfo, done bool) {
 		if done {
 			return items[i].CompletedAt > items[j].CompletedAt
 		}
-		return items[i].CreatedAt < items[j].CreatedAt
+		return items[i].CreatedAt > items[j].CreatedAt
 	})
 }
 

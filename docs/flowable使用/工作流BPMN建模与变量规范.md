@@ -194,7 +194,8 @@ flowable:candidateGroups="${nextCandidateGroups}"
 
 ## 6. 明确禁止的高耦合写法
 
-下面这些写法不再推荐作为平台标准：
+下面这些写法是**反例**，用于说明“什么不应该继续作为平台标准”。
+它们不是推荐配置，也不是兼容示例模板：
 
 ```xml
 flowable:assignee="${customApproverId}"
@@ -218,6 +219,14 @@ flowable:candidateGroups="${customDynamicGroupCode}"
    - `nextCandidateUsers`
    - `nextCandidateGroups`
 3. BPMN 只读取这 3 个标准变量
+
+第一次接入时，可以直接记成一句话：
+
+- 业务私有责任人字段可以存在于业务表、业务规则、页面参数里
+- 但 BPMN 长期契约只推荐消费：
+  - `${nextAssignee}`
+  - `${nextCandidateUsers}`
+  - `${nextCandidateGroups}`
 
 ---
 
