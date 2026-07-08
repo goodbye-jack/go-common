@@ -60,7 +60,8 @@ func RbacMiddleware(serviceName string) gin.HandlerFunc {
 			routePath,
 			c.Request.Method,
 		)
-		ok, err := RbacClient.Enforce(req)
+		rbacClient := ensureRbacClient()
+		ok, err := rbacClient.Enforce(req)
 		if err != nil {
 			log.Errorf("RbacMiddleware/Enforce(%v), %v", *req, err)
 		}

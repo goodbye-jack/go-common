@@ -1,3 +1,37 @@
+## v1.3.8（未发布）
+### 变更
+- **工作流标准路由前缀统一**：`workflow.api.prefix` 的默认值统一为 `/api/v1/workflow`，未显式配置时不再默认落到旧的 `/api`。
+- **工作流 callback 路径标准化**：标准入口统一为 `/api/v1/workflow/callback`，启动摘要日志补充 `callback_mode / formref_mode / records_mode`。
+- **表单引用解析改为 REST 优先**：`workflow.formref.db_instance` 降为显式可选回退配置；未配置时按 `REST-only` 模式运行，不再默认回退到 `orm.DB`。
+- **工作流可选数据库实例增加启动前校验**：`workflow.formref.db_instance`、`workflow.records.db_instance` 一旦配置但实例不存在，启动阶段直接失败，避免运行时混用错误环境。
+- **任务记录配置模板补齐**：`workflow.records.db_instance` 已补入 `configspec`、示例配置与各版本工作流模板。
+- **工作流主路径与兼容路径重新收口**：文档与模板明确区分“标准主路径”和“历史兼容 / 特殊动态场景能力”；`workflow.identity.* / workflow.assignment.*` 保留能力，但不再作为新项目默认前置项；`workflow.directory.*` 是否启用取决于业务系统是否需要目录查询能力。
+- **HTTP/RBAC 初始化副作用收敛**：`http` 包改为延迟初始化 RBAC 客户端，避免仅因 import 或创建 `HTTPServer` 就强依赖本地 Redis。
+- **发版回归清单补齐**：新增 `docs/flowable使用/go-common-v1.3.8-工作流发版回归清单.md`，用于发布前、联调前的统一工作流回归验收。
+### 升级指引
+1. 如果项目过去没有显式配置 `workflow.api.prefix`，升级后默认接口路径会统一到 `/api/v1/workflow`；如果你要保留旧前缀，必须显式写回配置。
+2. 如果项目仍在使用旧 callback 路径，请统一改为 `/api/v1/workflow/callback`。
+3. 如果项目依赖 `form-ref`，先确认纯 REST 解析是否满足需求；只有不足时再显式配置 `workflow.formref.db_instance`。
+4. 如果显式配置了 `workflow.formref.db_instance` 或 `workflow.records.db_instance`，必须保证：
+   - 配置实例真实存在
+   - 对应数据库与 `workflow.flowable.base_url` 指向同一套 Flowable 环境
+5. 如果项目只是标准最小接入：
+   - 默认不需要配置 `workflow.formref.db_instance`
+   - 默认不需要配置 `workflow.records.db_instance`
+   - 默认只需要关心 `workflow.api.* + workflow.flowable.* + workflow.context.*`
+   - 默认不需要配置 `workflow.identity.* / workflow.assignment.*`
+   - `workflow.directory.*` 仅在业务系统需要目录查询能力时按需配置
+6. `workflow.records.db_instance` 配置的是 `workflow_task_records` 这张 go-common 记录表落到哪个数据库实例，不是 Flowable 引擎库配置；不配置时默认走业务系统关系型 `default` 实例。
+7. 如果项目使用 `go-common/http` 但本地未启 Redis，请检查是否是业务本身仍然依赖 RBAC/Redis，而不是再误判成 import 副作用。
+### 兼容说明
+- `workflowapi.MustRegisterFromConfig(server)` 仍是推荐注册方式，不变。
+- 历史 LDAP 全局配置 `ldap_*` 仍兼容。
+- 历史 Redis 配置 `redis_addr` / `redis_password` 仍兼容。
+- `workflow.identity.*` 仍保留，但定位是历史兼容身份归一能力。
+- `workflow.directory.*` 仍保留，但只在业务系统自己查目录时建议启用。
+- `workflow.assignment.*` 仍保留，但只在业务系统运行时动态分配下一办理人时建议启用。
+- `nextAssignee / nextCandidateUsers / nextCandidateGroups` 仍保留，但定位已是历史兼容或特殊动态场景能力。
+
 ## v1.3.1（2026-04-15）
 ### 变更
 - **工作流业务接入进一步简化**：业务项目推荐直接使用 `workflowapi.MustRegisterFromConfig(server)` 完成标准模块注册。
@@ -9,10 +43,11 @@
 - **Redis 密码兼容保留**：历史 RBAC 读取 `redis_addr`、`redis_password` 的方式继续兼容，避免影响旧项目。
 ### 升级指引
 1. 业务项目工作流注册统一改为 `workflowapi.MustRegisterFromConfig(server)`
-2. 新项目优先配置 `workflow.directory.provider`，不再依赖隐式目录来源判断
-3. 如需 LDAP / 本地登录态两种来源共用同一套 BPMN，请补齐 `workflow.identity.role_aliases` / `group_aliases`
-4. 业务数据库与 Redis 推荐统一迁移到 `databases.*` 结构
-5. 如启用自动分配，优先显式配置 `workflow.assignment.provider`
+2. 新项目最小接入优先配置 `workflow.api.* + workflow.flowable.*`
+3. `workflow.directory.* / workflow.assignment.* / workflow.identity.*` 属于按需启用能力，不再作为新项目默认前置项
+4. 如需 LDAP / 本地登录态两种来源共用同一套 BPMN，请补齐 `workflow.identity.role_aliases` / `group_aliases`
+5. 业务数据库与 Redis 推荐统一迁移到 `databases.*` 结构
+6. 如需业务系统运行时动态回写 `nextAssignee / nextCandidateUsers / nextCandidateGroups`，再显式配置 `workflow.assignment.provider`
 ### 兼容说明
 - 老的 `workflowapi.NewDefaultModuleFromConfig()` + `module.Register(server)` 仍可继续使用
 - 老的全局 LDAP 配置 `ldap_*` 仍兼容

@@ -1,0 +1,32 @@
+from: v1.3.6
+to: v1.3.8
+
+added:
+  - key: workflow.records
+    module: workflow
+    default: {}
+    comment: 工作流任务记录存储配置对象
+  - key: workflow.records.db_instance
+    module: workflow
+    default: ""
+    comment: 工作流任务记录写入和查询使用的数据库实例名
+
+changed:
+  - key: workflow.api.prefix
+    module: workflow
+    default: /api/v1/workflow
+    comment: 工作流标准接口默认前缀统一为 /api/v1/workflow
+  - key: workflow.callback.path
+    module: workflow
+    default: /api/v1/workflow/callback
+    comment: 工作流 callback 标准路径统一迁移到 workflow.callback.path
+  - key: workflow.callback.secret
+    module: workflow
+    default: ""
+    comment: 工作流 callback 验签密钥统一迁移到 workflow.callback.secret
+  - key: workflow.formref.db_instance
+    module: workflow
+    default: ""
+    comment: 未配置时按 REST-only 模式解析表单引用，不再默认回退到 orm.DB
+
+deprecated: []

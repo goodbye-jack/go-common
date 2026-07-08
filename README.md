@@ -6,43 +6,53 @@ go-common is a library for some common functions such as logging, configuration,
 
 ## 文档
 
-- 工作流v1.3.1正式发布说明：`docs/工作流v1.3.1正式发布说明.md`
-- 工作流v1.3.1业务项目最小接入手册：`docs/工作流v1.3.1业务项目最小接入手册.md`
-- 工作流v1.3.0对外发布通知（历史归档）：`docs/工作流v1.3.0对外发布通知.md`
-- 工作流v1.3.0正式发布说明（历史归档）：`docs/工作流v1.3.0正式发布说明.md`
-- 工作流正式版发布检查结果（v1.3.0 基线归档）：`docs/工作流正式版发布检查结果.md`
-- 工作流正式版发布执行步骤：`docs/工作流正式版发布执行步骤.md`
-- 工作流版本变更说明：`docs/工作流版本变更说明.md`
-- 工作流配置说明：`docs/工作流配置说明.md`
-- 配置加载与环境覆盖规则：`docs/配置加载与环境覆盖规则.md`
-- 工作流身份组契约说明：`docs/工作流身份组契约说明.md`
-- 配置模板系统设计说明：`docs/配置模板系统设计说明.md`
-- 配置模板使用说明：`docs/配置模板使用说明.md`
-- 配置模板同步器说明：`docs/配置模板同步器说明.md`
-- 配置项登记规范：`docs/配置项登记规范.md`
-- 工作流平台标准接口说明：`docs/工作流平台标准接口说明.md`
-- 工作流接口收口说明：`docs/工作流接口收口说明.md`
-- 工作流业务接入指南：`docs/工作流业务接入指南.md`
-- 工作流后端接入交付模板：`docs/工作流后端接入交付模板.md`
-- 工作流前端接入交付模板：`docs/工作流前端接入交付模板.md`
-- 工作流测试验收模板：`docs/工作流测试验收模板.md`
+正式工作流接入只看这 3 份：
 
-非正式/过程性资料统一放在：
+- `docs/flowable使用/工作流平台接入总说明.md`
+- `docs/flowable使用/工作流BPMN建模与变量规范.md`
+- `docs/flowable使用/Flowable UI与REST本地启动说明.md`
 
-- `docs/非正式资料/`
+其他仍在维护的通用文档：
+
+- `docs/配置加载与环境覆盖规则.md`
+- `docs/配置分层与环境覆盖规范.md`
+- `docs/配置模板系统设计说明.md`
+- `docs/配置模板使用说明.md`
+- `docs/配置模板同步器说明.md`
+- `docs/配置项登记规范.md`
+- `docs/目录同步模块说明.md`
+- `docs/changeguard关键资源保护框架接入说明.md`
+- `docs/changeguard短信二次验证能力设计说明.md`
 
 当前推荐阅读顺序：
 
-1. `docs/工作流v1.3.1业务项目最小接入手册.md`
-2. `docs/工作流v1.3.1正式发布说明.md`
-3. `docs/工作流配置说明.md`
-4. `docs/工作流版本变更说明.md`
-5. `docs/配置模板系统设计说明.md`
-6. `docs/配置加载与环境覆盖规则.md`
+1. `docs/flowable使用/Flowable UI与REST本地启动说明.md`
+2. `docs/flowable使用/工作流BPMN建模与变量规范.md`
+3. `docs/flowable使用/工作流平台接入总说明.md`
+4. `docs/配置模板系统设计说明.md`
+5. `docs/配置加载与环境覆盖规则.md`
+
+## v1.3.8 升级提醒
+
+如果你准备从 `v1.3.7` 升到 `v1.3.8`，先看这 5 点：
+
+1. 标准 callback 路径统一为 `/api/v1/workflow/callback`。
+2. 工作流标准接口默认前缀统一为 `/api/v1/workflow`；如果你仍想保留旧前缀，必须显式配置 `workflow.api.prefix`。
+3. `workflow.formref.db_instance` 不再隐式回退到 `orm.DB`。
+4. `workflow.formref.db_instance`、`workflow.records.db_instance` 一旦配置错误，启动阶段会直接报错。
+5. `http` 包的 RBAC 初始化已经改成延迟触发，减少 import 副作用。
+
+完整升级说明看：
+
+- `CHANGELOG.md`
+- `docs/flowable使用/工作流平台接入总说明.md`
+- `docs/flowable使用/go-common-v1.3.8-工作流发版回归清单.md`
+
+这份回归清单不是第 4 份正式接入文档，它只用于发版前验收、联调前核对和回归留痕。
 
 版本化配置模板产物位于：
 
-- `templates/releases/v1.3.5/`
+- `templates/releases/v1.3.8/`
 - `templates/diff/`
 - `configspec/modules/`
 
@@ -77,11 +87,31 @@ func main() {
 
 这样业务侧不需要自己关心：
 
-- 目录服务 provider 选择
-- 自动分配 provider 选择
 - Flowable REST client 初始化
 - 表单引用服务初始化
 - 工作流标准路由注册
+
+新项目最小接入时，优先只关心：
+
+- `workflow.api.*`
+- `workflow.flowable.*`
+- `workflow.context.*`
+
+下面这些能力按需开启即可，不是新项目默认前置项：
+
+- `workflow.formref.*`
+- `workflow.records.*`
+- `workflow.identity.*`
+- `workflow.assignment.*`
+
+`workflow.directory.*` 是否启用，取决于业务系统是否还要通过 go-common 提供目录查询能力：
+
+- 如果只需要调 Flowable REST 跑流程，不一定要配
+- 如果还要启用 `/api/v1/workflow/me`、`/api/v1/workflow/org/**` 这类目录接口，就应按需配置
+
+标准 callback 路径推荐固定为：
+
+- `/api/v1/workflow/callback`
 
 相关配置项：
 
@@ -99,6 +129,21 @@ func main() {
 - `workflow.context.system_code_header`
 - `workflow.context.groups_header`
 - `workflow.context.roles_header`
+
+按需增强配置：
+
+- `workflow.formref.db_instance`
+- `workflow.records.db_instance`
+
+这里再强调一次：
+
+- `workflow.formref.db_instance`
+  - 指向 Flowable 元数据库实例名
+  - 只用于表单引用解析的 DB fallback
+- `workflow.records.db_instance`
+  - 指向 `workflow_task_records` 的落库实例名
+  - 这是 go-common 自己的记录表，不是 Flowable 引擎表
+  - 不配置时默认走业务系统关系型 `default` 实例
 
 `go-common/config` 在源码项目目录下会先尝试安全自动同步配置模板，再读取真实配置：
 

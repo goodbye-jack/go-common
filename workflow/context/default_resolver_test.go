@@ -139,14 +139,14 @@ func TestDefaultResolverResolveDerivesTenantFromUserID(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest("GET", "/", nil)
-	c.Set("UserID", "general_tenant#alarm_admin_01")
+	c.Set("UserID", "general_tenant#test_user_01")
 
 	user, err := resolver.Resolve(c)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if user.UserID != "alarm_admin_01" {
-		t.Fatalf("Resolve() userID = %q, want %q", user.UserID, "alarm_admin_01")
+	if user.UserID != "test_user_01" {
+		t.Fatalf("Resolve() userID = %q, want %q", user.UserID, "test_user_01")
 	}
 	if user.TenantID != "general_tenant" {
 		t.Fatalf("Resolve() tenantID = %q, want %q", user.TenantID, "general_tenant")

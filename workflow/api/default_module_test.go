@@ -4,8 +4,11 @@ import (
 	"testing"
 
 	commonhttp "github.com/goodbye-jack/go-common/http"
+	"github.com/goodbye-jack/go-common/orm"
 	"github.com/goodbye-jack/go-common/utils"
+	"github.com/goodbye-jack/go-common/workflow/assignment"
 	"github.com/goodbye-jack/go-common/workflow/contract"
+	"github.com/goodbye-jack/go-common/workflow/directory"
 	"github.com/goodbye-jack/go-common/workflow/types"
 	"github.com/spf13/viper"
 )
@@ -63,7 +66,7 @@ func TestResolveNeedExpertForAssignment(t *testing.T) {
 func TestDefaultModuleRouteDefinitions(t *testing.T) {
 	module := &DefaultModule{
 		routePrefix:  "/api",
-		callbackPath: "/flowable/callback",
+		callbackPath: "/api/v1/workflow/callback",
 		requireSSO:   true,
 		logRoutes:    true,
 	}
@@ -76,8 +79,8 @@ func TestDefaultModuleRouteDefinitions(t *testing.T) {
 		t.Fatalf("first route path=%s, want /api/me", routes[0].Path)
 	}
 	last := routes[len(routes)-1]
-	if last.Path != "/flowable/callback" {
-		t.Fatalf("callback route path=%s, want /flowable/callback", last.Path)
+	if last.Path != "/api/v1/workflow/callback" {
+		t.Fatalf("callback route path=%s, want /api/v1/workflow/callback", last.Path)
 	}
 	if last.RequireSSO {
 		t.Fatalf("callback route should not require SSO")
@@ -88,7 +91,7 @@ func TestDefaultModuleRegisterAddsWorkflowRoutes(t *testing.T) {
 	server := commonhttp.NewHTTPServer("test-service")
 	module := &DefaultModule{
 		routePrefix:  "/api",
-		callbackPath: "/flowable/callback",
+		callbackPath: "/api/v1/workflow/callback",
 		requireSSO:   true,
 		logRoutes:    false,
 		routeRoles:   []string{utils.RoleAdministrator},
@@ -133,7 +136,7 @@ func TestDefaultModuleRegisterAddsWorkflowRoutes(t *testing.T) {
 	if !seen["/api/me/task-records|GET"] {
 		t.Fatalf("missing workflow my task records route")
 	}
-	if !seen["/flowable/callback|POST"] {
+	if !seen["/api/v1/workflow/callback|POST"] {
 		t.Fatalf("missing workflow callback route")
 	}
 }
@@ -159,6 +162,81 @@ func TestDefaultModuleValidateContractFailsInStrictMode(t *testing.T) {
 	}
 	if err := module.validateContract(); err == nil {
 		t.Fatalf("validateContract() error=nil, want non-nil")
+	}
+}
+
+func TestValidateOptionalWorkflowDBInstances(t *testing.T) {
+	originalFormref := viper.Get("workflow.formref.db_instance")
+	originalRecords := viper.Get("workflow.records.db_instance")
+	originalFormrefDB := orm.RelationalMap["workflow_formref_test"]
+	originalRecordsDB := orm.RelationalMap["workflow_records_test"]
+	t.Cleanup(func() {
+		viper.Set("workflow.formref.db_instance", originalFormref)
+		viper.Set("workflow.records.db_instance", originalRecords)
+		if originalFormrefDB != nil {
+			orm.RelationalMap["workflow_formref_test"] = originalFormrefDB
+		} else {
+			delete(orm.RelationalMap, "workflow_formref_test")
+		}
+		if originalRecordsDB != nil {
+			orm.RelationalMap["workflow_records_test"] = originalRecordsDB
+		} else {
+			delete(orm.RelationalMap, "workflow_records_test")
+		}
+	})
+
+	viper.Set("workflow.formref.db_instance", "")
+	viper.Set("workflow.records.db_instance", "")
+	if err := validateOptionalWorkflowDBInstances(); err != nil {
+		t.Fatalf("validateOptionalWorkflowDBInstances() error=%v, want nil when unset", err)
+	}
+
+	viper.Set("workflow.formref.db_instance", "missing_formref")
+	if err := validateOptionalWorkflowDBInstances(); err == nil {
+		t.Fatalf("validateOptionalWorkflowDBInstances() error=nil, want missing formref db error")
+	}
+
+	viper.Set("workflow.formref.db_instance", "workflow_formref_test")
+	orm.RelationalMap["workflow_formref_test"] = orm.NewOrm("file::memory:?cache=shared", utils.DBTypeSQLite, 1)
+	if err := validateOptionalWorkflowDBInstances(); err != nil {
+		t.Fatalf("validateOptionalWorkflowDBInstances() error=%v, want nil for existing formref db", err)
+	}
+
+	viper.Set("workflow.records.db_instance", "missing_records")
+	if err := validateOptionalWorkflowDBInstances(); err == nil {
+		t.Fatalf("validateOptionalWorkflowDBInstances() error=nil, want missing records db error")
+	}
+
+	viper.Set("workflow.records.db_instance", "workflow_records_test")
+	orm.RelationalMap["workflow_records_test"] = orm.NewOrm("file::memory:?cache=shared", utils.DBTypeSQLite, 1)
+	if err := validateOptionalWorkflowDBInstances(); err != nil {
+		t.Fatalf("validateOptionalWorkflowDBInstances() error=%v, want nil for existing records db", err)
+	}
+}
+
+func TestNewDefaultModuleFromConfigWithOptionsValidatesOptionalWorkflowDBInstances(t *testing.T) {
+	originalBaseURL := viper.Get("workflow.flowable.base_url")
+	originalUsername := viper.Get("workflow.flowable.username")
+	originalPassword := viper.Get("workflow.flowable.password")
+	originalFormref := viper.Get("workflow.formref.db_instance")
+	t.Cleanup(func() {
+		viper.Set("workflow.flowable.base_url", originalBaseURL)
+		viper.Set("workflow.flowable.username", originalUsername)
+		viper.Set("workflow.flowable.password", originalPassword)
+		viper.Set("workflow.formref.db_instance", originalFormref)
+	})
+
+	viper.Set("workflow.flowable.base_url", "http://127.0.0.1:8087/flowable-rest/service")
+	viper.Set("workflow.flowable.username", "rest-admin")
+	viper.Set("workflow.flowable.password", "test")
+	viper.Set("workflow.formref.db_instance", "missing_formref_for_module")
+
+	_, err := NewDefaultModuleFromConfigWithOptions(RegisterOptions{
+		DirectoryService:  directory.NewNoopService(),
+		AssignmentService: assignment.NewNoopService(),
+	})
+	if err == nil {
+		t.Fatalf("NewDefaultModuleFromConfigWithOptions() error=nil, want missing formref db error")
 	}
 }
 

@@ -31,12 +31,21 @@ func NewFlowableServiceFromConfig() (*FlowableService, error) {
 }
 
 func (s *FlowableService) Resolve(ctx context.Context, locator *TaskFormLocator) (*types.TaskFormReference, error) {
-	if s == nil || s.client == nil || locator == nil || strings.TrimSpace(locator.TaskID) == "" {
+	if s == nil || locator == nil || strings.TrimSpace(locator.TaskID) == "" {
+		return notConfigured(), nil
+	}
+	if s.client == nil {
+		if fallback := s.resolveFromDBFallback(locator.FormKey, locator.TenantID); fallback != nil {
+			return fallback, nil
+		}
 		return notConfigured(), nil
 	}
 
 	formData, err := s.client.GetTaskFormData(ctx, locator.TaskID)
 	if err != nil {
+		if fallback := s.resolveFromDBFallback(locator.FormKey, locator.TenantID); fallback != nil {
+			return fallback, nil
+		}
 		return notConfigured(), nil
 	}
 
@@ -61,16 +70,6 @@ func (s *FlowableService) Resolve(ctx context.Context, locator *TaskFormLocator)
 		}
 	}
 
-	if formKey != "" {
-		record := s.findFormDefinition(formKey, locator.TenantID)
-		if record != nil {
-			model := map[string]interface{}{}
-			if json.Unmarshal(record.ResourceBytes, &model) == nil {
-				return buildFormModelReference(formKey, record.DeploymentID, record.ResourceName, model), nil
-			}
-		}
-	}
-
 	if len(formProperties) > 0 {
 		return &types.TaskFormReference{
 			Configured:   true,
@@ -82,6 +81,9 @@ func (s *FlowableService) Resolve(ctx context.Context, locator *TaskFormLocator)
 			Fields:       formProperties,
 			Outcomes:     []types.TaskFormOutcomeReference{},
 		}, nil
+	}
+	if fallback := s.resolveFromDBFallback(formKey, locator.TenantID); fallback != nil {
+		return fallback, nil
 	}
 
 	return &types.TaskFormReference{
@@ -135,6 +137,18 @@ func (s *FlowableService) findFormDefinition(formKey, tenantID string) *formDefi
 	return &records[0]
 }
 
+func (s *FlowableService) resolveFromDBFallback(formKey, tenantID string) *types.TaskFormReference {
+	record := s.findFormDefinition(formKey, tenantID)
+	if record == nil {
+		return nil
+	}
+	model := map[string]interface{}{}
+	if json.Unmarshal(record.ResourceBytes, &model) != nil {
+		return nil
+	}
+	return buildFormModelReference(strings.TrimSpace(formKey), record.DeploymentID, record.ResourceName, model)
+}
+
 func queryFormDefinitions(db *orm.Orm, formKey, tenantID string) []formDefinitionRecord {
 	if db == nil || db.GetDB() == nil {
 		return nil
@@ -166,13 +180,10 @@ SELECT d.DEPLOYMENT_ID_ AS deployment_id,
 
 func formMetaDB() *orm.Orm {
 	instanceName := strings.TrimSpace(config.GetConfigString(configFormRefDBInstance))
-	if instanceName != "" {
-		if db := orm.GetDB(instanceName); db != nil {
-			return db
-		}
+	if instanceName == "" {
 		return nil
 	}
-	return orm.DB
+	return orm.GetDB(instanceName)
 }
 
 func buildFormModelReference(formKey, deploymentID, resourceName string, formModel map[string]interface{}) *types.TaskFormReference {

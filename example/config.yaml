@@ -29,8 +29,9 @@ workflow:
     enabled: true
     prefix: /api/v1/workflow
     sso_enabled: true
-    callback_path: /flowable/callback
-    callback_secret:
+  callback:
+    path: /api/v1/workflow/callback
+    secret:
   context:
     user_id_strategy: username_suffix
     user_id_delimiter: "#"
@@ -72,7 +73,13 @@ workflow:
     timeout_seconds: 15
     role_prefix: role_
   formref:
-    db_instance: flowable_meta
+    # 可选增强能力。只有前端依赖 /tasks/{id}/form-ref，且纯 REST 解析不稳定时再配置。
+    # 该值是数据库实例名引用，不是实际 database 名。
+    # db_instance: flowable_meta
+  records:
+    # 可选增强能力。只有流程步骤页面需要展示任务动作明细时再配置。
+    # 该值是数据库实例名引用，不是实际 database 名。
+    # db_instance: flowable_meta
 
 databases:
   mysql:

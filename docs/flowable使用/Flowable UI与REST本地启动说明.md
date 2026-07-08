@@ -50,6 +50,29 @@ go-common/docs/flowable使用/
 2. 再看 `工作流BPMN建模与变量规范.md`，确认流程图怎么配
 3. 最后看 `工作流平台接入总说明.md`，完成业务系统代码接入和前后端联调
 
+### 0.4 3 分钟速读
+
+如果你现在只想先把平台跑起来，并判断“到底是 Flowable 平台问题，还是业务系统接入问题”，先记下面 7 条：
+
+1. 先区分 4 个地址：
+   - Flowable UI 地址
+   - Flowable REST 地址
+   - 业务系统地址
+   - callback 对外地址
+2. 人登录、建模、发流程图，用 Flowable UI 地址。
+3. 程序调流程运行时接口，用 Flowable REST 地址。
+4. Flowable 回调业务系统，用 `workflow.callback.public_base_url` 对应的外部地址。
+5. 业务系统第一次接入，最小只先配：
+   - `workflow.flowable.*`
+   - `workflow.callback.*`
+6. 新项目不要一上来就默认全开：
+   - `workflow.identity.*`
+   - `workflow.directory.*`
+   - `workflow.assignment.*`
+   - `workflow.formref.db_instance`
+   - `workflow.records.db_instance`
+7. 修改 UI / REST 的 properties 后，如果当前 Dockerfile 是 build 时复制配置文件，必须重新 `docker compose up -d --build`，不能只 `restart`。
+
 ## 1. 文档目标
 
 本文说明本地全量联调时，如何启动 Flowable 6.8.1 的三个依赖服务：
@@ -63,7 +86,12 @@ go-common/docs/flowable使用/
 - UI 和 REST 使用本地账号登录时要改哪些配置
 - 如果切换回 LDAP 要怎么改
 - 为什么修改配置后必须重新 build 镜像
-- 业务系统使用 LDAP 目录能力时，与 Flowable UI/REST 登录方式是什么关系
+- Flowable 平台 LDAP 与业务系统侧配置的职责分界
+
+一句话定位：
+
+- 本文只讲 Flowable 平台侧
+- 业务系统如何接 `go-common/workflow`，看《工作流平台接入总说明.md》
 
 ---
 
@@ -94,6 +122,8 @@ flowable-adapter/
   - 负责 UI 账号、LDAP、数据库连接等配置
 - `deploy/rest/flowable-rest.properties`
   - 负责 REST 服务账号、数据库连接、历史级别等配置
+
+这些都属于 Flowable 平台侧配置，不是业务系统自己的 `config.yaml`。
 
 ### 2.1 `compose.yaml` 完整示例
 
@@ -193,6 +223,17 @@ flowable.idm.ldap.attribute.group-name=${FLOWABLE_IDM_LDAP_ATTRIBUTE_GROUP_NAME:
 
 上面这份 properties 是“可运行示例”，不是“生产默认值模板”。
 
+这份文件的职责是：
+
+- 配置 Flowable UI 自己使用的数据库
+- 配置 Flowable UI 自己使用的 LDAP identity source
+- 支撑在 UI 中选择用户、候选用户、候选组、固定办理人
+
+也就是说，标准主路线下：
+
+- Flowable 平台 LDAP 配在这里
+- 不是要求每个业务系统默认再额外配一套运行时目录能力
+
 第一次照着抄时，至少要主动确认下面几项：
 
 1. `host.docker.internal`
@@ -250,6 +291,19 @@ flowable.rest.app.admin.lastname=${FLOWABLE_REST_APP_ADMIN_LASTNAME:Admin}
   - 是当前 go-common 工作流能力推荐值
   - 因为待办、已办、步骤、办理记录、时间线等能力依赖完整历史信息
 
+这份文件的职责是：
+
+- 配置 Flowable REST 自己使用的数据库
+- 暴露运行时流程接口给业务系统调用
+
+业务系统最小接入时，通常只需要知道：
+
+- `workflow.flowable.base_url`
+- `workflow.callback.path`
+- `workflow.callback.public_base_url`
+
+不需要默认知道 Flowable 平台内部 LDAP 或数据库的具体实现细节。
+
 ---
 
 ## 3. 本地全量测试推荐模式
@@ -258,24 +312,34 @@ flowable.rest.app.admin.lastname=${FLOWABLE_REST_APP_ADMIN_LASTNAME:Admin}
 
 - Flowable UI：LDAP 登录
 - Flowable REST：`rest-admin/test`
-- 业务系统目录与自动分配：LDAP / directory provider
+- 业务系统：通过 `go-common/workflow` 调用标准 workflow API
 
-也就是：
+标准主路线下，本地全量测试推荐分成两部分：
 
-```yaml
-workflow:
-  directory:
-    provider: "ldap"
-  assignment:
-    provider: "directory"
-```
+1. 平台侧验证
+   - Flowable UI 能登录
+   - Flowable UI 能看到 LDAP 用户/组
+   - Flowable REST 能正常响应
+2. 业务侧验证
+   - 业务保存
+   - 流程启动
+   - 待办处理
+   - callback 回写
+
+建议实际联调顺序也按下面走：
+
+1. 先确认 Flowable UI 能登录，且能看到 LDAP 用户和组
+2. 再确认 Flowable REST 能正常响应
+3. 再启动业务系统，通过 go-common 走标准接口发起和处理流程
+
+不要一上来就先开业务系统侧 `directory / assignment`，否则很容易把“平台主路线问题”和“兼容路线问题”混在一起排查。
 
 注意：
 
 - Flowable UI 登录方式和业务系统 `workflow.directory.provider` 不是一回事
 - Flowable UI 只负责画流程图、发布流程定义
-- 业务系统运行时的“查人、查部门、找下一环节办理人”由 LDAP / directory provider 负责
-- 所以本地测试时，UI 与业务系统都应保持 LDAP 主链路一致
+- 业务系统最小接入默认不要求先启用 `workflow.directory.provider=ldap`
+- 当前代码里与业务侧 LDAP / assignment 相关的能力仍然存在，但已经降级为历史兼容路线
 
 为了防止第一次接入时概念混掉，这里再拆开说一次：
 
@@ -283,12 +347,97 @@ workflow:
    - 解决的是“谁能登录 Flowable UI、谁能在 UI 里选人选组”
 2. Flowable REST 用 `rest-admin` 服务账号
    - 解决的是“业务系统调用引擎运行时接口时，用什么账号访问 REST”
-3. 业务系统 `workflow.directory.provider=ldap`
-   - 解决的是“业务系统运行时查用户、查部门、查上级从哪里来”
-4. 业务系统 `workflow.assignment.provider=directory`
-   - 解决的是“平台自动分配下一办理人时，复用哪种目录服务”
+3. 业务系统最小接入
+   - 默认只需要通过 `go-common` 调用 Flowable REST
+4. 业务系统 `workflow.directory.provider=ldap / workflow.assignment.provider=directory`
+   - 属于历史兼容路线
+   - 解决的是“业务系统运行时自己查 LDAP、自己算审批人”
 
 这四件事是相关的，但不是同一个概念。
+
+第一次本地启动时，最容易混掉的其实是下面 4 类地址：
+
+1. Flowable UI 地址
+   - 给人登录、建模、发布流程定义用
+   - 例如：`http://127.0.0.1:8086/flowable-ui/`
+2. Flowable REST 地址
+   - 给业务系统或 go-common 调运行时接口用
+   - 例如：`http://127.0.0.1:8087/flowable-rest/service`
+3. 业务系统自己的服务地址
+   - 给前端或其他业务接口调用用
+   - 例如：`http://127.0.0.1:9080`
+4. Flowable 回调业务系统时使用的外部地址
+   - 对应业务系统里的 `workflow.callback.public_base_url`
+   - 本地同机联调时可以和业务系统服务地址一样
+   - 远端 Flowable 联调时，通常要写成公网、网关或 FRP 可达地址
+
+直接记一条最实用的规则：
+
+- 人登录 Flowable，用 UI 地址
+- 程序调用 Flowable，用 REST 地址
+- Flowable 回调业务系统，用 `workflow.callback.public_base_url`
+
+不要把这三类地址混成一个字段，也不要把 UI 地址误填到 `workflow.flowable.base_url` 里。
+
+### 3.1 业务系统最小配置示例
+
+如果你的目标只是让业务系统通过 `go-common` 接入当前这套 Flowable 平台，最小配置通常先写成这样：
+
+```yaml
+workflow:
+  api:
+    enabled: true
+    prefix: "/api/v1/workflow"
+    sso_enabled: true
+  callback:
+    path: "/api/v1/workflow/callback"
+    secret: ""
+    public_base_url: "http://127.0.0.1:9080"
+  flowable:
+    base_url: "http://127.0.0.1:8087/flowable-rest/service"
+    username: "rest-admin"
+    password: "test"
+```
+
+这 3 组配置分别管什么：
+
+- `workflow.flowable.base_url`
+  - 业务系统调用 Flowable REST 的地址
+  - 应该指向 `flowable-rest/service`
+- `workflow.callback.path`
+  - 业务系统自己暴露的标准 callback 路径
+  - 推荐固定为 `/api/v1/workflow/callback`
+- `workflow.callback.public_base_url`
+  - Flowable 运行时回调业务系统时使用的外部可达基地址
+  - 本地同机联调时，可以和业务系统自己的访问地址一样
+  - 如果是远端 Flowable 联调，通常要改成公网、网关或 FRP 地址
+
+第一次接入时，先把这 3 件事配对，再去做流程启动和 callback 联调。
+
+### 3.2 业务系统默认不要先配这些
+
+如果你是新项目，或者只是先走标准主路线联调，下面这些能力默认不要一上来就全开：
+
+- `workflow.identity.*`
+- `workflow.directory.*`
+- `workflow.assignment.*`
+- `workflow.formref.db_instance`
+- `workflow.records.db_instance`
+
+原因不是这些能力没用，而是它们都属于：
+
+- 历史兼容能力
+- 可选增强能力
+- 特殊联调或排障能力
+
+第一次接入最容易犯的错，就是先把这些配置全加上，结果把“Flowable 平台没通”和“业务系统兼容能力没配对”混成一个问题。
+
+推荐顺序固定如下：
+
+1. 先确认 Flowable UI 能登录、能建模
+2. 再确认 Flowable REST 可调用
+3. 再让业务系统只用最小配置跑通“保存业务 + 启动流程 + 待办处理 + callback 回流”
+4. 最后才按需增加 `formref` fallback、records 独立库、directory、assignment、identity alias 等增强能力
 
 ---
 
@@ -462,6 +611,12 @@ docker compose -f compose.yaml up -d --build flowable-ui flowable-rest
 - Flowable UI：LDAP 登录
 - Flowable REST：服务账号 `rest-admin / test`
 
+这也是当前公司标准主路线推荐的 Flowable 平台模式：
+
+- Flowable 平台自己连接 LDAP
+- 在 UI 中直接完成用户、候选用户、候选组配置
+- 业务系统默认不再承担 Flowable identity 职责
+
 如果需要验证 **UI 侧 LDAP 登录**，请保持下面配置为 `true`：
 
 ```properties
@@ -496,35 +651,58 @@ LDAP: error code 49 - Invalid Credentials
 
 说明 LDAP 绑定账号或密码不正确。
 
+切换成功后，建议至少再验证下面 4 件事：
+
+1. UI 中可以搜索到 LDAP 用户
+2. UI 中可以搜索到 LDAP 组
+3. BPMN 节点可以直接选到目标用户/组
+4. 业务系统通过 `go-common` 启动流程后，待办能落到预期 LDAP 用户/组
+
 ---
 
 ## 9. 与业务系统 LDAP 目录能力的关系
 
-业务系统配置：
+这里必须区分两种 LDAP 关系。
 
-```yaml
-workflow:
-  directory:
-    provider: "ldap"
-  assignment:
-    provider: "directory"
-```
+第 1 种：Flowable 平台 LDAP
 
-这表示：
+- 用于 Flowable UI 登录
+- 用于 Flowable UI 中选择用户、候选用户、候选组
+- 用于 Flowable 平台运行时识别 candidate user / candidate group
 
-- `go-common` 标准接口运行时通过 LDAP 查询目录关系
-- `go-common` 标准接口运行时通过 LDAP / directory provider 计算下一环节办理人
-- Flowable UI 的登录与选人走 LDAP；业务系统流程调用 Flowable REST 走服务账号
-- Flowable UI 的组查询走 `ou=groups`；业务系统的上级、部门、岗位查询仍分别走用户、部门、岗位 OU
+这就是当前公司标准主路线。
 
-本地全量测试推荐链路：
+第 2 种：业务系统侧 LDAP
 
-1. Flowable UI 使用 LDAP 账号登录
-2. 在 UI 中修改并发布 BPMN
-3. Flowable REST 使用 `rest-admin/test`
-4. `relics-protect-backend` 保持 `workflow.directory.provider=ldap`
-5. `relics-protect-backend` 保持 `workflow.assignment.provider=directory`
-6. 通过业务系统接口发起流程、查看待办、完成任务、查看已办和进度
+- 对应 `workflow.directory.*`
+- 对应 `workflow.assignment.*`
+- 对应业务系统运行时自己查 LDAP、自己算审批人的兼容路线
+
+这条路线当前代码里仍然存在，但已经降级为：
+
+- 历史兼容能力
+- 特殊迁移场景能力
+
+不是新项目标准主路径。
+
+因此推荐理解如下：
+
+1. 标准主路线
+   - Flowable 平台自己连接 LDAP
+   - 业务系统默认只需要通过 `go-common` 调 Flowable REST
+2. 历史兼容路线
+   - 业务系统自己也连 LDAP
+   - 自己做目录查询或运行时分配
+   - 仅在已有项目迁移或特殊兼容场景下使用
+
+如果两种 LDAP 同时存在，也要明确职责边界：
+
+- Flowable 平台 LDAP
+  - 负责身份源、组源、节点配置来源
+- 业务系统侧 LDAP
+  - 负责兼容目录查询或特殊业务辅助能力
+
+不要混成一个概念。
 
 ---
 
@@ -573,3 +751,29 @@ workflow:
 curl -u rest-admin:test \
   http://127.0.0.1:8087/flowable-rest/service/management/engine
 ```
+
+### 10.5 callback 路由明明注册了，但就是收不到回调
+
+先不要急着怀疑 go-common 路由没生效，优先按下面顺序查：
+
+1. 业务系统是否真的注册了标准路径
+   - `POST /api/v1/workflow/callback`
+2. 启动流程时是否真的传了：
+   - `variables.callbackUrl`
+   - `variables.callbackEvents`
+3. `callbackUrl` 是否是 Flowable 所在环境能访问到的地址
+   - 本地同机联调时，常见是 `http://127.0.0.1:9080/api/v1/workflow/callback`
+   - 远端 Flowable 联调时，通常不能再写本机回环地址
+4. `workflow.callback.public_base_url` 是否写对
+   - 它应该是 Flowable 访问业务系统时看到的外部地址
+   - 不是 Flowable UI 地址
+   - 也不是 Flowable REST 地址
+
+一句话记忆：
+
+- `workflow.callback.path`
+  - 决定“业务系统把 callback 暴露在哪里”
+- `variables.callbackUrl`
+  - 决定“Flowable 实际回调哪个完整地址”
+
+如果你想更系统地看 callback 的构造方式、签名规则、业务扩展方式，请直接去看《工作流平台接入总说明.md》里的 callback 章节。

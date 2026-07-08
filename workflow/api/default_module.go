@@ -16,6 +16,7 @@ import (
 	"github.com/goodbye-jack/go-common/config"
 	commonhttp "github.com/goodbye-jack/go-common/http"
 	"github.com/goodbye-jack/go-common/log"
+	"github.com/goodbye-jack/go-common/orm"
 	"github.com/goodbye-jack/go-common/utils"
 	"github.com/goodbye-jack/go-common/workflow/assignment"
 	workflowcontext "github.com/goodbye-jack/go-common/workflow/context"
@@ -33,8 +34,8 @@ const (
 	configAPILogRoutes  = "workflow.api.log_routes"
 	configAPISSOEnabled = "workflow.api.sso_enabled"
 	configAPIRoles      = "workflow.api.roles"
-	configCallbackPath  = "workflow.api.callback_path"
-	configCallbackKey   = "workflow.api.callback_secret"
+	configCallbackPath  = "workflow.callback.path"
+	configCallbackKey   = "workflow.callback.secret"
 )
 
 var defaultRouteRoles = []string{
@@ -84,6 +85,9 @@ func RegisterFromConfigWithOptions(server *commonhttp.HTTPServer, options Regist
 	}
 	module, provider, assignmentProvider, err := newModuleWithProviderFromConfig(options)
 	if err != nil {
+		return err
+	}
+	if err := validateOptionalWorkflowDBInstances(); err != nil {
 		return err
 	}
 	if err := module.validateContract(); err != nil {
@@ -144,6 +148,9 @@ func NewDefaultModuleFromConfigWithOptions(options RegisterOptions) (*DefaultMod
 	if err != nil {
 		return nil, err
 	}
+	if err := validateOptionalWorkflowDBInstances(); err != nil {
+		return nil, err
+	}
 	if err := module.validateContract(); err != nil {
 		return nil, err
 	}
@@ -156,6 +163,18 @@ func MustNewDefaultModuleFromConfigWithOptions(options RegisterOptions) *Default
 		log.Fatalf("new workflow default module from config failed: %v", err)
 	}
 	return module
+}
+
+func validateOptionalWorkflowDBInstances() error {
+	formRefDBInstance := strings.TrimSpace(config.GetConfigString("workflow.formref.db_instance"))
+	if formRefDBInstance != "" && orm.GetDB(formRefDBInstance) == nil {
+		return fmt.Errorf("workflow.formref.db_instance=%s configured but relational db instance not found", formRefDBInstance)
+	}
+	recordsDBInstance := strings.TrimSpace(config.GetConfigString("workflow.records.db_instance"))
+	if recordsDBInstance != "" && orm.GetDB(recordsDBInstance) == nil {
+		return fmt.Errorf("workflow.records.db_instance=%s configured but relational db instance not found", recordsDBInstance)
+	}
+	return nil
 }
 
 func newModuleWithProviderFromConfig(options RegisterOptions) (*DefaultModule, string, string, error) {
@@ -864,10 +883,26 @@ func (m *DefaultModule) handleCallback(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "invalid callback payload")
 		return
 	}
+	log.Infof("【workflow callback】received | event_type=%s | event_time=%s | process_instance_id=%s | process_definition_id=%s | task_id=%s | activity_id=%s | biz_id=%s | callback_route=%s",
+		strings.TrimSpace(payload.EventType),
+		strings.TrimSpace(payload.EventTime),
+		strings.TrimSpace(payload.ProcessInstanceID),
+		strings.TrimSpace(payload.ProcessDefinitionID),
+		strings.TrimSpace(payload.TaskID),
+		strings.TrimSpace(payload.ActivityID),
+		strings.TrimSpace(payload.BizID),
+		m.callbackPath,
+	)
 	if err := m.flowable.ProcessCallback(c.Request.Context(), &payload); err != nil {
 		writeWorkflowError(c, err)
 		return
 	}
+	log.Infof("【workflow callback】accepted | event_type=%s | process_instance_id=%s | task_id=%s | biz_id=%s",
+		strings.TrimSpace(payload.EventType),
+		strings.TrimSpace(payload.ProcessInstanceID),
+		strings.TrimSpace(payload.TaskID),
+		strings.TrimSpace(payload.BizID),
+	)
 	writeOK(c, gin.H{"accepted": true})
 }
 
@@ -952,7 +987,7 @@ func configuredBool(value string, fallback bool) bool {
 func normalizedPrefix(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
-		return "/api"
+		return "/api/v1/workflow"
 	}
 	if !strings.HasPrefix(trimmed, "/") {
 		trimmed = "/" + trimmed
@@ -963,7 +998,7 @@ func normalizedPrefix(value string) string {
 func configuredCallbackPath(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
-		return "/flowable/callback"
+		return "/api/v1/workflow/callback"
 	}
 	if !strings.HasPrefix(trimmed, "/") {
 		trimmed = "/" + trimmed
@@ -1233,6 +1268,7 @@ func logStartupSummary(module *DefaultModule, provider, assignmentProvider strin
 	}
 	userIDStrategy := firstNonBlank(config.GetConfigString("workflow.context.user_id_strategy"), "raw")
 	formRefDBInstance := strings.TrimSpace(config.GetConfigString("workflow.formref.db_instance"))
+	recordsDBInstance := strings.TrimSpace(config.GetConfigString("workflow.records.db_instance"))
 	assignmentAssigneeKey := firstNonBlank(config.GetConfigString("workflow.assignment.variable_keys.assignee"), "nextAssignee")
 	assignmentCandidateUsersKey := firstNonBlank(config.GetConfigString("workflow.assignment.variable_keys.candidate_users"), "nextCandidateUsers")
 	assignmentCandidateGroupsKey := firstNonBlank(config.GetConfigString("workflow.assignment.variable_keys.candidate_groups"), "nextCandidateGroups")
@@ -1242,9 +1278,23 @@ func logStartupSummary(module *DefaultModule, provider, assignmentProvider strin
 		contractPolicy = contract.DefaultPolicy()
 	}
 	normalizer := identity.NewNormalizerFromConfig()
-	log.Infof("【workflow】标准接口启用 | prefix=%s | sso=%t | user_id_strategy=%s | directory_provider=%s | assignment_provider=%s | flowable_base_url=%s | assignment_base_url=%s | variable_keys=%s/%s/%s | assignment_keys_standard=%t | contract_mode=%s | bpmn_lint_policy=%t | role_alias_count=%d | group_alias_count=%d | formref_db_instance=%s",
+	callbackMode := "custom"
+	if module.callbackPath == "/api/v1/workflow/callback" {
+		callbackMode = "standard"
+	}
+	formRefMode := "rest-only"
+	if formRefDBInstance != "" {
+		formRefMode = "rest+db-fallback"
+	}
+	recordsMode := "default-db"
+	if recordsDBInstance != "" {
+		recordsMode = "custom-db"
+	}
+	log.Infof("【workflow】标准接口启用 | prefix=%s | sso=%t | callback_route=%s | callback_mode=%s | user_id_strategy=%s | directory_provider=%s | assignment_provider=%s | flowable_base_url=%s | assignment_base_url=%s | variable_keys=%s/%s/%s | assignment_keys_standard=%t | contract_mode=%s | bpmn_lint_policy=%t | role_alias_count=%d | group_alias_count=%d | formref_mode=%s | formref_db_instance=%s | records_mode=%s | records_db_instance=%s",
 		module.routePrefix,
 		module.requireSSO,
+		module.callbackPath,
+		callbackMode,
 		userIDStrategy,
 		firstNonBlank(provider, "none"),
 		firstNonBlank(assignmentProvider, "none"),
@@ -1258,8 +1308,17 @@ func logStartupSummary(module *DefaultModule, provider, assignmentProvider strin
 		contractPolicy.EnableBPMNLint,
 		normalizer.RoleAliasCount(),
 		normalizer.GroupAliasCount(),
+		formRefMode,
 		firstNonBlank(formRefDBInstance, "(empty)"),
+		recordsMode,
+		firstNonBlank(recordsDBInstance, "(empty)"),
 	)
+	if module.callbackPath != "/api/v1/workflow/callback" {
+		log.Warnf("【workflow】workflow.callback.path 当前为 %s，标准推荐值为 /api/v1/workflow/callback", module.callbackPath)
+	}
+	if strings.TrimSpace(config.GetConfigString(configCallbackPath)) == "" {
+		log.Warn("【workflow】workflow.callback.path 未显式配置，当前按默认值 /api/v1/workflow/callback 注册 callback 路由；建议在 config.yaml 中显式声明")
+	}
 	if !assignmentKeysStandard {
 		log.Warnf("【workflow】当前 assignment variable keys 不是平台标准值，建议改为 %s/%s/%s",
 			contract.StandardAssigneeKey,
@@ -1270,14 +1329,11 @@ func logStartupSummary(module *DefaultModule, provider, assignmentProvider strin
 	if firstNonBlank(provider, "none") == "none" {
 		log.Warn("【workflow】directory provider=none，组织目录接口可访问但会返回未配置错误")
 	}
-	if isNoneProvider(assignmentProvider) {
-		log.Warn("【workflow】assignment provider=none，如 BPMN 依赖 nextAssignee/nextCandidateUsers/nextCandidateGroups，请改为显式配置 assignment provider")
-	}
 	if userIDStrategy == "raw" {
 		log.Warn("【workflow】user_id_strategy=raw，请确认业务登录态中的 UserID 与 Flowable assignee/candidateUser 完全一致")
 	}
 	if formRefDBInstance == "" {
-		log.Warn("【workflow】workflow.formref.db_instance 未配置，任务表单引用解析能力可能受限")
+		log.Infof("【workflow】workflow.formref.db_instance 未配置，当前按 REST-only 模式解析任务表单引用")
 	}
 }
 

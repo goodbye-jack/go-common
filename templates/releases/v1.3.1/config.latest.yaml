@@ -44,7 +44,7 @@ workflow:
     enabled: false
     # 工作流接口前缀。
     # 如果业务总前缀是 /api/v1，这里通常配成 "/api/v1/workflow" 的前半段，例如 "/api/v1"。
-    prefix: "/api"
+    prefix: "/api/v1/workflow"
     # 是否走 SSO / 登录态校验。
     # true：要求登录上下文；false：一般只用于本地调试，不建议生产关闭。
     sso_enabled: true
@@ -52,11 +52,14 @@ workflow:
     # 留空表示走 go-common 内置默认角色范围。
     # 如需限制，可填写逗号分隔的角色编码。
     roles: ""
+  callback:
     # Flowable 主动回调业务系统时使用的入口路径。
-    callback_path: "/flowable/callback"
+    path: "/api/v1/workflow/callback"
     # Flowable 回调验签密钥。
     # 留空表示不做回调签名校验；生产环境建议配置。
-    callback_secret: ""
+    secret: ""
+    # Flowable 从外部访问业务系统 callback 时使用的基地址。
+    public_base_url: ""
 
   # Flowable REST 客户端配置。
   flowable:
@@ -124,7 +127,15 @@ workflow:
   formref:
     # 读取流程表单映射时使用的数据库实例名。
     # 通常指向 Flowable 元数据库，比如 flowable_meta。
-    db_instance: "flowable_meta"
+    # 这是可选增强能力。只有前端依赖 /tasks/{id}/form-ref，且纯 REST 解析不稳定时再配置。
+    # db_instance: "flowable_meta"
+
+  # 任务记录查询配置。
+  records:
+    # 读取 task-records 时使用的数据库实例名。
+    # 通常与 workflow.formref.db_instance 指向同一套 Flowable 元数据库。
+    # 这是可选增强能力。只有前端依赖 progress-timeline 下的动作明细展示时再配置。
+    # db_instance: "flowable_meta"
 
   # 身份归一配置。
   # 用于让 LDAP / 本地登录态两种来源尽量共用同一套 BPMN。
@@ -195,7 +206,7 @@ workflow:
 #    - 使用 /api/v1/ldap_sync/history 与 /api/v1/ldap_sync/get 查看进度和结果
 # 4. 若不配置本段，接口仍可调用，但会使用代码内默认值：
 #    - initial_password 回退到 user.default_reset_password / user.default_password / admin.default_reset_password / Aa13579@
-#    - flowable_db_instance 回退到 workflow.formref.db_instance / flowable_meta
+#    - flowable_db_instance 未配置时，LDAP 同步相关 Flowable 权限写入能力不可用
 #    - organization.root_code 留空时，按 tenant:<tenant_code> 自动生成租户根节点
 #    - organization.root_name 留空时，按租户名称自动生成根节点名称
 ldap_sync:

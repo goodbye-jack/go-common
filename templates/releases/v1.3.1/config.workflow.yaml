@@ -3,11 +3,13 @@
 workflow:
   api:
     enabled: false
-    prefix: "/api"
+    prefix: "/api/v1/workflow"
     sso_enabled: true
     roles: ""
-    callback_path: "/flowable/callback"
-    callback_secret: ""
+  callback:
+    path: "/api/v1/workflow/callback"
+    secret: ""
+    public_base_url: ""
   flowable:
     base_url: "http://127.0.0.1:8087/flowable-rest/service"
     # Flowable REST 服务账号用户名。
@@ -38,7 +40,11 @@ workflow:
     groups_header: "X-Workflow-Groups"
     roles_header: "X-Workflow-Roles"
   formref:
-    db_instance: "flowable_meta"
+    # 只有前端依赖 /tasks/{id}/form-ref，且纯 REST 解析不稳定时再配置。
+    # db_instance: "flowable_meta"
+  records:
+    # 只有前端需要查询 task-records 明细时再配置。
+    # db_instance: "flowable_meta"
   identity:
     role_aliases:
       LDAP_ROLE_CITY_REVIEWER: APP_ROLE_CITY_REVIEW

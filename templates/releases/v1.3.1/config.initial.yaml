@@ -61,13 +61,18 @@ workflow:
     # 是否启用工作流标准接口。
     enabled: false
     # 工作流接口前缀。
-    prefix: "/api"
+    prefix: "/api/v1/workflow"
     # 是否要求登录态。
     sso_enabled: true
     # 留空表示走默认角色集合。
     roles: ""
-    callback_path: "/flowable/callback"
-    callback_secret: ""
+  callback:
+    # Flowable 回调业务系统时访问的标准路径。
+    path: "/api/v1/workflow/callback"
+    # Flowable 回调验签密钥；留空表示不验签。
+    secret: ""
+    # Flowable 从外部访问业务系统 callback 时使用的基地址。
+    public_base_url: ""
 
   flowable:
     # 只有启用工作流并接入 Flowable 时才需要填写。
@@ -96,3 +101,11 @@ workflow:
   assignment:
     # none / directory / ldap。
     provider: none
+
+  formref:
+    # 可选增强能力。只有前端依赖 /tasks/{id}/form-ref，且纯 REST 解析不稳定时再配置。
+    # db_instance: "flowable_meta"
+
+  records:
+    # 可选增强能力。只有前端需要查询 task-records 明细时再配置。
+    # db_instance: "flowable_meta"
