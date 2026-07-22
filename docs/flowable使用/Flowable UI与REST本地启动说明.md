@@ -635,7 +635,13 @@ flowable.idm.ldap.user-base-dn=ou=people,dc=msss,dc=com
 flowable.idm.ldap.group-base-dn=ou=groups,dc=msss,dc=com
 ```
 
-`group-base-dn` 要指向 `go-common` / 业务同步生成的通用 LDAP Group 投影 OU。当前推荐使用 `ou=groups`，不要再指向 `ou=departments`，否则用户能登录但组列表可能为空或一直加载。
+`group-base-dn` 要指向业务系统同步生成的“流程角色组”LDAP OU。当前推荐使用 `ou=groups`，不要再指向 `ou=departments`，否则用户能登录但组列表可能为空或一直加载。
+
+公司标准建议：
+
+- `ou=groups` 里只放流程角色组，例如 `wfgrp:<tenantCode>:<groupCode>`
+- 不要再把部门组、岗位组暴露给 Flowable 作为候选组
+- `candidateGroups` 只配置这类流程角色组，避免把组织投影误当成流程办理组
 
 切换后同样必须重新 build：
 

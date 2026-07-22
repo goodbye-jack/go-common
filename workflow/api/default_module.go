@@ -17,7 +17,6 @@ import (
 	commonhttp "github.com/goodbye-jack/go-common/http"
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/orm"
-	"github.com/goodbye-jack/go-common/utils"
 	"github.com/goodbye-jack/go-common/workflow/assignment"
 	workflowcontext "github.com/goodbye-jack/go-common/workflow/context"
 	"github.com/goodbye-jack/go-common/workflow/contract"
@@ -33,19 +32,14 @@ const (
 	configAPIPrefix     = "workflow.api.prefix"
 	configAPILogRoutes  = "workflow.api.log_routes"
 	configAPISSOEnabled = "workflow.api.sso_enabled"
-	configAPIRoles      = "workflow.api.roles"
 	configCallbackPath  = "workflow.callback.path"
 	configCallbackKey   = "workflow.callback.secret"
 )
 
-var defaultRouteRoles = []string{
-	utils.UserAnonymous,
-	utils.RoleAdministrator,
-	utils.RoleDefault,
-	utils.RoleMuseum,
-	utils.RoleMuseumOffice,
-	utils.RoleAppraisalStation,
-}
+const (
+	WorkflowAPIAccessCapability   = "workflow_api_access"
+	WorkflowAdminAccessCapability = "workflow_admin_access"
+)
 
 type DefaultModule struct {
 	resolver     workflowcontext.Resolver
@@ -55,7 +49,6 @@ type DefaultModule struct {
 	formref      formref.Service
 	contract     *contract.Policy
 	routePrefix  string
-	routeRoles   []string
 	logRoutes    bool
 	requireSSO   bool
 	callbackPath string
@@ -129,7 +122,6 @@ func NewDefaultModuleWithOptions(resolver workflowcontext.Resolver, directorySer
 		flowable:     flowableClient,
 		contract:     contract.LoadPolicyFromConfig(),
 		routePrefix:  normalizedPrefix(config.GetConfigString(configAPIPrefix)),
-		routeRoles:   configuredRoles(config.GetConfigString(configAPIRoles)),
 		logRoutes:    configuredBool(config.GetConfigString(configAPILogRoutes), true),
 		requireSSO:   configuredBool(config.GetConfigString(configAPISSOEnabled), true),
 		callbackPath: configuredCallbackPath(config.GetConfigString(configCallbackPath)),
@@ -308,7 +300,30 @@ func (m *DefaultModule) Register(server *commonhttp.HTTPServer) {
 	}
 	routes := m.routeDefinitions()
 	for _, route := range routes {
-		server.RouteAPI(route.Path, route.Tips, route.Methods, m.routeRoles, "", "", route.RequireSSO, false, route.Handler)
+		if route.Path == m.callbackPath {
+			server.RouteWithPolicy(
+				route.Path,
+				route.Tips,
+				route.Methods,
+				commonhttp.Public(
+					commonhttp.WithEnforceRBAC(false),
+					commonhttp.WithDescription("workflow flowable callback"),
+				),
+				route.Handler,
+			)
+			continue
+		}
+		server.RouteWithPolicy(
+			route.Path,
+			route.Tips,
+			route.Methods,
+			commonhttp.AnyUser(
+				commonhttp.WithEnforceRBAC(false),
+				commonhttp.WithGuard(commonhttp.RequireCapability(WorkflowAPIAccessCapability)),
+				commonhttp.WithDescription("workflow standard api"),
+			),
+			route.Handler,
+		)
 	}
 	m.logRegisteredRoutes(routes)
 }
@@ -965,14 +980,6 @@ func parseBool(value string, fallback bool) bool {
 	return parsed
 }
 
-func configuredRoles(value string) []string {
-	items := splitCSV(value)
-	if len(items) == 0 {
-		return append([]string(nil), defaultRouteRoles...)
-	}
-	return items
-}
-
 func configuredBool(value string, fallback bool) bool {
 	if strings.TrimSpace(value) == "" {
 		return fallback
@@ -1290,9 +1297,9 @@ func logStartupSummary(module *DefaultModule, provider, assignmentProvider strin
 	if recordsDBInstance != "" {
 		recordsMode = "custom-db"
 	}
-	log.Infof("【workflow】标准接口启用 | prefix=%s | sso=%t | callback_route=%s | callback_mode=%s | user_id_strategy=%s | directory_provider=%s | assignment_provider=%s | flowable_base_url=%s | assignment_base_url=%s | variable_keys=%s/%s/%s | assignment_keys_standard=%t | contract_mode=%s | bpmn_lint_policy=%t | role_alias_count=%d | group_alias_count=%d | formref_mode=%s | formref_db_instance=%s | records_mode=%s | records_db_instance=%s",
+	log.Infof("【workflow】标准接口启用 | prefix=%s | api_auth=login+capability | required_capability=%s | callback_route=%s | callback_auth=public+secret | callback_mode=%s | user_id_strategy=%s | directory_provider=%s | assignment_provider=%s | flowable_base_url=%s | assignment_base_url=%s | variable_keys=%s/%s/%s | assignment_keys_standard=%t | contract_mode=%s | bpmn_lint_policy=%t | role_alias_count=%d | group_alias_count=%d | formref_mode=%s | formref_db_instance=%s | records_mode=%s | records_db_instance=%s",
 		module.routePrefix,
-		module.requireSSO,
+		WorkflowAPIAccessCapability,
 		module.callbackPath,
 		callbackMode,
 		userIDStrategy,

@@ -26,6 +26,7 @@ func (c *RESTClient) GetProgressView(ctx stdcontext.Context, processInstanceID s
 	if recordErr != nil {
 		recordItems = []types.WorkflowTaskRecordItem{}
 	}
+	recordItems = normalizeTaskRecordDefinitionKeys(recordItems, summary.ProcessDefinitionID, summary.ProcessDefinitionKey)
 	steps := buildSteps(snapshot, recordItems)
 	return &types.ProcessProgressViewResponse{
 		Summary:              summary,
@@ -703,6 +704,26 @@ func cloneTaskRecordItems(records []types.WorkflowTaskRecordItem) []types.Workfl
 	}
 	result := make([]types.WorkflowTaskRecordItem, len(records))
 	copy(result, records)
+	return result
+}
+
+func normalizeTaskRecordDefinitionKeys(records []types.WorkflowTaskRecordItem, definitionID, definitionKey string) []types.WorkflowTaskRecordItem {
+	definitionID = strings.TrimSpace(definitionID)
+	definitionKey = strings.TrimSpace(definitionKey)
+	if len(records) == 0 || definitionID == "" || definitionKey == "" || definitionID == definitionKey {
+		return records
+	}
+	result := make([]types.WorkflowTaskRecordItem, len(records))
+	copy(result, records)
+	for index := range result {
+		if strings.TrimSpace(result[index].ProcessDefinitionID) != definitionID {
+			continue
+		}
+		currentKey := strings.TrimSpace(result[index].ProcessDefinitionKey)
+		if currentKey == "" || currentKey == definitionID {
+			result[index].ProcessDefinitionKey = definitionKey
+		}
+	}
 	return result
 }
 

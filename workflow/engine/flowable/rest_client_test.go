@@ -296,6 +296,88 @@ func TestUnclaimTaskClearsAssigneeViaPut(t *testing.T) {
 	}
 }
 
+func TestGetProgressViewResolvesProcessDefinitionKeyFromMetadata(t *testing.T) {
+	const definitionID = "4eb66431-8442-11f1-b2ee-82acb04b355b"
+	const definitionKey = "training_score_approval_process"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/runtime/process-instances/proc-1":
+			_, _ = w.Write([]byte(`{"id":"proc-1","processDefinitionId":"` + definitionID + `","businessKey":"training_score_review:general_tenant:4","tenantId":"","startTime":"2026-07-21T09:20:49.377Z"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/repository/process-definitions/"+definitionID:
+			_, _ = w.Write([]byte(`{"id":"` + definitionID + `","key":"` + definitionKey + `","version":4,"tenantId":""}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/runtime/process-instances/proc-1/variables":
+			_, _ = w.Write([]byte(`[]`))
+		case r.Method == http.MethodGet && r.URL.Path == "/history/historic-variable-instances":
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/runtime/tasks":
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/history/historic-task-instances":
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/history/historic-activity-instances":
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/repository/process-definitions/"+definitionID+"/resourcedata":
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:flowable="http://flowable.org/bpmn" targetNamespace="http://www.flowable.org/processdef">
+  <process id="training_score_approval_process" name="培训考核分数审批流程" isExecutable="true">
+    <startEvent id="startEvent1" name="开始"/>
+    <sequenceFlow id="flow1" sourceRef="startEvent1" targetRef="ownerReview"/>
+    <userTask id="ownerReview" name="信息审核" flowable:candidateGroups="${nextCandidateGroups}"/>
+    <sequenceFlow id="flow2" sourceRef="ownerReview" targetRef="endEvent1"/>
+    <endEvent id="endEvent1" name="结束"/>
+  </process>
+</definitions>`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewRESTClient(Config{BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("NewRESTClient() error=%v", err)
+	}
+	view, err := client.GetProgressView(context.Background(), "proc-1", nil)
+	if err != nil {
+		t.Fatalf("GetProgressView() error=%v", err)
+	}
+	if view == nil {
+		t.Fatalf("GetProgressView() returned nil")
+	}
+	if view.Summary.ProcessDefinitionKey != definitionKey {
+		t.Fatalf("ProcessDefinitionKey=%q, want %q", view.Summary.ProcessDefinitionKey, definitionKey)
+	}
+	if view.Summary.ProcessDefinitionID != definitionID {
+		t.Fatalf("ProcessDefinitionID=%q, want %q", view.Summary.ProcessDefinitionID, definitionID)
+	}
+}
+
+func TestNormalizeTaskRecordDefinitionKeys(t *testing.T) {
+	records := []types.WorkflowTaskRecordItem{
+		{
+			ProcessDefinitionID:  "definition-1",
+			ProcessDefinitionKey: "definition-1",
+		},
+		{
+			ProcessDefinitionID:  "definition-2",
+			ProcessDefinitionKey: "definition-2",
+		},
+	}
+
+	normalized := normalizeTaskRecordDefinitionKeys(records, "definition-1", "training_score_approval_process")
+	if normalized[0].ProcessDefinitionKey != "training_score_approval_process" {
+		t.Fatalf("normalized[0].ProcessDefinitionKey=%q", normalized[0].ProcessDefinitionKey)
+	}
+	if normalized[1].ProcessDefinitionKey != "definition-2" {
+		t.Fatalf("normalized[1].ProcessDefinitionKey=%q", normalized[1].ProcessDefinitionKey)
+	}
+	if records[0].ProcessDefinitionKey != "definition-1" {
+		t.Fatalf("original record was mutated: %q", records[0].ProcessDefinitionKey)
+	}
+}
+
 type assertError string
 
 func (e assertError) Error() string {

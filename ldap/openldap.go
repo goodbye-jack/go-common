@@ -368,6 +368,17 @@ func ldapErr(err error, typ string, id interface{}) error {
 	return err
 }
 
+func isLDAPNoSuchAttribute(err error) bool {
+	if err == nil {
+		return false
+	}
+	le, ok := err.(*ldap.Error)
+	if !ok {
+		return false
+	}
+	return le.ResultCode == ldap.LDAPResultNoSuchAttribute
+}
+
 func normalizeOrgUser(u *OrgUser) (*OrgUser, error) {
 	if u == nil || strings.TrimSpace(u.UID) == "" {
 		return nil, LdapParamsError{Params: []string{"uid"}}
@@ -890,7 +901,11 @@ func (o *OpenLDAP) UpdateDepartment(ctx context.Context, d *Department) error {
 		} else {
 			req.Delete(attrSeeAlso, nil)
 		}
-		return ldapErr(conn.Modify(req), "Department", nd.Code)
+		err := conn.Modify(req)
+		if len(seeAlso) == 0 && isLDAPNoSuchAttribute(err) {
+			return nil
+		}
+		return ldapErr(err, "Department", nd.Code)
 	})
 }
 
@@ -1062,7 +1077,11 @@ func (o *OpenLDAP) UpdatePosition(ctx context.Context, p *Position) error {
 		} else {
 			req.Delete(attrSeeAlso, nil)
 		}
-		return ldapErr(conn.Modify(req), "Position", np.Code)
+		err := conn.Modify(req)
+		if np.DeptDN == "" && isLDAPNoSuchAttribute(err) {
+			return nil
+		}
+		return ldapErr(err, "Position", np.Code)
 	})
 }
 

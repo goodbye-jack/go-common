@@ -99,6 +99,21 @@ func TestNormalizeOrgUser(t *testing.T) {
 	}
 }
 
+func TestIsLDAPNoSuchAttribute(t *testing.T) {
+	if isLDAPNoSuchAttribute(nil) {
+		t.Fatalf("nil error should not be treated as no-such-attribute")
+	}
+	if isLDAPNoSuchAttribute(fmt.Errorf("plain error")) {
+		t.Fatalf("plain error should not be treated as no-such-attribute")
+	}
+	if !isLDAPNoSuchAttribute(&ldap.Error{ResultCode: ldap.LDAPResultNoSuchAttribute}) {
+		t.Fatalf("LDAPResultNoSuchAttribute should be detected")
+	}
+	if isLDAPNoSuchAttribute(&ldap.Error{ResultCode: ldap.LDAPResultNoSuchObject}) {
+		t.Fatalf("other ldap result code should not be treated as no-such-attribute")
+	}
+}
+
 func TestNormalizeDepartment(t *testing.T) {
 	_, err := normalizeDepartment(&Department{})
 	if err == nil {

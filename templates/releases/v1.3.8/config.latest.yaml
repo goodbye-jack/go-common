@@ -94,10 +94,6 @@ workflow:
     # 是否走 SSO / 登录态校验。
     # true：要求登录上下文；false：一般只用于本地调试，不建议生产关闭。
     sso_enabled: true
-    # 允许访问工作流接口的角色集合。
-    # 留空表示走 go-common 内置默认角色范围。
-    # 如需限制，可填写逗号分隔的角色编码。
-    roles: ""
   callback:
     # Flowable 主动回调业务系统时使用的入口路径。
     # 标准推荐值固定为 /api/v1/workflow/callback。
@@ -227,10 +223,9 @@ workflow:
       position_ou: "ou=positions"
       # Flowable 原生 LDAP 组投影 OU。
       # 这里不是“部门/岗位原始目录”，而是给 Flowable UI / candidateGroups 使用的真正 LDAP Group 容器。
-      # 目录同步成功后，会在这个 OU 下生成：
-      # - 部门组：dept:<departmentCode>
-      # - 岗位组：pos:<positionCode>
-      # 如果 Flowable UI 要正常显示“组”，这里应与 Flowable UI 的 group-base-dn 保持一致。
+      # 公司标准建议：这个 OU 里只保留“流程角色组”投影，例如：
+      # - wfgrp:<tenantCode>:<groupCode>
+      # Flowable UI 的 group-base-dn 应与这里保持一致。
       group_ou: "ou=groups"
       # 是否启用 TLS。
       use_tls: false
@@ -258,8 +253,8 @@ workflow:
 # 1. 本段仅作用于“业务系统作为主数据源，向 Flowable 使用的 LDAP 目录做全量同步”。
 # 2. go-common 保持通用：只提供 directorysync 通用引擎与 LDAP Sink，不感知文保业务字段。
 # 3. 真正的人员、组织、岗位映射规则在业务项目内实现。
-# 4. 当前版本会额外把部门、岗位投影为真正 LDAP Group，默认落到 workflow.directory.ldap.group_ou / ldap_group_ou 指定的 OU。
-#    这样 Flowable UI 才能原生查询“组”，并在 BPMN 中稳定使用 candidateGroups。
+# 4. 推荐做法：业务系统把“流程角色组”投影为真正 LDAP Group，默认落到 workflow.directory.ldap.group_ou / ldap_group_ou 指定的 OU。
+#    Flowable UI 与 BPMN 的 candidateGroups 只使用这类流程角色组，不要再把部门组、岗位组暴露为流程候选组。
 # 5. `/api/v1/ldap_sync/full` 当前为异步批次执行：
 #    - 首次调用会立即返回 batch_id / batch_no / status=pending
 #    - 真正同步在后台执行

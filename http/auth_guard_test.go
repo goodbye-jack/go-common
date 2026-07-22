@@ -50,6 +50,41 @@ func TestForbidRequestFields(t *testing.T) {
 	}
 }
 
+func TestRequireCapabilityReadsPrincipalCapabilityCodes(t *testing.T) {
+	guard := RequireCapability("workflow_api_access")
+	principal := &Principal{
+		Type:            PrincipalCustomer,
+		CapabilityCodes: []string{"WORKFLOW_API_ACCESS"},
+	}
+	if err := guard.Check(nil, principal); err != nil {
+		t.Fatalf("RequireCapability() error = %v", err)
+	}
+}
+
+func TestRequireCapabilityReadsAttributeCapabilities(t *testing.T) {
+	guard := RequireCapability("workflow_api_access")
+	principal := &Principal{
+		Type: PrincipalCustomer,
+		Attributes: map[string]any{
+			"capabilities": "profile_read,workflow_api_access",
+		},
+	}
+	if err := guard.Check(nil, principal); err != nil {
+		t.Fatalf("RequireCapability() error = %v", err)
+	}
+}
+
+func TestRequireCapabilityDeniesMissingCapability(t *testing.T) {
+	guard := RequireCapability("workflow_api_access")
+	principal := &Principal{
+		Type:            PrincipalCustomer,
+		CapabilityCodes: []string{"profile_read"},
+	}
+	if err := guard.Check(nil, principal); err == nil {
+		t.Fatal("RequireCapability() error = nil, want denied")
+	}
+}
+
 func TestLoginRequiredMiddlewareGuardDeniesRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

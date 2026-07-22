@@ -42,22 +42,10 @@ items:
     since: v1.3.0
     required: false
     default: true
-    comment: 工作流标准接口是否启用登录校验。
+    comment: 工作流标准接口要求登录用户，并由业务系统 Principal.CapabilityCodes 提供 workflow_api_access 能力；callback 接口独立公开并按 workflow.callback.secret 验签。
     example: true
     group: workflow.api
     order: 40
-    merge_policy: add_if_missing
-
-  - key: workflow.api.roles
-    kind: scalar
-    type: string
-    since: v1.3.0
-    required: false
-    default: ""
-    comment: 工作流标准接口的角色范围，留空表示使用默认角色集合。
-    example: ""
-    group: workflow.api
-    order: 50
     merge_policy: add_if_missing
 
   - key: workflow.callback

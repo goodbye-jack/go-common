@@ -1064,13 +1064,32 @@ func (c *RESTClient) getRuntimeTask(ctx stdcontext.Context, taskID string) (runt
 func (c *RESTClient) getProcessInstance(ctx stdcontext.Context, processInstanceID string) (processInstanceRecord, error) {
 	body, err := c.doJSON(ctx, http.MethodGet, "/runtime/process-instances/"+processInstanceID, nil, nil)
 	if err == nil {
-		return parseProcessInstance(body), nil
+		record := parseProcessInstance(body)
+		c.enrichProcessDefinitionKey(ctx, &record)
+		return record, nil
 	}
 	body, err = c.doJSON(ctx, http.MethodGet, "/history/historic-process-instances/"+processInstanceID, nil, nil)
 	if err != nil {
 		return processInstanceRecord{}, err
 	}
-	return parseProcessInstance(body), nil
+	record := parseProcessInstance(body)
+	c.enrichProcessDefinitionKey(ctx, &record)
+	return record, nil
+}
+
+func (c *RESTClient) enrichProcessDefinitionKey(ctx stdcontext.Context, record *processInstanceRecord) {
+	if c == nil || record == nil {
+		return
+	}
+	definitionID := strings.TrimSpace(record.ProcessDefinitionID)
+	if definitionID == "" || isResolvedProcessDefinitionKey(record.ProcessDefinitionKey, definitionID) {
+		return
+	}
+	definition, err := c.getProcessDefinition(ctx, definitionID)
+	if err != nil || strings.TrimSpace(definition.Key) == "" {
+		return
+	}
+	record.ProcessDefinitionKey = strings.TrimSpace(definition.Key)
 }
 
 func (c *RESTClient) getProcessVariables(ctx stdcontext.Context, processInstanceID string) (map[string]interface{}, error) {
@@ -1412,7 +1431,7 @@ func (c *RESTClient) buildDoneTaskProjection(task runtimeTaskRecord, variables m
 		ActivityName:         firstNonBlank(task.Name, task.TaskDefinitionKey),
 		ProcessInstanceID:    task.ProcessInstanceID,
 		ProcessDefinitionID:  task.ProcessDefinitionID,
-		ProcessDefinitionKey: processDefinitionKey(task.ProcessDefinitionID),
+		ProcessDefinitionKey: processDefinitionKeyFrom(task.ProcessDefinitionID, merged),
 		BizID:                firstNonBlank(stringValue(merged["bizId"]), task.BusinessKey),
 		BizType:              stringValue(merged["bizType"]),
 		Title:                stringValue(merged["title"]),
@@ -2120,6 +2139,27 @@ func (c *RESTClient) queryProcessDefinitions(ctx stdcontext.Context, query map[s
 	return nil, errors.New("unexpected process definition query response")
 }
 
+func (c *RESTClient) getProcessDefinition(ctx stdcontext.Context, definitionID string) (processDefinitionRecord, error) {
+	definitionID = strings.TrimSpace(definitionID)
+	if definitionID == "" {
+		return processDefinitionRecord{}, errors.New("process definition id is required")
+	}
+	body, err := c.doJSON(ctx, http.MethodGet, "/repository/process-definitions/"+definitionID, nil, nil)
+	if err != nil {
+		return processDefinitionRecord{}, err
+	}
+	var raw map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return processDefinitionRecord{}, err
+	}
+	return processDefinitionRecord{
+		ID:       stringValue(raw["id"]),
+		Key:      stringValue(raw["key"]),
+		Version:  int64Value(raw["version"]),
+		TenantID: stringValue(raw["tenantId"]),
+	}, nil
+}
+
 type processInstanceRecord struct {
 	ID                     string
 	ProcessDefinitionID    string
@@ -2211,7 +2251,7 @@ func parseProcessInstanceMap(raw map[string]interface{}) processInstanceRecord {
 	record := processInstanceRecord{
 		ID:                     stringValue(raw["id"]),
 		ProcessDefinitionID:    stringValue(raw["processDefinitionId"]),
-		ProcessDefinitionKey:   processDefinitionKey(stringValue(raw["processDefinitionId"])),
+		ProcessDefinitionKey:   firstNonBlank(stringValue(raw["processDefinitionKey"]), processDefinitionKey(stringValue(raw["processDefinitionId"]))),
 		BusinessKey:            stringValue(raw["businessKey"]),
 		SuperProcessInstanceID: stringValue(raw["superProcessInstanceId"]),
 		TenantID:               stringValue(raw["tenantId"]),
@@ -2419,4 +2459,22 @@ func processDefinitionKey(definitionID string) string {
 		return parts[0]
 	}
 	return definitionID
+}
+
+func processDefinitionKeyFrom(definitionID string, variables map[string]interface{}) string {
+	return firstNonBlank(
+		stringValue(variables["processDefinitionKey"]),
+		stringValue(variables["processKey"]),
+		stringValue(variables["process_definition_key"]),
+		processDefinitionKey(definitionID),
+	)
+}
+
+func isResolvedProcessDefinitionKey(key, definitionID string) bool {
+	key = strings.TrimSpace(key)
+	definitionID = strings.TrimSpace(definitionID)
+	if key == "" {
+		return false
+	}
+	return key != definitionID
 }

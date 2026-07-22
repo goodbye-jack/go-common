@@ -302,6 +302,86 @@ flowable:candidateGroups="role_CITY_REVIEWER"
 3. 和 LDAP 角色、候选组机制天然一致
 4. 更符合 Flowable 官方常规建模方式
 
+#### 5.1.1 一个节点配置多个 `candidateGroups` 到底是什么意思
+
+示例：
+
+```xml
+flowable:candidateGroups="role_city_reviewer,role_province_reviewer"
+```
+
+这表示：
+
+1. 这是一个共享候选池
+2. `role_city_reviewer` 组成员可以处理
+3. `role_province_reviewer` 组成员也可以处理
+4. 任意一个组里的任意一个人处理一次，这个节点就结束
+
+它的真实语义是：
+
+- OR
+- 任一组可处理
+
+它不是：
+
+- 组 A 先审，组 B 后审
+- 组 A 和组 B 都必须各处理一次
+- 会自动变成两级审批
+
+所以只有当业务语义本身就是“这几个组里任意一组处理即可”时，才应该把多个组直接写在同一个节点上。
+
+#### 5.1.2 多个组到底该怎么建模
+
+开发最容易误解的是：
+
+- “一个节点写两个组”不等于“两级审批”
+- “一个节点写两个组”也不等于“两个组都必须处理”
+
+正确判断方式如下：
+
+1. 如果你的意思是“组 A 或组 B 任意一组处理即可”
+   - 用一个节点
+   - 在同一个 `candidateGroups` 里配置多个组
+2. 如果你的意思是“必须先组 A，再组 B”
+   - 用两个串行 `userTask`
+   - 不要把两个组堆到一个节点里
+3. 如果你的意思是“组 A 和组 B 都要各处理一次”
+   - 用并行网关拆成两个节点
+   - 或者使用更明确的会签/多实例方案
+
+对照示例如下：
+
+场景 1：任一组处理即可
+
+```xml
+<userTask id="reviewTask"
+          name="审核"
+          flowable:candidateGroups="role_city_reviewer,role_province_reviewer" />
+```
+
+场景 2：组 A 后组 B
+
+```xml
+<userTask id="cityReview"
+          name="市级审核"
+          flowable:candidateGroups="role_city_reviewer" />
+
+<userTask id="provinceReview"
+          name="省级审核"
+          flowable:candidateGroups="role_province_reviewer" />
+```
+
+场景 3：组 A 和组 B 都要处理
+
+```xml
+开始
+  -> 并行网关
+     -> 组A审核节点
+     -> 组B审核节点
+  -> 汇聚
+  -> 后续节点
+```
+
 ### 5.2 次选写法：固定候选用户
 
 ```xml
@@ -359,6 +439,69 @@ flowable:candidateGroups="${nextCandidateGroups}"
 
 不是新项目的首推建模方式。
 
+#### 5.6.1 动态多个组的真实语义
+
+如果 BPMN 中这样写：
+
+```xml
+flowable:candidateGroups="${nextCandidateGroups}"
+```
+
+而业务系统运行时传入：
+
+```json
+{
+  "nextCandidateGroups": [
+    "role_city_reviewer",
+    "role_province_reviewer"
+  ]
+}
+```
+
+那么它的语义和固定多个组完全一致：
+
+1. 这是一个共享候选池
+2. `role_city_reviewer` 可以处理
+3. `role_province_reviewer` 也可以处理
+4. 任意一组成员处理后，节点结束
+
+它仍然不是：
+
+- 顺序审批
+- 双方都必须处理
+- 自动会签
+
+也就是说：
+
+- 动态变量只是在“谁来处理”这件事上运行时算值
+- 不会改变 Flowable 对单个 `userTask` 的基本语义
+
+#### 5.6.2 动态变量生效的两个前提
+
+动态变量是否生效，只看两个条件是否同时满足：
+
+1. BPMN 里明确写了变量表达式
+   - `${nextAssignee}`
+   - `${nextCandidateUsers}`
+   - `${nextCandidateGroups}`
+2. 业务系统在启动流程或提交当前节点时，真的传了对应变量
+
+少一个都不行。
+
+错误理解示例：
+
+1. BPMN 写死了 `flowable:candidateGroups="role_city_reviewer"`，但业务系统又传 `nextCandidateGroups`
+   - 这不会把固定组自动替换成动态组
+2. BPMN 写死了 `flowable:assignee="qxtest"`，但业务系统又传 `nextAssignee="lisi"`
+   - 这不会把 `qxtest` 自动替换成 `lisi`
+3. BPMN 根本没写 `${nextCandidateGroups}`，但开发以为只要后端传了变量就会生效
+   - 也不会生效
+
+结论必须记清楚：
+
+- 是否动态，先由 BPMN 决定
+- 具体传谁，再由业务系统决定
+
 ---
 
 ## 6. 明确禁止的高耦合写法
@@ -402,6 +545,92 @@ flowable:candidateGroups="${bizSpecificDynamicGroupCode}"
    - `nextCandidateUsers`
    - `nextCandidateGroups`
 3. BPMN 只读取这 3 个标准变量
+
+### 6.3 正式流程里禁止写死测试账号
+
+下面这类写法，在演示环境短期自测时可能能跑，但不能作为正式流程模型发布：
+
+```xml
+flowable:assignee="qxtest"
+flowable:assignee="test"
+flowable:assignee="admin"
+```
+
+禁止原因：
+
+1. 这类账号往往只是测试账号，不代表真实岗位职责
+2. 一旦流程发到正式环境，任务会被直接派到错误的人
+3. 开发、测试、实施、流程设计人员都会误以为“这个节点就该给这个人”
+4. 后续即使业务系统传了动态变量，也不一定能覆盖这个固定写法
+
+正式流程应该改成下面两类之一：
+
+1. 固定职责节点
+   - 用 `candidateGroups`
+2. 确实必须运行时决定
+   - 用 `${nextAssignee}` / `${nextCandidateUsers}` / `${nextCandidateGroups}`
+
+### 6.4 禁止固定配置与动态变量混用
+
+一个节点要么是固定节点，要么是动态节点，不要混成“半固定半动态”。
+
+错误示例 1：
+
+```xml
+flowable:candidateGroups="role_city_reviewer"
+```
+
+业务系统又传：
+
+```json
+{
+  "nextCandidateGroups": ["role_province_reviewer"]
+}
+```
+
+问题：
+
+- 开发容易误以为后端传参会覆盖固定组
+- 实际排障时很难一眼判断到底谁生效
+
+错误示例 2：
+
+```xml
+flowable:assignee="qxtest"
+```
+
+业务系统又传：
+
+```json
+{
+  "nextAssignee": "lisi"
+}
+```
+
+问题：
+
+- 流程图上看是固定给 `qxtest`
+- 业务代码里又以为自己传的是 `lisi`
+- 两边理解会分裂
+
+错误示例 3：
+
+```xml
+flowable:assignee="${nextAssignee}"
+flowable:candidateGroups="role_city_reviewer"
+```
+
+问题：
+
+1. 节点责任边界不清晰
+2. 后续谁来接任务难以解释
+3. 出问题时很难判断是 BPMN 配置错还是业务变量错
+
+平台建议的原则只有一句话：
+
+- 固定职责就固定配置
+- 运行时计算就纯动态变量
+- 不要把两套模式揉在同一个节点里
 
 第一次接入时，可以直接记成一句话：
 

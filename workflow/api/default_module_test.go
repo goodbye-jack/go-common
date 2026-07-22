@@ -94,7 +94,6 @@ func TestDefaultModuleRegisterAddsWorkflowRoutes(t *testing.T) {
 		callbackPath: "/api/v1/workflow/callback",
 		requireSSO:   true,
 		logRoutes:    false,
-		routeRoles:   []string{utils.RoleAdministrator},
 	}
 
 	module.Register(server)
@@ -138,6 +137,28 @@ func TestDefaultModuleRegisterAddsWorkflowRoutes(t *testing.T) {
 	}
 	if !seen["/api/v1/workflow/callback|POST"] {
 		t.Fatalf("missing workflow callback route")
+	}
+
+	for _, route := range routes {
+		policy := route.EffectiveAuthPolicy()
+		if route.Url == "/api/v1/workflow/callback" {
+			if policy == nil || policy.Name != "public" || policy.RequireAuth {
+				t.Fatalf("callback policy=%+v, want public without auth", policy)
+			}
+			continue
+		}
+		if route.Url == "/ping" {
+			continue
+		}
+		if policy == nil || policy.Name != "any_user" || !policy.RequireAuth {
+			t.Fatalf("workflow route %s policy=%+v, want any_user with auth", route.Url, policy)
+		}
+		if policy.EnforceRBAC {
+			t.Fatalf("workflow route %s should not enforce legacy RBAC", route.Url)
+		}
+		if len(policy.Guards) != 1 || policy.Guards[0].Name() != "require_capability" {
+			t.Fatalf("workflow route %s guards=%v, want require_capability", route.Url, policy.Guards)
+		}
 	}
 }
 

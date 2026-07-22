@@ -138,17 +138,20 @@ func (c *RESTClient) recordTaskActionRecord(ctx stdcontext.Context, actionType s
 		return
 	}
 	rootProcessInstanceID := strings.TrimSpace(task.ProcessInstanceID)
-	if process, err := c.getProcessInstance(ctx, task.ProcessInstanceID); err == nil {
-		if root, resolveErr := c.resolveRootProcessInstance(ctx, process); resolveErr == nil && strings.TrimSpace(root.ID) != "" {
-			rootProcessInstanceID = strings.TrimSpace(root.ID)
-		}
-	}
 	variables := map[string]interface{}{}
 	for key, value := range beforeTask.ProcessVariables {
 		variables[key] = value
 	}
 	for key, value := range afterTask.ProcessVariables {
 		variables[key] = value
+	}
+	if process, err := c.getProcessInstance(ctx, task.ProcessInstanceID); err == nil {
+		if root, resolveErr := c.resolveRootProcessInstance(ctx, process); resolveErr == nil && strings.TrimSpace(root.ID) != "" {
+			rootProcessInstanceID = strings.TrimSpace(root.ID)
+		}
+		if strings.TrimSpace(process.ProcessDefinitionKey) != "" {
+			variables["processDefinitionKey"] = strings.TrimSpace(process.ProcessDefinitionKey)
+		}
 	}
 	operatorUserID := ""
 	operatorUserName := ""
@@ -160,7 +163,7 @@ func (c *RESTClient) recordTaskActionRecord(ctx stdcontext.Context, actionType s
 		RootProcessInstanceID: rootProcessInstanceID,
 		ProcessInstanceID:     strings.TrimSpace(task.ProcessInstanceID),
 		ProcessDefinitionID:   strings.TrimSpace(task.ProcessDefinitionID),
-		ProcessDefinitionKey:  processDefinitionKey(task.ProcessDefinitionID),
+		ProcessDefinitionKey:  processDefinitionKeyFrom(task.ProcessDefinitionID, variables),
 		TaskID:                strings.TrimSpace(task.ID),
 		TaskName:              firstNonBlank(strings.TrimSpace(task.Name), strings.TrimSpace(beforeTask.Name)),
 		ActivityID:            firstNonBlank(strings.TrimSpace(task.TaskDefinitionKey), strings.TrimSpace(beforeTask.TaskDefinitionKey)),
