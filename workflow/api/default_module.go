@@ -408,6 +408,8 @@ func (m *DefaultModule) handleMe(c *gin.Context) {
 		response.DirectoryResolved = true
 		response.Directory = profile
 		response.UserName = firstNonBlank(profile.DisplayName, response.UserName)
+	} else if err != nil {
+		log.Warnf("【workflow】目录用户解析失败，已按登录态基础信息降级返回 | user_id=%s | err=%v", user.UserID, err)
 	}
 	writeOK(c, response)
 }

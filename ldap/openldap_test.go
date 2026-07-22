@@ -3,6 +3,7 @@ package ldap
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"testing"
 	"time"
@@ -111,6 +112,48 @@ func TestIsLDAPNoSuchAttribute(t *testing.T) {
 	}
 	if isLDAPNoSuchAttribute(&ldap.Error{ResultCode: ldap.LDAPResultNoSuchObject}) {
 		t.Fatalf("other ldap result code should not be treated as no-such-attribute")
+	}
+}
+
+func TestOpenLDAPOperationTimeout(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen error: %v", err)
+	}
+	defer ln.Close()
+
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				defer conn.Close()
+				<-done
+			}(conn)
+		}
+	}()
+
+	client := &OpenLDAP{cfg: OpenLDAPConfig{
+		Addr:             "ldap://" + ln.Addr().String(),
+		BindDN:           "cn=admin,dc=example,dc=com",
+		BindPassword:     "secret",
+		BaseDN:           "dc=example,dc=com",
+		ConnectTimeout:   100 * time.Millisecond,
+		OperationTimeout: 150 * time.Millisecond,
+	}}
+
+	start := time.Now()
+	_, err = client.GetUser(context.Background(), "alice")
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatalf("expected timeout error")
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("LDAP operation did not fail fast, elapsed=%s, err=%v", elapsed, err)
 	}
 }
 

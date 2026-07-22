@@ -3,6 +3,7 @@ package ldap
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -11,54 +12,60 @@ import (
 )
 
 const (
-	ldapAddrKey           = "ldap_addr"
-	ldapBindDNKey         = "ldap_bind_dn"
-	ldapBindPasswordKey   = "ldap_bind_password"
-	ldapBaseDNKey         = "ldap_base_dn"
-	ldapPeopleOUKey       = "ldap_people_ou"
-	ldapDepartmentOUKey   = "ldap_department_ou"
-	ldapPositionOUKey     = "ldap_position_ou"
-	ldapGroupOUKey        = "ldap_group_ou"
-	ldapUseTLSKey         = "ldap_use_tls"
-	defaultPeopleOU       = "ou=people"
-	defaultDepartmentOU   = "ou=departments"
-	defaultPositionOU     = "ou=positions"
-	defaultGroupOU        = "ou=groups"
-	attrUID               = "uid"
-	attrCN                = "cn"
-	attrOU                = "ou"
-	attrSN                = "sn"
-	attrGivenName         = "givenName"
-	attrMail              = "mail"
-	attrEmployeeNumber    = "employeeNumber"
-	attrDepartmentNumber  = "departmentNumber"
-	attrEmployeeType      = "employeeType"
-	attrBusinessCategory  = "businessCategory"
-	attrUserPassword      = "userPassword"
-	attrTelephoneNumber   = "telephoneNumber"
-	attrPostalAddress     = "postalAddress"
-	attrDNQualifier       = "dnQualifier"
-	attrTitle             = "title"
-	attrDescription       = "description"
-	attrSeeAlso           = "seeAlso"
-	attrUniqueMember      = "uniqueMember"
-	objectClassPerson     = "inetOrgPerson"
-	objectClassDept       = "organizationalUnit"
-	objectClassPosition   = "organizationalRole"
-	objectClassGroup      = "groupOfUniqueNames"
-	objectClassExtensible = "extensibleObject"
+	ldapAddrKey                 = "ldap_addr"
+	ldapBindDNKey               = "ldap_bind_dn"
+	ldapBindPasswordKey         = "ldap_bind_password"
+	ldapBaseDNKey               = "ldap_base_dn"
+	ldapPeopleOUKey             = "ldap_people_ou"
+	ldapDepartmentOUKey         = "ldap_department_ou"
+	ldapPositionOUKey           = "ldap_position_ou"
+	ldapGroupOUKey              = "ldap_group_ou"
+	ldapUseTLSKey               = "ldap_use_tls"
+	ldapConnectTimeoutKey       = "ldap_connect_timeout"
+	ldapOperationTimeoutKey     = "ldap_operation_timeout"
+	defaultLDAPConnectTimeout   = 5 * time.Second
+	defaultLDAPOperationTimeout = 5 * time.Second
+	defaultPeopleOU             = "ou=people"
+	defaultDepartmentOU         = "ou=departments"
+	defaultPositionOU           = "ou=positions"
+	defaultGroupOU              = "ou=groups"
+	attrUID                     = "uid"
+	attrCN                      = "cn"
+	attrOU                      = "ou"
+	attrSN                      = "sn"
+	attrGivenName               = "givenName"
+	attrMail                    = "mail"
+	attrEmployeeNumber          = "employeeNumber"
+	attrDepartmentNumber        = "departmentNumber"
+	attrEmployeeType            = "employeeType"
+	attrBusinessCategory        = "businessCategory"
+	attrUserPassword            = "userPassword"
+	attrTelephoneNumber         = "telephoneNumber"
+	attrPostalAddress           = "postalAddress"
+	attrDNQualifier             = "dnQualifier"
+	attrTitle                   = "title"
+	attrDescription             = "description"
+	attrSeeAlso                 = "seeAlso"
+	attrUniqueMember            = "uniqueMember"
+	objectClassPerson           = "inetOrgPerson"
+	objectClassDept             = "organizationalUnit"
+	objectClassPosition         = "organizationalRole"
+	objectClassGroup            = "groupOfUniqueNames"
+	objectClassExtensible       = "extensibleObject"
 )
 
 type OpenLDAPConfig struct {
-	Addr         string
-	BindDN       string
-	BindPassword string
-	BaseDN       string
-	PeopleOU     string
-	DeptOU       string
-	PositionOU   string
-	GroupOU      string
-	UseTLS       bool
+	Addr             string
+	BindDN           string
+	BindPassword     string
+	BaseDN           string
+	PeopleOU         string
+	DeptOU           string
+	PositionOU       string
+	GroupOU          string
+	UseTLS           bool
+	ConnectTimeout   time.Duration
+	OperationTimeout time.Duration
 }
 
 type OpenLDAP struct {
@@ -85,16 +92,26 @@ func New() (Ldap, error) {
 }
 
 func loadOpenLDAPConfig() (OpenLDAPConfig, error) {
+	connectTimeout, err := firstNonZeroDurationConfig(defaultLDAPConnectTimeout, "workflow.directory.ldap.connect_timeout", ldapConnectTimeoutKey)
+	if err != nil {
+		return OpenLDAPConfig{}, err
+	}
+	operationTimeout, err := firstNonZeroDurationConfig(defaultLDAPOperationTimeout, "workflow.directory.ldap.operation_timeout", ldapOperationTimeoutKey)
+	if err != nil {
+		return OpenLDAPConfig{}, err
+	}
 	cfg := OpenLDAPConfig{
-		Addr:         firstNonBlankConfig("workflow.directory.ldap.addr", ldapAddrKey),
-		BindDN:       firstNonBlankConfig("workflow.directory.ldap.bind_dn", ldapBindDNKey),
-		BindPassword: firstNonBlankString(config.GetConfigString("workflow.directory.ldap.bind_password"), config.GetConfigString(ldapBindPasswordKey)),
-		BaseDN:       firstNonBlankConfig("workflow.directory.ldap.base_dn", ldapBaseDNKey),
-		PeopleOU:     firstNonBlankConfig("workflow.directory.ldap.people_ou", ldapPeopleOUKey),
-		DeptOU:       firstNonBlankConfig("workflow.directory.ldap.department_ou", ldapDepartmentOUKey),
-		PositionOU:   firstNonBlankConfig("workflow.directory.ldap.position_ou", ldapPositionOUKey),
-		GroupOU:      firstNonBlankConfig("workflow.directory.ldap.group_ou", ldapGroupOUKey),
-		UseTLS:       config.GetConfigBool(ldapUseTLSKey),
+		Addr:             firstNonBlankConfig("workflow.directory.ldap.addr", ldapAddrKey),
+		BindDN:           firstNonBlankConfig("workflow.directory.ldap.bind_dn", ldapBindDNKey),
+		BindPassword:     firstNonBlankString(config.GetConfigString("workflow.directory.ldap.bind_password"), config.GetConfigString(ldapBindPasswordKey)),
+		BaseDN:           firstNonBlankConfig("workflow.directory.ldap.base_dn", ldapBaseDNKey),
+		PeopleOU:         firstNonBlankConfig("workflow.directory.ldap.people_ou", ldapPeopleOUKey),
+		DeptOU:           firstNonBlankConfig("workflow.directory.ldap.department_ou", ldapDepartmentOUKey),
+		PositionOU:       firstNonBlankConfig("workflow.directory.ldap.position_ou", ldapPositionOUKey),
+		GroupOU:          firstNonBlankConfig("workflow.directory.ldap.group_ou", ldapGroupOUKey),
+		UseTLS:           config.GetConfigBool(ldapUseTLSKey),
+		ConnectTimeout:   connectTimeout,
+		OperationTimeout: operationTimeout,
 	}
 	if config.GetConfigString("workflow.directory.ldap.addr") != "" {
 		cfg.UseTLS = config.GetConfigBool("workflow.directory.ldap.use_tls")
@@ -152,17 +169,112 @@ func firstNonBlankString(values ...string) string {
 	return ""
 }
 
-func (o *OpenLDAP) withConn(fn func(conn *ldap.Conn) error) error {
-	conn, err := ldap.DialURL(o.cfg.url())
+func firstNonZeroDurationConfig(defaultValue time.Duration, keys ...string) (time.Duration, error) {
+	for _, key := range keys {
+		value := strings.TrimSpace(config.GetConfigString(key))
+		if value == "" {
+			continue
+		}
+		duration, err := time.ParseDuration(value)
+		if err != nil {
+			return 0, fmt.Errorf("ldap config %s must be a duration, value=%q: %w", key, value, err)
+		}
+		if duration <= 0 {
+			return 0, fmt.Errorf("ldap config %s must be greater than 0, value=%q", key, value)
+		}
+		return duration, nil
+	}
+	return defaultValue, nil
+}
+
+func (o *OpenLDAP) withConn(ctx context.Context, fn func(conn *ldap.Conn) error) error {
+	conn, err := o.dial(ctx)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
 	if err := conn.Bind(o.cfg.BindDN, o.cfg.BindPassword); err != nil {
 		return err
 	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
 	return fn(conn)
+}
+
+func (o *OpenLDAP) dial(ctx context.Context) (*ldap.Conn, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	conn, err := ldap.DialURL(o.cfg.url(), ldap.DialWithDialer(&net.Dialer{
+		Timeout: effectiveTimeout(ctx, o.connectTimeout()),
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("ldap dial %s failed: %w", o.cfg.url(), err)
+	}
+	conn.SetTimeout(effectiveTimeout(ctx, o.operationTimeout()))
+	return conn, nil
+}
+
+func (o *OpenLDAP) bindAs(ctx context.Context, bindDN, password string) error {
+	conn, err := o.dial(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	return conn.Bind(bindDN, password)
+}
+
+func (o *OpenLDAP) connectTimeout() time.Duration {
+	if o.cfg.ConnectTimeout > 0 {
+		return o.cfg.ConnectTimeout
+	}
+	return defaultLDAPConnectTimeout
+}
+
+func (o *OpenLDAP) operationTimeout() time.Duration {
+	if o.cfg.OperationTimeout > 0 {
+		return o.cfg.OperationTimeout
+	}
+	return defaultLDAPOperationTimeout
+}
+
+func effectiveTimeout(ctx context.Context, fallback time.Duration) time.Duration {
+	if fallback <= 0 {
+		fallback = defaultLDAPOperationTimeout
+	}
+	if ctx == nil {
+		return fallback
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return fallback
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return time.Nanosecond
+	}
+	if remaining < fallback {
+		return remaining
+	}
+	return fallback
+}
+
+func checkContext(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Err()
 }
 
 func (cfg OpenLDAPConfig) url() string {
@@ -517,7 +629,7 @@ func (o *OpenLDAP) GetUser(ctx context.Context, uid string) (*OrgUser, error) {
 	}
 	uid = strings.TrimSpace(uid)
 	var out *OrgUser
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		entry, err := o.getEntryByDN(conn, o.userDN(uid), []string{
 			attrUID, attrCN, attrSN, attrGivenName, attrMail, attrEmployeeNumber, attrTelephoneNumber, attrPostalAddress,
 			attrDNQualifier, attrEmployeeType, attrTitle,
@@ -538,7 +650,7 @@ func (o *OpenLDAP) GetUserByDN(ctx context.Context, dn string) (*OrgUser, error)
 		return nil, LdapParamsError{Params: []string{"dn"}}
 	}
 	var out *OrgUser
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		entry, err := o.getEntryByDN(conn, dn, []string{
 			attrUID, attrCN, attrSN, attrGivenName, attrMail, attrEmployeeNumber, attrTelephoneNumber, attrPostalAddress,
 			attrDNQualifier, attrEmployeeType, attrTitle,
@@ -558,7 +670,7 @@ func (o *OpenLDAP) AddUser(ctx context.Context, u *OrgUser) error {
 	if err != nil {
 		return err
 	}
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		if err := o.ensureUnique(conn, o.cfg.peopleDN(), attrUID, nu.UID); err != nil {
 			return err
 		}
@@ -620,7 +732,7 @@ func (o *OpenLDAP) UpdateUser(ctx context.Context, u *OrgUser) error {
 	if err != nil {
 		return err
 	}
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		if nu.Birthday != "" {
 			if err := o.ensureUserObjectClass(conn, nu.UID, objectClassExtensible); err != nil {
 				return err
@@ -726,7 +838,7 @@ func (o *OpenLDAP) DeleteUser(ctx context.Context, uid string) error {
 		return LdapParamsError{Params: []string{"uid"}}
 	}
 	uid = strings.TrimSpace(uid)
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		req := ldap.NewDelRequest(o.userDN(uid), nil)
 		return ldapErr(conn.Del(req), "User", uid)
 	})
@@ -734,7 +846,7 @@ func (o *OpenLDAP) DeleteUser(ctx context.Context, uid string) error {
 
 func (o *OpenLDAP) ListUser(ctx context.Context) ([]*OrgUser, error) {
 	var out []*OrgUser
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		req := ldap.NewSearchRequest(
 			o.cfg.peopleDN(),
 			ldap.ScopeWholeSubtree,
@@ -804,7 +916,7 @@ func (o *OpenLDAP) GetDepartment(ctx context.Context, code string) (*Department,
 		return nil, LdapParamsError{Params: []string{"code"}}
 	}
 	var out *Department
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		entry, err := o.getEntryByDN(conn, o.departmentDN(code), []string{
 			attrOU, attrDescription, attrSeeAlso,
 		})
@@ -823,7 +935,7 @@ func (o *OpenLDAP) GetDepartmentByDN(ctx context.Context, dn string) (*Departmen
 		return nil, LdapParamsError{Params: []string{"dn"}}
 	}
 	var out *Department
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		entry, err := o.getEntryByDN(conn, dn, []string{
 			attrOU, attrDescription, attrSeeAlso,
 		})
@@ -844,7 +956,7 @@ func (o *OpenLDAP) AddDepartment(ctx context.Context, d *Department) error {
 	if baseCode := o.deptBaseCode(); baseCode != "" && strings.EqualFold(nd.Code, baseCode) {
 		return LdapParamsError{Params: []string{"code"}}
 	}
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		if err := o.ensureUnique(conn, o.cfg.deptDN(), attrOU, nd.Code); err != nil {
 			return err
 		}
@@ -880,7 +992,7 @@ func (o *OpenLDAP) UpdateDepartment(ctx context.Context, d *Department) error {
 	if baseCode := o.deptBaseCode(); baseCode != "" && strings.EqualFold(nd.Code, baseCode) {
 		return LdapParamsError{Params: []string{"code"}}
 	}
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		if err := o.ensureDNExists(conn, nd.ParentDN); err != nil {
 			return err
 		}
@@ -914,7 +1026,7 @@ func (o *OpenLDAP) DeleteDepartment(ctx context.Context, code string) error {
 	if code == "" {
 		return LdapParamsError{Params: []string{"code"}}
 	}
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		req := ldap.NewDelRequest(o.departmentDN(code), nil)
 		return ldapErr(conn.Del(req), "Department", code)
 	})
@@ -922,7 +1034,7 @@ func (o *OpenLDAP) DeleteDepartment(ctx context.Context, code string) error {
 
 func (o *OpenLDAP) ListDepartment(ctx context.Context) ([]*Department, error) {
 	var out []*Department
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		req := ldap.NewSearchRequest(
 			o.cfg.deptDN(),
 			ldap.ScopeWholeSubtree,
@@ -1006,7 +1118,7 @@ func (o *OpenLDAP) GetPosition(ctx context.Context, code string) (*Position, err
 		return nil, LdapParamsError{Params: []string{"code"}}
 	}
 	var out *Position
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		entry, err := o.getEntryByDN(conn, o.positionDN(code), []string{
 			attrCN, attrDescription, attrSeeAlso,
 		})
@@ -1025,7 +1137,7 @@ func (o *OpenLDAP) GetPositionByDN(ctx context.Context, dn string) (*Position, e
 		return nil, LdapParamsError{Params: []string{"dn"}}
 	}
 	var out *Position
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		entry, err := o.getEntryByDN(conn, dn, []string{
 			attrCN, attrDescription, attrSeeAlso,
 		})
@@ -1043,7 +1155,7 @@ func (o *OpenLDAP) AddPosition(ctx context.Context, p *Position) error {
 	if err != nil {
 		return err
 	}
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		if err := o.ensureUnique(conn, o.cfg.positionDN(), attrCN, np.Code); err != nil {
 			return err
 		}
@@ -1066,7 +1178,7 @@ func (o *OpenLDAP) UpdatePosition(ctx context.Context, p *Position) error {
 	if err != nil {
 		return err
 	}
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		if err := o.ensureDNExists(conn, np.DeptDN); err != nil {
 			return err
 		}
@@ -1090,7 +1202,7 @@ func (o *OpenLDAP) DeletePosition(ctx context.Context, code string) error {
 	if code == "" {
 		return LdapParamsError{Params: []string{"code"}}
 	}
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		req := ldap.NewDelRequest(o.positionDN(code), nil)
 		return ldapErr(conn.Del(req), "Position", code)
 	})
@@ -1098,7 +1210,7 @@ func (o *OpenLDAP) DeletePosition(ctx context.Context, code string) error {
 
 func (o *OpenLDAP) ListPosition(ctx context.Context) ([]*Position, error) {
 	var out []*Position
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		req := ldap.NewSearchRequest(
 			o.cfg.positionDN(),
 			ldap.ScopeWholeSubtree,
@@ -1139,7 +1251,7 @@ func (o *OpenLDAP) GetGroup(ctx context.Context, code string) (*Group, error) {
 		return nil, LdapParamsError{Params: []string{"code"}}
 	}
 	var out *Group
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		entry, err := o.getEntryByDN(conn, o.groupDN(strings.TrimSpace(code)), []string{
 			attrCN, attrDescription, attrUniqueMember,
 		})
@@ -1158,7 +1270,7 @@ func (o *OpenLDAP) GetGroupByDN(ctx context.Context, dn string) (*Group, error) 
 		return nil, LdapParamsError{Params: []string{"dn"}}
 	}
 	var out *Group
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		entry, err := o.getEntryByDN(conn, dn, []string{
 			attrCN, attrDescription, attrUniqueMember,
 		})
@@ -1179,7 +1291,7 @@ func (o *OpenLDAP) AddGroup(ctx context.Context, group *Group) error {
 	if len(ng.MemberDNs) == 0 {
 		return LdapParamsError{Params: []string{"memberDns"}}
 	}
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		if err := o.ensureBaseEntryExists(conn, o.cfg.groupDN()); err != nil {
 			return err
 		}
@@ -1208,7 +1320,7 @@ func (o *OpenLDAP) UpdateGroup(ctx context.Context, group *Group) error {
 	if len(ng.MemberDNs) == 0 {
 		return LdapParamsError{Params: []string{"memberDns"}}
 	}
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		if err := o.ensureBaseEntryExists(conn, o.cfg.groupDN()); err != nil {
 			return err
 		}
@@ -1229,7 +1341,7 @@ func (o *OpenLDAP) DeleteGroup(ctx context.Context, code string) error {
 	if code == "" {
 		return LdapParamsError{Params: []string{"code"}}
 	}
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		req := ldap.NewDelRequest(o.groupDN(code), nil)
 		return ldapErr(conn.Del(req), "Group", code)
 	})
@@ -1237,7 +1349,7 @@ func (o *OpenLDAP) DeleteGroup(ctx context.Context, code string) error {
 
 func (o *OpenLDAP) ListGroup(ctx context.Context) ([]*Group, error) {
 	var out []*Group
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		if err := o.ensureBaseEntryExists(conn, o.cfg.groupDN()); err != nil {
 			return err
 		}
@@ -1276,23 +1388,23 @@ func entryToGroup(entry *ldap.Entry) *Group {
 }
 
 func (o *OpenLDAP) AddUserDepartments(ctx context.Context, uid string, deptCodes []string) error {
-	return o.updateUserMultiAttr(uid, attrDepartmentNumber, deptCodes, nil, func(conn *ldap.Conn, code string) error {
+	return o.updateUserMultiAttr(ctx, uid, attrDepartmentNumber, deptCodes, nil, func(conn *ldap.Conn, code string) error {
 		return o.ensureEntryExistsByAttr(conn, o.cfg.deptDN(), attrOU, code, "Department")
 	})
 }
 
 func (o *OpenLDAP) RemoveUserDepartments(ctx context.Context, uid string, deptCodes []string) error {
-	return o.updateUserMultiAttr(uid, attrDepartmentNumber, nil, deptCodes, nil)
+	return o.updateUserMultiAttr(ctx, uid, attrDepartmentNumber, nil, deptCodes, nil)
 }
 
 func (o *OpenLDAP) AddUserPositions(ctx context.Context, uid string, positionCodes []string) error {
-	return o.updateUserMultiAttr(uid, attrTitle, positionCodes, nil, func(conn *ldap.Conn, code string) error {
+	return o.updateUserMultiAttr(ctx, uid, attrTitle, positionCodes, nil, func(conn *ldap.Conn, code string) error {
 		return o.ensureEntryExistsByAttr(conn, o.cfg.positionDN(), attrCN, code, "Position")
 	})
 }
 
 func (o *OpenLDAP) RemoveUserPositions(ctx context.Context, uid string, positionCodes []string) error {
-	return o.updateUserMultiAttr(uid, attrTitle, nil, positionCodes, nil)
+	return o.updateUserMultiAttr(ctx, uid, attrTitle, nil, positionCodes, nil)
 }
 
 func (o *OpenLDAP) ValidateUser(ctx context.Context, phone, password string) (*OrgUser, error) {
@@ -1310,7 +1422,7 @@ func (o *OpenLDAP) ValidateUser(ctx context.Context, phone, password string) (*O
 	}
 
 	var out *OrgUser
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		filter := fmt.Sprintf("(%s=%s)", attrTelephoneNumber, ldap.EscapeFilter(phone))
 		req := ldap.NewSearchRequest(
 			o.cfg.peopleDN(),
@@ -1337,13 +1449,7 @@ func (o *OpenLDAP) ValidateUser(ctx context.Context, phone, password string) (*O
 		}
 
 		entry := res.Entries[0]
-		authConn, err := ldap.DialURL(o.cfg.url())
-		if err != nil {
-			return err
-		}
-		defer authConn.Close()
-
-		if err := authConn.Bind(entry.DN, password); err != nil {
+		if err := o.bindAs(ctx, entry.DN, password); err != nil {
 			return err
 		}
 
@@ -1368,7 +1474,7 @@ func (o *OpenLDAP) ValidateUserByUID(ctx context.Context, uid, password string) 
 	}
 
 	var out *OrgUser
-	err := o.withConn(func(conn *ldap.Conn) error {
+	err := o.withConn(ctx, func(conn *ldap.Conn) error {
 		entry, err := o.getEntryByDN(conn, o.userDN(uid), []string{
 			attrUID, attrCN, attrSN, attrGivenName, attrMail, attrEmployeeNumber, attrTelephoneNumber, attrPostalAddress,
 			attrDNQualifier, attrEmployeeType, attrTitle,
@@ -1378,13 +1484,7 @@ func (o *OpenLDAP) ValidateUserByUID(ctx context.Context, uid, password string) 
 			return err
 		}
 
-		authConn, err := ldap.DialURL(o.cfg.url())
-		if err != nil {
-			return err
-		}
-		defer authConn.Close()
-
-		if err := authConn.Bind(entry.DN, password); err != nil {
+		if err := o.bindAs(ctx, entry.DN, password); err != nil {
 			return err
 		}
 
@@ -1394,7 +1494,7 @@ func (o *OpenLDAP) ValidateUserByUID(ctx context.Context, uid, password string) 
 	return out, err
 }
 
-func (o *OpenLDAP) updateUserMultiAttr(uid, attr string, addValues, removeValues []string, validateFn func(conn *ldap.Conn, code string) error) error {
+func (o *OpenLDAP) updateUserMultiAttr(ctx context.Context, uid, attr string, addValues, removeValues []string, validateFn func(conn *ldap.Conn, code string) error) error {
 	uid = strings.TrimSpace(uid)
 	if uid == "" {
 		return LdapParamsError{Params: []string{"uid"}}
@@ -1411,7 +1511,7 @@ func (o *OpenLDAP) updateUserMultiAttr(uid, attr string, addValues, removeValues
 	if err != nil {
 		return LdapParamsError{Params: []string{attr}}
 	}
-	return o.withConn(func(conn *ldap.Conn) error {
+	return o.withConn(ctx, func(conn *ldap.Conn) error {
 		if validateFn != nil {
 			for _, code := range addValues {
 				if err := validateFn(conn, code); err != nil {

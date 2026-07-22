@@ -60,6 +60,8 @@ workflow:
 #      department_ou: ou=departments
 #      position_ou: ou=positions
 #      use_tls: false
+#      connect_timeout: 5s
+#      operation_timeout: 5s
   assignment:
     provider: none # none | directory | ldap
 #    variable_keys:
