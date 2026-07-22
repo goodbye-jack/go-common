@@ -209,6 +209,7 @@ func TestValidateDN(t *testing.T) {
 }
 
 func TestOpenLDAPConfigDefaults(t *testing.T) {
+	clearOpenLDAPConfig(t)
 	viper.Set(ldapAddrKey, "127.0.0.1:389")
 	viper.Set(ldapBindDNKey, "cn=admin,dc=example,dc=com")
 	viper.Set(ldapBindPasswordKey, "admin123")
@@ -223,6 +224,49 @@ func TestOpenLDAPConfigDefaults(t *testing.T) {
 	}
 	if cfg.PeopleOU != defaultPeopleOU || cfg.DeptOU != defaultDepartmentOU || cfg.PositionOU != defaultPositionOU {
 		t.Fatalf("default OU mismatch: %+v", cfg)
+	}
+}
+
+func TestOpenLDAPConfigDoesNotReadLegacyFlatKeys(t *testing.T) {
+	clearOpenLDAPConfig(t)
+	viper.Set("ldap_addr", "127.0.0.1:389")
+	viper.Set("ldap_bind_dn", "cn=admin,dc=example,dc=com")
+	viper.Set("ldap_bind_password", "admin123")
+	viper.Set("ldap_base_dn", "dc=example,dc=com")
+
+	if _, err := loadOpenLDAPConfig(); err == nil {
+		t.Fatalf("expected legacy flat ldap_* keys to be ignored")
+	}
+}
+
+func clearOpenLDAPConfig(t *testing.T) {
+	t.Helper()
+	keys := []string{
+		ldapAddrKey,
+		ldapBindDNKey,
+		ldapBindPasswordKey,
+		ldapBaseDNKey,
+		ldapPeopleOUKey,
+		ldapDepartmentOUKey,
+		ldapPositionOUKey,
+		ldapGroupOUKey,
+		ldapUseTLSKey,
+		ldapConnectTimeoutKey,
+		ldapOperationTimeoutKey,
+		"ldap_addr",
+		"ldap_bind_dn",
+		"ldap_bind_password",
+		"ldap_base_dn",
+		"ldap_people_ou",
+		"ldap_department_ou",
+		"ldap_position_ou",
+		"ldap_group_ou",
+		"ldap_use_tls",
+		"ldap_connect_timeout",
+		"ldap_operation_timeout",
+	}
+	for _, key := range keys {
+		viper.Set(key, nil)
 	}
 }
 

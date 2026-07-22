@@ -75,22 +75,18 @@ func resolveProviderFromConfig() string {
 	if provider != "" {
 		return provider
 	}
-	if hasLegacyOrNamespacedLDAPConfig() {
+	if hasLDAPConfig() {
 		return "ldap"
 	}
 	return "none"
 }
 
-func hasLegacyOrNamespacedLDAPConfig() bool {
+func hasLDAPConfig() bool {
 	keys := []string{
-		"workflow.directory.ldap.addr",
-		"workflow.directory.ldap.bind_dn",
-		"workflow.directory.ldap.bind_password",
-		"workflow.directory.ldap.base_dn",
-		"ldap_addr",
-		"ldap_bind_dn",
-		"ldap_bind_password",
-		"ldap_base_dn",
+		"ldap.addr",
+		"ldap.bind_dn",
+		"ldap.bind_password",
+		"ldap.base_dn",
 	}
 	for _, key := range keys {
 		if strings.TrimSpace(config.GetConfigString(key)) != "" {

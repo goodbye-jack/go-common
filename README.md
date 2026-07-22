@@ -124,6 +124,17 @@ func main() {
 - `workflow.api.enabled`
 - `workflow.api.prefix`
 - `workflow.api.sso_enabled`
+- `ldap.addr`
+- `ldap.bind_dn`
+- `ldap.bind_password`
+- `ldap.base_dn`
+- `ldap.people_ou`
+- `ldap.department_ou`
+- `ldap.position_ou`
+- `ldap.group_ou`
+- `ldap.connect_timeout`
+- `ldap.operation_timeout`
+- `workflow.directory.provider`
 - `workflow.context.user_name_header`
 - `workflow.context.system_code_header`
 - `workflow.context.groups_header`
@@ -134,6 +145,7 @@ func main() {
 - `workflow.callback.path` 对应的 Flowable 回调接口是公开入口，不依赖登录态；生产环境应配置 `workflow.callback.secret` 做回调验签。
 - 其他 `/workflow/**` 标准接口要求已登录用户，并要求业务系统在 `Principal.CapabilityCodes` 中提供 `workflow_api_access` 能力。
 - `workflow.api.roles` 已移除，不再通过配置文件维护可访问角色列表；业务项目应在自己的角色/能力表中把 `workflow_api_access` 绑定给默认登录角色。
+- LDAP 连接信息统一放在顶层 `ldap.*`；`auth.ldap` 只描述 LDAP 登录后的本地角色/档案策略，`workflow.directory.provider=ldap` 只表示 workflow 目录查询复用顶层 LDAP 配置。
 
 按需增强配置：
 

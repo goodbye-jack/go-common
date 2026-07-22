@@ -1,0 +1,142 @@
+module: ldap
+title: LDAP 基础配置
+description: LDAP 连接与目录结构配置。认证策略放在业务项目 auth.ldap，workflow 只通过 provider 引用该基础能力。
+owner: go-common/ldap
+order: 25
+
+items:
+  - key: ldap
+    kind: object
+    since: v1.4.2
+    comment: LDAP 基础配置对象。
+    group: ldap
+    order: 10
+
+  - key: ldap.addr
+    kind: scalar
+    type: string
+    since: v1.4.2
+    required: false
+    comment: LDAP 地址。
+    example: ldap://127.0.0.1:8389
+    group: ldap
+    order: 20
+    merge_policy: add_if_missing
+
+  - key: ldap.bind_dn
+    kind: scalar
+    type: string
+    since: v1.4.2
+    required: false
+    comment: LDAP 管理员绑定 DN。
+    example: cn=admin,dc=example,dc=com
+    group: ldap
+    order: 30
+    merge_policy: add_if_missing
+
+  - key: ldap.bind_password
+    kind: scalar
+    type: string
+    since: v1.4.2
+    required: false
+    sensitive: true
+    comment: LDAP 管理员绑定密码。
+    example: ldap-bind-password
+    group: ldap
+    order: 40
+    merge_policy: add_if_missing
+
+  - key: ldap.base_dn
+    kind: scalar
+    type: string
+    since: v1.4.2
+    required: false
+    comment: LDAP 根 DN。
+    example: dc=example,dc=com
+    group: ldap
+    order: 50
+    merge_policy: add_if_missing
+
+  - key: ldap.people_ou
+    kind: scalar
+    type: string
+    since: v1.4.2
+    required: false
+    default: ou=people
+    comment: LDAP 用户 OU。
+    example: ou=people
+    group: ldap
+    order: 60
+    merge_policy: add_if_missing
+
+  - key: ldap.department_ou
+    kind: scalar
+    type: string
+    since: v1.4.2
+    required: false
+    default: ou=departments
+    comment: LDAP 部门 OU。
+    example: ou=departments
+    group: ldap
+    order: 70
+    merge_policy: add_if_missing
+
+  - key: ldap.position_ou
+    kind: scalar
+    type: string
+    since: v1.4.2
+    required: false
+    default: ou=positions
+    comment: LDAP 岗位 OU。
+    example: ou=positions
+    group: ldap
+    order: 80
+    merge_policy: add_if_missing
+
+  - key: ldap.group_ou
+    kind: scalar
+    type: string
+    since: v1.4.2
+    required: false
+    default: ou=groups
+    comment: LDAP 组 OU。Flowable candidateGroups 与流程角色组投影默认使用该 OU。
+    example: ou=groups
+    group: ldap
+    order: 90
+    merge_policy: add_if_missing
+
+  - key: ldap.use_tls
+    kind: scalar
+    type: bool
+    since: v1.4.2
+    required: false
+    default: false
+    comment: LDAP 是否启用 TLS。addr 已使用 ldaps:// 时可保持 false，由地址 scheme 决定。
+    example: false
+    group: ldap
+    order: 100
+    merge_policy: add_if_missing
+
+  - key: ldap.connect_timeout
+    kind: scalar
+    type: duration
+    since: v1.4.2
+    required: false
+    default: 5s
+    comment: LDAP TCP 连接超时时间。网络不通、端口被丢弃或地址错误时，超过该时间快速失败。
+    example: 5s
+    group: ldap
+    order: 110
+    merge_policy: add_if_missing
+
+  - key: ldap.operation_timeout
+    kind: scalar
+    type: duration
+    since: v1.4.2
+    required: false
+    default: 5s
+    comment: LDAP Bind/Search/Add/Modify/Delete 等单次请求超时时间。LDAP 服务已连接但无响应时，超过该时间快速失败。
+    example: 5s
+    group: ldap
+    order: 120
+    merge_policy: add_if_missing

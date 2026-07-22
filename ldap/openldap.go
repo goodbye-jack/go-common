@@ -12,17 +12,17 @@ import (
 )
 
 const (
-	ldapAddrKey                 = "ldap_addr"
-	ldapBindDNKey               = "ldap_bind_dn"
-	ldapBindPasswordKey         = "ldap_bind_password"
-	ldapBaseDNKey               = "ldap_base_dn"
-	ldapPeopleOUKey             = "ldap_people_ou"
-	ldapDepartmentOUKey         = "ldap_department_ou"
-	ldapPositionOUKey           = "ldap_position_ou"
-	ldapGroupOUKey              = "ldap_group_ou"
-	ldapUseTLSKey               = "ldap_use_tls"
-	ldapConnectTimeoutKey       = "ldap_connect_timeout"
-	ldapOperationTimeoutKey     = "ldap_operation_timeout"
+	ldapAddrKey                 = "ldap.addr"
+	ldapBindDNKey               = "ldap.bind_dn"
+	ldapBindPasswordKey         = "ldap.bind_password"
+	ldapBaseDNKey               = "ldap.base_dn"
+	ldapPeopleOUKey             = "ldap.people_ou"
+	ldapDepartmentOUKey         = "ldap.department_ou"
+	ldapPositionOUKey           = "ldap.position_ou"
+	ldapGroupOUKey              = "ldap.group_ou"
+	ldapUseTLSKey               = "ldap.use_tls"
+	ldapConnectTimeoutKey       = "ldap.connect_timeout"
+	ldapOperationTimeoutKey     = "ldap.operation_timeout"
 	defaultLDAPConnectTimeout   = 5 * time.Second
 	defaultLDAPOperationTimeout = 5 * time.Second
 	defaultPeopleOU             = "ou=people"
@@ -92,29 +92,26 @@ func New() (Ldap, error) {
 }
 
 func loadOpenLDAPConfig() (OpenLDAPConfig, error) {
-	connectTimeout, err := firstNonZeroDurationConfig(defaultLDAPConnectTimeout, "workflow.directory.ldap.connect_timeout", ldapConnectTimeoutKey)
+	connectTimeout, err := firstNonZeroDurationConfig(defaultLDAPConnectTimeout, ldapConnectTimeoutKey)
 	if err != nil {
 		return OpenLDAPConfig{}, err
 	}
-	operationTimeout, err := firstNonZeroDurationConfig(defaultLDAPOperationTimeout, "workflow.directory.ldap.operation_timeout", ldapOperationTimeoutKey)
+	operationTimeout, err := firstNonZeroDurationConfig(defaultLDAPOperationTimeout, ldapOperationTimeoutKey)
 	if err != nil {
 		return OpenLDAPConfig{}, err
 	}
 	cfg := OpenLDAPConfig{
-		Addr:             firstNonBlankConfig("workflow.directory.ldap.addr", ldapAddrKey),
-		BindDN:           firstNonBlankConfig("workflow.directory.ldap.bind_dn", ldapBindDNKey),
-		BindPassword:     firstNonBlankString(config.GetConfigString("workflow.directory.ldap.bind_password"), config.GetConfigString(ldapBindPasswordKey)),
-		BaseDN:           firstNonBlankConfig("workflow.directory.ldap.base_dn", ldapBaseDNKey),
-		PeopleOU:         firstNonBlankConfig("workflow.directory.ldap.people_ou", ldapPeopleOUKey),
-		DeptOU:           firstNonBlankConfig("workflow.directory.ldap.department_ou", ldapDepartmentOUKey),
-		PositionOU:       firstNonBlankConfig("workflow.directory.ldap.position_ou", ldapPositionOUKey),
-		GroupOU:          firstNonBlankConfig("workflow.directory.ldap.group_ou", ldapGroupOUKey),
+		Addr:             firstNonBlankConfig(ldapAddrKey),
+		BindDN:           firstNonBlankConfig(ldapBindDNKey),
+		BindPassword:     firstNonBlankConfig(ldapBindPasswordKey),
+		BaseDN:           firstNonBlankConfig(ldapBaseDNKey),
+		PeopleOU:         firstNonBlankConfig(ldapPeopleOUKey),
+		DeptOU:           firstNonBlankConfig(ldapDepartmentOUKey),
+		PositionOU:       firstNonBlankConfig(ldapPositionOUKey),
+		GroupOU:          firstNonBlankConfig(ldapGroupOUKey),
 		UseTLS:           config.GetConfigBool(ldapUseTLSKey),
 		ConnectTimeout:   connectTimeout,
 		OperationTimeout: operationTimeout,
-	}
-	if config.GetConfigString("workflow.directory.ldap.addr") != "" {
-		cfg.UseTLS = config.GetConfigBool("workflow.directory.ldap.use_tls")
 	}
 	if cfg.PeopleOU == "" {
 		cfg.PeopleOU = defaultPeopleOU
@@ -155,15 +152,6 @@ func firstNonBlankConfig(keys ...string) string {
 	for _, key := range keys {
 		if value := strings.TrimSpace(config.GetConfigString(key)); value != "" {
 			return value
-		}
-	}
-	return ""
-}
-
-func firstNonBlankString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
 		}
 	}
 	return ""

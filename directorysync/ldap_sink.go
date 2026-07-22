@@ -47,11 +47,11 @@ func NewLDAPSinkFromConfig(options LDAPSinkOptions) (*LDAPSink, error) {
 	return &LDAPSink{
 		client: client,
 		naming: ldapNaming{
-			baseDN:       firstConfigValue("workflow.directory.ldap.base_dn", "ldap_base_dn"),
-			peopleOU:     firstConfigValue("workflow.directory.ldap.people_ou", "ldap_people_ou", defaultPeopleOU),
-			departmentOU: firstConfigValue("workflow.directory.ldap.department_ou", "ldap_department_ou", defaultDeptOU),
-			positionOU:   firstConfigValue("workflow.directory.ldap.position_ou", "ldap_position_ou", defaultPositionOU),
-			groupOU:      firstConfigValue("workflow.directory.ldap.group_ou", "ldap_group_ou", defaultGroupOU),
+			baseDN:       firstConfigValue("ldap.base_dn"),
+			peopleOU:     firstConfigValue("ldap.people_ou", defaultPeopleOU),
+			departmentOU: firstConfigValue("ldap.department_ou", defaultDeptOU),
+			positionOU:   firstConfigValue("ldap.position_ou", defaultPositionOU),
+			groupOU:      firstConfigValue("ldap.group_ou", defaultGroupOU),
 		},
 		resetPasswordOnExisting: options.ResetPasswordOnExisting,
 	}, nil
