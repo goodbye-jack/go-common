@@ -170,7 +170,10 @@ func validateOptionalWorkflowDBInstances() error {
 }
 
 func newModuleWithProviderFromConfig(options RegisterOptions) (*DefaultModule, string, string, error) {
-	resolver := workflowcontext.NewDefaultResolver()
+	var resolver workflowcontext.Resolver = workflowcontext.NewDefaultResolver()
+	if options.ContextResolver != nil {
+		resolver = options.ContextResolver
+	}
 	directoryService := options.DirectoryService
 	provider := "custom"
 	var err error
@@ -195,6 +198,7 @@ func newModuleWithProviderFromConfig(options RegisterOptions) (*DefaultModule, s
 	module, err := NewDefaultModuleWithOptions(resolver, directoryService, flowableClient, RegisterOptions{
 		DirectoryService:  options.DirectoryService,
 		AssignmentService: options.AssignmentService,
+		ContextResolver:   options.ContextResolver,
 		FormRefService:    options.FormRefService,
 		ContractPolicy:    options.ContractPolicy,
 	})
@@ -247,6 +251,9 @@ func (m *DefaultModule) applyOptions(options RegisterOptions) {
 	}
 	if options.AssignmentService != nil {
 		m.assignment = options.AssignmentService
+	}
+	if options.ContextResolver != nil {
+		m.resolver = options.ContextResolver
 	}
 	if options.FormRefService != nil {
 		m.formref = options.FormRefService

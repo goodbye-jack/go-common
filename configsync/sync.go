@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	CurrentVersion      = "v1.3.8"
+	CurrentVersion      = "v1.4.3"
 	modulePath          = "github.com/goodbye-jack/go-common"
 	metaFileName        = ".go-common-config-meta.yaml"
 	latestFileName      = "config.latest.yaml"

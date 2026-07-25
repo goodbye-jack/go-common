@@ -7,6 +7,7 @@ import (
 	"github.com/goodbye-jack/go-common/orm"
 	"github.com/goodbye-jack/go-common/utils"
 	"github.com/goodbye-jack/go-common/workflow/assignment"
+	workflowcontext "github.com/goodbye-jack/go-common/workflow/context"
 	"github.com/goodbye-jack/go-common/workflow/contract"
 	"github.com/goodbye-jack/go-common/workflow/directory"
 	"github.com/goodbye-jack/go-common/workflow/types"
@@ -159,6 +160,31 @@ func TestDefaultModuleRegisterAddsWorkflowRoutes(t *testing.T) {
 		if len(policy.Guards) != 1 || policy.Guards[0].Name() != "require_capability" {
 			t.Fatalf("workflow route %s guards=%v, want require_capability", route.Url, policy.Guards)
 		}
+	}
+}
+
+func TestNewDefaultModuleWithOptionsUsesContextResolver(t *testing.T) {
+	customResolver := stubResolver{
+		user: &workflowcontext.UserContext{
+			UserID: "custom-user",
+		},
+	}
+	module, err := NewDefaultModuleWithOptions(
+		stubResolver{user: &workflowcontext.UserContext{UserID: "base-user"}},
+		directory.NewNoopService(),
+		stubFlowableClient{},
+		RegisterOptions{ContextResolver: customResolver},
+	)
+	if err != nil {
+		t.Fatalf("NewDefaultModuleWithOptions() error=%v, want nil", err)
+	}
+
+	user, err := module.resolver.Resolve(nil)
+	if err != nil {
+		t.Fatalf("module resolver error=%v, want nil", err)
+	}
+	if user == nil || user.UserID != "custom-user" {
+		t.Fatalf("module resolver user=%+v, want custom-user", user)
 	}
 }
 

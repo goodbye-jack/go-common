@@ -1,0 +1,23 @@
+from: v1.3.8
+to: v1.4.3
+
+added: []
+
+changed:
+  - key: ldap
+    module: ldap
+    default: {}
+    comment: 新增顶层 LDAP 基础配置对象；该能力为按需配置，不作为新项目初始化后的必填缺失项
+  - key: workflow.directory.provider
+    module: workflow_directory
+    default: ldap
+    comment: workflow.directory.provider=ldap 时复用顶层 ldap.* 配置，不再在 workflow.directory 下重复维护 LDAP 连接信息
+  - key: workflow.assignment.variable_keys.candidate_groups
+    module: workflow_assignment
+    default: nextCandidateGroups
+    comment: 候选组变量标准化用于承载业务流程角色组，例如 wfgrp:<tenantCode>:<groupCode>
+
+deprecated:
+  - key: workflow.directory.ldap
+    new_key: ldap
+    comment: LDAP 连接配置统一迁移到顶层 ldap.*，workflow.directory 只保留 provider 选择
