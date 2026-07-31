@@ -1,0 +1,27 @@
+from: v1.4.5
+to: v1.4.6
+
+added:
+  - key: workflow.cc.enabled
+    default: true
+    comment: 是否启用工作流标准抄送接口
+  - key: workflow.cc.identity_link_type
+    default: participant
+    comment: 写入 Flowable task identity link 时使用的抄送类型
+  - key: workflow.cc.db_instance
+    default: ""
+    comment: workflow_cc_records 与 workflow_cc_read_states 使用的数据库实例名
+  - key: workflow.cc.notify_enabled
+    default: false
+    comment: 是否默认投递抄送通知
+  - key: workflow.cc.index_enabled
+    default: false
+    comment: Redis 抄送索引预留开关，v1.4.6 暂未启用，当前查询依赖数据库复合索引
+  - key: workflow.cc.variable_keys.users
+    default: nextCcUsers
+    comment: 自动抄送用户变量名
+  - key: workflow.cc.variable_keys.groups
+    default: nextCcGroups
+    comment: 自动抄送用户组变量名
+changed: []
+deprecated: []

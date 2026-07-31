@@ -132,26 +132,26 @@ func NewRESTClientFromConfig() (*RESTClient, error) {
 
 func (c *RESTClient) StartProcess(ctx stdcontext.Context, req *types.StartProcessRequest) (*types.StartProcessResponse, error) {
 	payload := map[string]interface{}{}
+	processVariables := map[string]interface{}{}
 	if req != nil {
-		variables := map[string]interface{}{}
 		for key, value := range req.Variables {
-			variables[key] = value
+			processVariables[key] = value
 		}
-		if req.BizID != "" && variables["bizId"] == nil {
-			variables["bizId"] = req.BizID
+		if req.BizID != "" && processVariables["bizId"] == nil {
+			processVariables["bizId"] = req.BizID
 		}
-		if req.BizType != "" && variables["bizType"] == nil {
-			variables["bizType"] = req.BizType
+		if req.BizType != "" && processVariables["bizType"] == nil {
+			processVariables["bizType"] = req.BizType
 		}
-		if req.Title != "" && variables["title"] == nil {
-			variables["title"] = req.Title
+		if req.Title != "" && processVariables["title"] == nil {
+			processVariables["title"] = req.Title
 		}
 		if req.ProcessDefinitionID != "" {
 			payload["processDefinitionId"] = req.ProcessDefinitionID
 		} else if req.ProcessDefinitionKey != "" {
 			tenantID := ""
-			if len(variables) > 0 {
-				tenantID = stringValue(variables["tenantId"])
+			if len(processVariables) > 0 {
+				tenantID = stringValue(processVariables["tenantId"])
 			}
 			definitionID, err := c.resolveProcessDefinitionID(ctx, req.ProcessDefinitionKey, tenantID)
 			if err == nil && definitionID != "" {
@@ -170,8 +170,8 @@ func (c *RESTClient) StartProcess(ctx stdcontext.Context, req *types.StartProces
 		} else if req.Title != "" {
 			payload["name"] = req.Title
 		}
-		if len(variables) > 0 {
-			payload["variables"] = toFlowableVariables(variables)
+		if len(processVariables) > 0 {
+			payload["variables"] = toFlowableVariables(processVariables)
 		}
 	}
 	body, err := c.doJSON(ctx, http.MethodPost, "/runtime/process-instances", nil, payload)
@@ -190,6 +190,9 @@ func (c *RESTClient) StartProcess(ctx stdcontext.Context, req *types.StartProces
 	}
 	c.invalidateProcessSummaryCache(ctx, response.ProcessInstanceID)
 	c.recordProcessStart(ctx, req, response)
+	if req != nil {
+		c.applyCCVariablesToCurrentTasks(ctx, response.ProcessInstanceID, processVariables, nil, types.TaskCCSourceFallback, "start:"+response.ProcessInstanceID)
+	}
 	return response, nil
 }
 
@@ -547,6 +550,7 @@ func (c *RESTClient) GetTaskContext(ctx stdcontext.Context, taskID string, user 
 	taskInfo.Title = firstNonBlank(taskInfo.Title, stringValue(rootVariables["title"]), stringValue(currentVariables["title"]))
 	taskInfo.PayloadRef = firstNonBlank(taskInfo.PayloadRef, stringValue(rootVariables["payloadRef"]), stringValue(currentVariables["payloadRef"]), taskInfo.BizID)
 	taskInfo.TenantID = firstNonBlank(taskInfo.TenantID, stringValue(rootVariables["tenantId"]), stringValue(currentVariables["tenantId"]), rootProcess.TenantID, currentProcess.TenantID, task.TenantID)
+	access := c.buildTaskAccessInfo(ctx, task, user)
 	return &types.TaskContextResponse{
 		Task: taskInfo,
 		Business: types.TaskBusinessContext{
@@ -559,6 +563,7 @@ func (c *RESTClient) GetTaskContext(ctx stdcontext.Context, taskID string, user 
 		},
 		Variables: variables,
 		FormRef:   nil,
+		Access:    access,
 	}, nil
 }
 
@@ -613,6 +618,7 @@ func (c *RESTClient) CompleteTask(ctx stdcontext.Context, taskID string, req *ty
 			afterTask.Assignee = strings.TrimSpace(user.UserID)
 		}
 		c.recordTaskActionRecord(ctx, types.TaskActionTypeComplete, task, afterTask, user, comment, reason)
+		c.applyCCVariablesToCurrentTasks(ctx, task.ProcessInstanceID, variables, user, types.TaskCCSourceFallback, "complete:"+taskID)
 		c.invalidateActionTimelineCache(ctx, task.ProcessInstanceID)
 		c.invalidateProcessSummaryCache(ctx, task.ProcessInstanceID)
 		c.invalidateCandidateTaskIndex(ctx, taskID)

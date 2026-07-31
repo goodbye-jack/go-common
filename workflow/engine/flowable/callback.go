@@ -24,12 +24,15 @@ func (c *RESTClient) ProcessCallback(ctx stdcontext.Context, payload *types.Flow
 		c.refreshProcessSummaryProjection(ctx, payload)
 	case "NODE_STARTED":
 		c.syncRuntimeTaskProjection(ctx, payload.TaskID, payload.ProcessInstanceID)
+		c.applyCCFromCallback(ctx, payload)
 		c.refreshProcessSummaryProjection(ctx, payload)
 	case "NODE_ENDED":
+		c.updateCCRecordsByTaskID(ctx, payload.TaskID, types.TaskCCTaskStatusCompleted)
 		c.syncDoneProjectionByTaskID(ctx, payload.TaskID)
 		c.removeRuntimeTaskProjection(ctx, payload.TaskID)
 		c.refreshProcessSummaryProjection(ctx, payload)
 	case "PROCESS_ENDED":
+		c.updateCCRecordsByProcessInstanceID(ctx, payload.ProcessInstanceID, types.TaskCCTaskStatusCompleted)
 		c.clearProcessRuntimeTaskProjections(ctx, payload.ProcessInstanceID)
 		c.refreshProcessSummaryProjection(ctx, payload)
 	default:

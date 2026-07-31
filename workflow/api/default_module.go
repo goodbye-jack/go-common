@@ -166,6 +166,10 @@ func validateOptionalWorkflowDBInstances() error {
 	if recordsDBInstance != "" && orm.GetDB(recordsDBInstance) == nil {
 		return fmt.Errorf("workflow.records.db_instance=%s configured but relational db instance not found", recordsDBInstance)
 	}
+	ccDBInstance := strings.TrimSpace(config.GetConfigString("workflow.cc.db_instance"))
+	if ccDBInstance != "" && orm.GetDB(ccDBInstance) == nil {
+		return fmt.Errorf("workflow.cc.db_instance=%s configured but relational db instance not found", ccDBInstance)
+	}
 	return nil
 }
 
@@ -314,7 +318,7 @@ func (m *DefaultModule) Register(server *commonhttp.HTTPServer) {
 				route.Methods,
 				commonhttp.Public(
 					commonhttp.WithEnforceRBAC(false),
-					commonhttp.WithDescription("workflow flowable callback"),
+					commonhttp.WithDescription("工作流 Flowable 回调"),
 				),
 				route.Handler,
 			)
@@ -327,7 +331,7 @@ func (m *DefaultModule) Register(server *commonhttp.HTTPServer) {
 			commonhttp.AnyUser(
 				commonhttp.WithEnforceRBAC(false),
 				commonhttp.WithGuard(commonhttp.RequireCapability(WorkflowAPIAccessCapability)),
-				commonhttp.WithDescription("workflow standard api"),
+				commonhttp.WithDescription("工作流标准接口"),
 			),
 			route.Handler,
 		)
@@ -337,36 +341,44 @@ func (m *DefaultModule) Register(server *commonhttp.HTTPServer) {
 
 func (m *DefaultModule) routeDefinitions() []workflowRouteDefinition {
 	return []workflowRouteDefinition{
-		{Path: m.route("/me"), Tips: "workflow current user", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleMe},
-		{Path: m.route("/me/tasks/todo"), Tips: "workflow todo tasks", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleTodo},
-		{Path: m.route("/me/tasks/done"), Tips: "workflow done tasks", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleDone},
-		{Path: m.route("/me/task-records"), Tips: "workflow current user task records", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleMyTaskRecords},
-		{Path: m.route("/me/manager"), Tips: "workflow current user manager", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleMyManager},
-		{Path: m.route("/me/department"), Tips: "workflow current user department", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleMyDepartment},
-		{Path: m.route("/process/start"), Tips: "workflow start process", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleStartProcess},
-		{Path: m.route("/tasks/:id/context"), Tips: "workflow task context", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleTaskContext},
-		{Path: m.route("/tasks/:id/form-ref"), Tips: "workflow task form reference", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleTaskFormRef},
-		{Path: m.route("/tasks/:id/claim"), Tips: "workflow claim task", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleClaimTask},
-		{Path: m.route("/tasks/:id/unclaim"), Tips: "workflow unclaim task", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleUnclaimTask},
-		{Path: m.route("/tasks/:id/complete"), Tips: "workflow complete task", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleCompleteTask},
-		{Path: m.route("/tasks/:id/delegate"), Tips: "workflow delegate task", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleDelegateTask},
-		{Path: m.route("/tasks/:id/resolve"), Tips: "workflow resolve delegated task", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleResolveTask},
-		{Path: m.route("/tasks/:id/transfer"), Tips: "workflow transfer task", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleTransferTask},
-		{Path: m.route("/org/users/:userId"), Tips: "workflow directory user", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleUser},
-		{Path: m.route("/org/users/:userId/manager"), Tips: "workflow directory user manager", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleUserManager},
-		{Path: m.route("/org/users/:userId/department"), Tips: "workflow directory user department", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleUserDepartment},
-		{Path: m.route("/process-instances/:id/progress-view"), Tips: "workflow progress view", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleProgressView},
-		{Path: m.route("/process-instances/:id/progress-timeline"), Tips: "workflow progress timeline", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleProgressTimeline},
-		{Path: m.route("/process-instances/:id/action-timeline"), Tips: "workflow action timeline", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleActionTimeline},
-		{Path: m.route("/process-instances/:id/task-records"), Tips: "workflow task records", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleTaskRecords},
-		{Path: m.route("/biz/:bizId/progress-view"), Tips: "workflow progress view by biz id", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleBizProgressView},
-		{Path: m.route("/biz/:bizId/progress-timeline"), Tips: "workflow progress timeline by biz id", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleBizProgressTimeline},
-		{Path: m.route("/biz/:bizId/action-timeline"), Tips: "workflow action timeline by biz id", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleBizActionTimeline},
-		{Path: m.route("/biz/:bizId/task-records"), Tips: "workflow task records by biz id", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleBizTaskRecords},
-		{Path: m.route("/process/instance/:id/definition-xml"), Tips: "workflow definition xml", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleDefinitionXML},
-		{Path: m.route("/process-instances/:id/diagram-view"), Tips: "workflow diagram view", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleDiagramView},
-		{Path: m.route("/process-instances/:id/composite-diagram"), Tips: "workflow composite diagram", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleCompositeDiagram},
-		{Path: m.callbackPath, Tips: "workflow flowable callback", Methods: []string{http.MethodPost}, RequireSSO: false, Handler: m.handleCallback},
+		{Path: m.route("/me"), Tips: "工作流当前用户", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleMe},
+		{Path: m.route("/me/tasks/todo"), Tips: "工作流我的待办任务", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleTodo},
+		{Path: m.route("/me/tasks/done"), Tips: "工作流我的已办任务", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleDone},
+		{Path: m.route("/me/tasks/cc"), Tips: "工作流我的抄送任务", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleCC},
+		{Path: m.route("/me/tasks/cc/count"), Tips: "工作流我的抄送任务数量", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleCCCount},
+		{Path: m.route("/me/tasks/cc/read"), Tips: "工作流标记抄送任务已读", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleCCRead},
+		{Path: m.route("/me/tasks/cc/read-all"), Tips: "工作流标记全部抄送任务已读", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleCCReadAll},
+		{Path: m.route("/me/task-records"), Tips: "工作流我的任务记录", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleMyTaskRecords},
+		{Path: m.route("/me/manager"), Tips: "工作流当前用户上级", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleMyManager},
+		{Path: m.route("/me/department"), Tips: "工作流当前用户部门", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleMyDepartment},
+		{Path: m.route("/process/start"), Tips: "工作流发起流程", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleStartProcess},
+		{Path: m.route("/tasks/:id/context"), Tips: "工作流任务上下文", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleTaskContext},
+		{Path: m.route("/tasks/:id/form-ref"), Tips: "工作流任务表单引用", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleTaskFormRef},
+		{Path: m.route("/tasks/:id/cc"), Tips: "工作流任务抄送列表", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleTaskCC},
+		{Path: m.route("/tasks/:id/cc"), Tips: "工作流任务新增抄送", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleAddTaskCC},
+		{Path: m.route("/tasks/:id/cc/users/:userId"), Tips: "工作流任务撤回用户抄送", Methods: []string{http.MethodDelete}, RequireSSO: m.requireSSO, Handler: m.handleRevokeTaskCCUser},
+		{Path: m.route("/tasks/:id/cc/groups/:groupId"), Tips: "工作流任务撤回用户组抄送", Methods: []string{http.MethodDelete}, RequireSSO: m.requireSSO, Handler: m.handleRevokeTaskCCGroup},
+		{Path: m.route("/tasks/:id/claim"), Tips: "工作流任务认领", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleClaimTask},
+		{Path: m.route("/tasks/:id/unclaim"), Tips: "工作流任务取消认领", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleUnclaimTask},
+		{Path: m.route("/tasks/:id/complete"), Tips: "工作流任务完成", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleCompleteTask},
+		{Path: m.route("/tasks/:id/delegate"), Tips: "工作流任务委派", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleDelegateTask},
+		{Path: m.route("/tasks/:id/resolve"), Tips: "工作流任务解决委派", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleResolveTask},
+		{Path: m.route("/tasks/:id/transfer"), Tips: "工作流任务转办", Methods: []string{http.MethodPost}, RequireSSO: m.requireSSO, Handler: m.handleTransferTask},
+		{Path: m.route("/org/users/:userId"), Tips: "工作流组织用户详情", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleUser},
+		{Path: m.route("/org/users/:userId/manager"), Tips: "工作流组织用户上级", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleUserManager},
+		{Path: m.route("/org/users/:userId/department"), Tips: "工作流组织用户部门", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleUserDepartment},
+		{Path: m.route("/process-instances/:id/progress-view"), Tips: "工作流流程进度视图", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleProgressView},
+		{Path: m.route("/process-instances/:id/progress-timeline"), Tips: "工作流流程进度时间线", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleProgressTimeline},
+		{Path: m.route("/process-instances/:id/action-timeline"), Tips: "工作流流程操作时间线", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleActionTimeline},
+		{Path: m.route("/process-instances/:id/task-records"), Tips: "工作流流程任务记录", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleTaskRecords},
+		{Path: m.route("/biz/:bizId/progress-view"), Tips: "工作流业务流程进度视图", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleBizProgressView},
+		{Path: m.route("/biz/:bizId/progress-timeline"), Tips: "工作流业务流程进度时间线", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleBizProgressTimeline},
+		{Path: m.route("/biz/:bizId/action-timeline"), Tips: "工作流业务流程操作时间线", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleBizActionTimeline},
+		{Path: m.route("/biz/:bizId/task-records"), Tips: "工作流业务流程任务记录", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleBizTaskRecords},
+		{Path: m.route("/process/instance/:id/definition-xml"), Tips: "工作流流程定义 XML", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleDefinitionXML},
+		{Path: m.route("/process-instances/:id/diagram-view"), Tips: "工作流流程图视图", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleDiagramView},
+		{Path: m.route("/process-instances/:id/composite-diagram"), Tips: "工作流组合流程图", Methods: []string{http.MethodGet}, RequireSSO: m.requireSSO, Handler: m.handleCompositeDiagram},
+		{Path: m.callbackPath, Tips: "工作流 Flowable 回调", Methods: []string{http.MethodPost}, RequireSSO: false, Handler: m.handleCallback},
 	}
 }
 
@@ -445,6 +457,63 @@ func (m *DefaultModule) handleDone(c *gin.Context) {
 		return
 	}
 	writeOK(c, page)
+}
+
+func (m *DefaultModule) handleCC(c *gin.Context) {
+	user, ok := m.requireUser(c)
+	if !ok {
+		return
+	}
+	page, err := m.flowable.ListCC(c.Request.Context(), user, parseTaskQuery(c))
+	if err != nil {
+		writeWorkflowError(c, err)
+		return
+	}
+	writeOK(c, page)
+}
+
+func (m *DefaultModule) handleCCCount(c *gin.Context) {
+	user, ok := m.requireUser(c)
+	if !ok {
+		return
+	}
+	count, err := m.flowable.CountCC(c.Request.Context(), user, parseTaskQuery(c))
+	if err != nil {
+		writeWorkflowError(c, err)
+		return
+	}
+	writeOK(c, count)
+}
+
+func (m *DefaultModule) handleCCRead(c *gin.Context) {
+	user, ok := m.requireUser(c)
+	if !ok {
+		return
+	}
+	request := &types.TaskCCReadRequest{}
+	if err := c.ShouldBindJSON(request); err != nil && !errors.Is(err, io.EOF) {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	response, err := m.flowable.MarkCCRead(c.Request.Context(), user, request)
+	if err != nil {
+		writeWorkflowError(c, err)
+		return
+	}
+	writeOK(c, response)
+}
+
+func (m *DefaultModule) handleCCReadAll(c *gin.Context) {
+	user, ok := m.requireUser(c)
+	if !ok {
+		return
+	}
+	response, err := m.flowable.MarkAllCCRead(c.Request.Context(), user, parseTaskQuery(c))
+	if err != nil {
+		writeWorkflowError(c, err)
+		return
+	}
+	writeOK(c, response)
 }
 
 func (m *DefaultModule) handleMyTaskRecords(c *gin.Context) {
@@ -628,6 +697,63 @@ func (m *DefaultModule) handleTaskFormRef(c *gin.Context) {
 		}
 	}
 	writeOK(c, formRef)
+}
+
+func (m *DefaultModule) handleTaskCC(c *gin.Context) {
+	user, ok := m.requireUser(c)
+	if !ok {
+		return
+	}
+	response, err := m.flowable.ListTaskCC(c.Request.Context(), strings.TrimSpace(c.Param("id")), user)
+	if err != nil {
+		writeWorkflowError(c, err)
+		return
+	}
+	writeOK(c, response)
+}
+
+func (m *DefaultModule) handleAddTaskCC(c *gin.Context) {
+	user, ok := m.requireUser(c)
+	if !ok {
+		return
+	}
+	request := &types.TaskCCRequest{}
+	if err := c.ShouldBindJSON(request); err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	response, err := m.flowable.AddTaskCC(c.Request.Context(), strings.TrimSpace(c.Param("id")), request, user)
+	if err != nil {
+		writeWorkflowError(c, err)
+		return
+	}
+	writeOK(c, response)
+}
+
+func (m *DefaultModule) handleRevokeTaskCCUser(c *gin.Context) {
+	user, ok := m.requireUser(c)
+	if !ok {
+		return
+	}
+	response, err := m.flowable.RevokeTaskCCUser(c.Request.Context(), strings.TrimSpace(c.Param("id")), strings.TrimSpace(c.Param("userId")), user)
+	if err != nil {
+		writeWorkflowError(c, err)
+		return
+	}
+	writeOK(c, response)
+}
+
+func (m *DefaultModule) handleRevokeTaskCCGroup(c *gin.Context) {
+	user, ok := m.requireUser(c)
+	if !ok {
+		return
+	}
+	response, err := m.flowable.RevokeTaskCCGroup(c.Request.Context(), strings.TrimSpace(c.Param("id")), strings.TrimSpace(c.Param("groupId")), user)
+	if err != nil {
+		writeWorkflowError(c, err)
+		return
+	}
+	writeOK(c, response)
 }
 
 func (m *DefaultModule) handleClaimTask(c *gin.Context) {

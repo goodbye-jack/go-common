@@ -73,8 +73,8 @@ func TestDefaultModuleRouteDefinitions(t *testing.T) {
 	}
 
 	routes := module.routeDefinitions()
-	if len(routes) != 30 {
-		t.Fatalf("routeDefinitions() len=%d, want 30", len(routes))
+	if len(routes) != 38 {
+		t.Fatalf("routeDefinitions() len=%d, want 38", len(routes))
 	}
 	if routes[0].Path != "/api/me" {
 		t.Fatalf("first route path=%s, want /api/me", routes[0].Path)
@@ -100,8 +100,8 @@ func TestDefaultModuleRegisterAddsWorkflowRoutes(t *testing.T) {
 	module.Register(server)
 
 	routes := server.GetRoutes()
-	if len(routes) != 31 {
-		t.Fatalf("registered route count=%d, want 31 including ping", len(routes))
+	if len(routes) != 39 {
+		t.Fatalf("registered route count=%d, want 39 including ping", len(routes))
 	}
 	seen := map[string]bool{}
 	for _, route := range routes {
@@ -135,6 +135,15 @@ func TestDefaultModuleRegisterAddsWorkflowRoutes(t *testing.T) {
 	}
 	if !seen["/api/me/task-records|GET"] {
 		t.Fatalf("missing workflow my task records route")
+	}
+	if !seen["/api/me/tasks/cc|GET"] {
+		t.Fatalf("missing workflow my cc tasks route")
+	}
+	if !seen["/api/me/tasks/cc/count|GET"] {
+		t.Fatalf("missing workflow my cc count route")
+	}
+	if !seen["/api/tasks/:id/cc|POST"] {
+		t.Fatalf("missing workflow add task cc route")
 	}
 	if !seen["/api/v1/workflow/callback|POST"] {
 		t.Fatalf("missing workflow callback route")

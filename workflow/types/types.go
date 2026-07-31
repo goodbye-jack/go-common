@@ -16,6 +16,111 @@ type TaskQuery struct {
 	CompletedBefore      string `json:"completedBefore,omitempty"`
 }
 
+const (
+	TaskCCIdentityTypeUser  = "user"
+	TaskCCIdentityTypeGroup = "group"
+
+	TaskCCRelationStatusActive  = "active"
+	TaskCCRelationStatusRevoked = "revoked"
+	TaskCCRelationStatusDeleted = "deleted"
+
+	TaskCCReadStatusUnread = "unread"
+	TaskCCReadStatusRead   = "read"
+
+	TaskCCTaskStatusRunning    = "running"
+	TaskCCTaskStatusCompleted  = "completed"
+	TaskCCTaskStatusCanceled   = "canceled"
+	TaskCCTaskStatusTerminated = "terminated"
+	TaskCCTaskStatusUnknown    = "unknown"
+
+	TaskCCNotifyStatusPending = "pending"
+	TaskCCNotifyStatusSent    = "sent"
+	TaskCCNotifyStatusFailed  = "failed"
+	TaskCCNotifyStatusSkipped = "skipped"
+
+	TaskCCSourceManual   = "manual"
+	TaskCCSourceVariable = "variable"
+	TaskCCSourceCallback = "callback"
+	TaskCCSourceFallback = "fallback"
+	TaskCCSourceAPI      = "api"
+)
+
+type TaskCCRequest struct {
+	Users  []string `json:"users,omitempty"`
+	Groups []string `json:"groups,omitempty"`
+	Type   string   `json:"type,omitempty"`
+	Notify bool     `json:"notify,omitempty"`
+	Reason string   `json:"reason,omitempty"`
+}
+
+type TaskCCIdentity struct {
+	IdentityType   string `json:"identityType"`
+	IdentityID     string `json:"identityId"`
+	LinkType       string `json:"linkType"`
+	RelationStatus string `json:"relationStatus,omitempty"`
+}
+
+type TaskCCResponse struct {
+	TaskID string           `json:"taskId"`
+	Users  []string         `json:"users,omitempty"`
+	Groups []string         `json:"groups,omitempty"`
+	Type   string           `json:"type"`
+	Items  []TaskCCIdentity `json:"items,omitempty"`
+}
+
+type TaskCCItem struct {
+	CCID                 uint     `json:"ccId"`
+	TaskID               string   `json:"taskId"`
+	ProcessInstanceID    string   `json:"processInstanceId,omitempty"`
+	ProcessDefinitionID  string   `json:"processDefinitionId,omitempty"`
+	ProcessDefinitionKey string   `json:"processDefinitionKey,omitempty"`
+	ActivityID           string   `json:"activityId,omitempty"`
+	ActivityName         string   `json:"activityName,omitempty"`
+	BizID                string   `json:"bizId,omitempty"`
+	BizType              string   `json:"bizType,omitempty"`
+	Title                string   `json:"title,omitempty"`
+	TenantID             string   `json:"tenantId,omitempty"`
+	SystemCode           string   `json:"systemCode,omitempty"`
+	IdentityType         string   `json:"identityType"`
+	IdentityID           string   `json:"identityId"`
+	LinkType             string   `json:"linkType"`
+	RelationStatus       string   `json:"relationStatus"`
+	ReadStatus           string   `json:"readStatus"`
+	TaskStatus           string   `json:"taskStatus"`
+	NotifyStatus         string   `json:"notifyStatus"`
+	Source               string   `json:"source,omitempty"`
+	Reason               string   `json:"reason,omitempty"`
+	CreatedBy            string   `json:"createdBy,omitempty"`
+	CreatedByName        string   `json:"createdByName,omitempty"`
+	CreatedAt            string   `json:"createdAt,omitempty"`
+	ReadAt               string   `json:"readAt,omitempty"`
+	RevokedAt            string   `json:"revokedAt,omitempty"`
+	Task                 TaskInfo `json:"task,omitempty"`
+}
+
+type TaskCCPage struct {
+	Items []TaskCCItem `json:"items"`
+	Total int64        `json:"total"`
+	Start int          `json:"start"`
+	Size  int          `json:"size"`
+}
+
+type TaskCCCountResponse struct {
+	Total   int64 `json:"total"`
+	Unread  int64 `json:"unread"`
+	Active  int64 `json:"active"`
+	Revoked int64 `json:"revoked"`
+}
+
+type TaskCCReadRequest struct {
+	CCIDs   []uint   `json:"ccIds,omitempty"`
+	TaskIDs []string `json:"taskIds,omitempty"`
+}
+
+type TaskCCReadResponse struct {
+	Updated int64 `json:"updated"`
+}
+
 type StartProcessRequest struct {
 	ProcessDefinitionID  string                 `json:"processDefinitionId,omitempty"`
 	ProcessDefinitionKey string                 `json:"processDefinitionKey,omitempty"`
@@ -195,6 +300,17 @@ type TaskContextResponse struct {
 	Business  TaskBusinessContext    `json:"business,omitempty"`
 	Variables map[string]interface{} `json:"variables,omitempty"`
 	FormRef   *TaskFormReference     `json:"formRef,omitempty"`
+	Access    *TaskAccessInfo        `json:"access,omitempty"`
+}
+
+type TaskAccessInfo struct {
+	IsAssignee  bool `json:"isAssignee"`
+	IsCandidate bool `json:"isCandidate"`
+	IsCC        bool `json:"isCc"`
+	ReadOnly    bool `json:"readOnly"`
+	CanClaim    bool `json:"canClaim"`
+	CanComplete bool `json:"canComplete"`
+	CanTransfer bool `json:"canTransfer"`
 }
 
 type DirectoryDepartment struct {

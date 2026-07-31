@@ -38,6 +38,30 @@ func (stubFlowableClient) ListDone(context.Context, *workflowcontext.UserContext
 func (stubFlowableClient) ListTaskRecords(context.Context, *workflowcontext.UserContext, *types.TaskQuery) (*types.WorkflowTaskRecordPage, error) {
 	return nil, nil
 }
+func (stubFlowableClient) ListCC(context.Context, *workflowcontext.UserContext, *types.TaskQuery) (*types.TaskCCPage, error) {
+	return nil, nil
+}
+func (stubFlowableClient) CountCC(context.Context, *workflowcontext.UserContext, *types.TaskQuery) (*types.TaskCCCountResponse, error) {
+	return nil, nil
+}
+func (stubFlowableClient) MarkCCRead(context.Context, *workflowcontext.UserContext, *types.TaskCCReadRequest) (*types.TaskCCReadResponse, error) {
+	return nil, nil
+}
+func (stubFlowableClient) MarkAllCCRead(context.Context, *workflowcontext.UserContext, *types.TaskQuery) (*types.TaskCCReadResponse, error) {
+	return nil, nil
+}
+func (stubFlowableClient) ListTaskCC(context.Context, string, *workflowcontext.UserContext) (*types.TaskCCResponse, error) {
+	return nil, nil
+}
+func (stubFlowableClient) AddTaskCC(context.Context, string, *types.TaskCCRequest, *workflowcontext.UserContext) (*types.TaskCCResponse, error) {
+	return nil, nil
+}
+func (stubFlowableClient) RevokeTaskCCUser(context.Context, string, string, *workflowcontext.UserContext) (*types.TaskCCResponse, error) {
+	return nil, nil
+}
+func (stubFlowableClient) RevokeTaskCCGroup(context.Context, string, string, *workflowcontext.UserContext) (*types.TaskCCResponse, error) {
+	return nil, nil
+}
 func (stubFlowableClient) GetTaskContext(context.Context, string, *workflowcontext.UserContext) (*types.TaskContextResponse, error) {
 	return nil, nil
 }
