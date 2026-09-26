@@ -8,10 +8,10 @@ import (
 	"github.com/casbin/casbin/v2/persist"
 	redisadapter "github.com/casbin/redis-adapter/v3"
 	rediswatcher "github.com/casbin/redis-watcher/v2"
+	redigo "github.com/gomodule/redigo/redis"
 	"github.com/goodbye-jack/go-common/log"
 	"github.com/goodbye-jack/go-common/orm"
 	"github.com/redis/go-redis/v9"
-	"strings"
 	"sync"
 )
 
@@ -85,26 +85,22 @@ func NewRbacClient(redisAddrOpt ...string) *RbacClient {
 		log.Infof("NewRbacClient: 使用降级配置 | addr=%s | db=%d", redisAddr, redisDB)
 	}
 
-	// ========== 步骤3：构造casbin-adapter兼容的DSN ==========
-	var dsnBuilder strings.Builder
-	dsnBuilder.WriteString(redisAddr)
-	params := []string{}
-	if redisPassword != "" {
-		params = append(params, fmt.Sprintf("password=%s", redisPassword))
+	// casbin redis-adapter 的 NewAdapter 把第二个参数直接交给 redigo Dial，
+	// 不解析 ?db= / ?password=。非 0 库会变成 host:6379?db=2，端口解析失败。
+	pool := &redigo.Pool{
+		Dial: func() (redigo.Conn, error) {
+			opts := []redigo.DialOption{
+				redigo.DialDatabase(redisDB),
+			}
+			if redisPassword != "" {
+				opts = append(opts, redigo.DialPassword(redisPassword))
+			}
+			return redigo.Dial("tcp", redisAddr, opts...)
+		},
 	}
-	if redisDB != 0 {
-		params = append(params, fmt.Sprintf("db=%d", redisDB))
-	}
-	if len(params) > 0 {
-		dsnBuilder.WriteString("?")
-		dsnBuilder.WriteString(strings.Join(params, "&"))
-	}
-	finalDSN := dsnBuilder.String()
-
-	// ========== 步骤4：初始化Adapter（基础API，零报错） ==========
-	adapter, err := redisadapter.NewAdapter("tcp", finalDSN)
+	adapter, err := redisadapter.NewAdapterWithPool(pool)
 	if err != nil {
-		log.Fatalf("NewAdapter失败: %v | DSN: %s", err, finalDSN)
+		log.Fatalf("NewAdapter失败: %v | addr=%s | db=%d", err, redisAddr, redisDB)
 	}
 
 	// ========== 后续步骤（无修改） ==========
