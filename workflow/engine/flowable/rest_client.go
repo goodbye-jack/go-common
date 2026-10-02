@@ -619,6 +619,7 @@ func (c *RESTClient) CompleteTask(ctx stdcontext.Context, taskID string, req *ty
 		}
 		c.recordTaskActionRecord(ctx, types.TaskActionTypeComplete, task, afterTask, user, comment, reason)
 		c.applyCCVariablesToCurrentTasks(ctx, task.ProcessInstanceID, variables, user, types.TaskCCSourceFallback, "complete:"+taskID)
+		c.updateCCRecordsByTaskID(ctx, taskID, types.TaskCCTaskStatusCompleted)
 		c.invalidateActionTimelineCache(ctx, task.ProcessInstanceID)
 		c.invalidateProcessSummaryCache(ctx, task.ProcessInstanceID)
 		c.invalidateCandidateTaskIndex(ctx, taskID)
@@ -1041,6 +1042,9 @@ func (c *RESTClient) doRaw(ctx stdcontext.Context, method, path string, query ma
 		return nil, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		if method == http.MethodGet && path == "/form/form-data" {
+			return nil, &TaskFormDataError{StatusCode: response.StatusCode}
+		}
 		return nil, fmt.Errorf("%s %s failed: status=%d body=%s", method, path, response.StatusCode, string(data))
 	}
 	return data, nil

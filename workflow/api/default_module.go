@@ -42,17 +42,18 @@ const (
 )
 
 type DefaultModule struct {
-	resolver     workflowcontext.Resolver
-	directory    directory.Service
-	assignment   assignment.Service
-	flowable     flowable.Client
-	formref      formref.Service
-	contract     *contract.Policy
-	routePrefix  string
-	logRoutes    bool
-	requireSSO   bool
-	callbackPath string
-	callbackKey  string
+	resolver        workflowcontext.Resolver
+	directory       directory.Service
+	assignment      assignment.Service
+	flowable        flowable.Client
+	formref         formref.Service
+	contract        *contract.Policy
+	routePrefix     string
+	logRoutes       bool
+	requireSSO      bool
+	callbackPath    string
+	callbackKey     string
+	callbackHandler CallbackHandler
 }
 
 type workflowRouteDefinition struct {
@@ -159,7 +160,7 @@ func MustNewDefaultModuleFromConfigWithOptions(options RegisterOptions) *Default
 
 func validateOptionalWorkflowDBInstances() error {
 	formRefDBInstance := strings.TrimSpace(config.GetConfigString("workflow.formref.db_instance"))
-	if formRefDBInstance != "" && orm.GetDB(formRefDBInstance) == nil {
+	if formref.DBFallbackEnabled() && formRefDBInstance != "" && orm.GetDB(formRefDBInstance) == nil {
 		return fmt.Errorf("workflow.formref.db_instance=%s configured but relational db instance not found", formRefDBInstance)
 	}
 	recordsDBInstance := strings.TrimSpace(config.GetConfigString("workflow.records.db_instance"))
@@ -205,6 +206,7 @@ func newModuleWithProviderFromConfig(options RegisterOptions) (*DefaultModule, s
 		ContextResolver:   options.ContextResolver,
 		FormRefService:    options.FormRefService,
 		ContractPolicy:    options.ContractPolicy,
+		CallbackHandler:   options.CallbackHandler,
 	})
 	if err != nil {
 		return nil, provider, assignmentProvider, err
@@ -250,6 +252,7 @@ func (m *DefaultModule) applyOptions(options RegisterOptions) {
 	if m == nil {
 		return
 	}
+	m.callbackHandler = options.CallbackHandler
 	if options.DirectoryService != nil {
 		m.directory = options.DirectoryService
 	}
@@ -625,7 +628,11 @@ func (m *DefaultModule) handleTaskContext(c *gin.Context) {
 		writeError(c, http.StatusNotFound, "task context not found")
 		return
 	}
-	response.FormRef = m.resolveFormRef(c, response)
+	response.FormRef, err = m.resolveFormRef(c, response)
+	if err != nil {
+		writeWorkflowError(c, err)
+		return
+	}
 	writeOK(c, response)
 }
 
@@ -687,7 +694,11 @@ func (m *DefaultModule) handleTaskFormRef(c *gin.Context) {
 		writeError(c, http.StatusNotFound, "task context not found")
 		return
 	}
-	formRef := m.resolveFormRef(c, response)
+	formRef, err := m.resolveFormRef(c, response)
+	if err != nil {
+		writeWorkflowError(c, err)
+		return
+	}
 	if formRef == nil {
 		formRef = &types.TaskFormReference{
 			Configured: false,
@@ -1024,6 +1035,10 @@ func (m *DefaultModule) handleCallback(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "read callback body failed")
 		return
 	}
+	if m.callbackHandler != nil && strings.TrimSpace(m.callbackKey) == "" {
+		writeError(c, http.StatusServiceUnavailable, "callback signature verification is not configured")
+		return
+	}
 	if !m.verifyCallbackSignature(c.Request.Header, body) {
 		writeError(c, http.StatusUnauthorized, "invalid callback signature")
 		return
@@ -1046,6 +1061,13 @@ func (m *DefaultModule) handleCallback(c *gin.Context) {
 	if err := m.flowable.ProcessCallback(c.Request.Context(), &payload); err != nil {
 		writeWorkflowError(c, err)
 		return
+	}
+	if m.callbackHandler != nil {
+		if err := m.callbackHandler(c.Request.Context(), &payload); err != nil {
+			log.Errorf("【workflow callback】业务处理失败，等待重试 | event_id=%s | process_instance_id=%s | error=%v", payload.EventID, payload.ProcessInstanceID, err)
+			writeError(c, http.StatusServiceUnavailable, "callback business processing failed")
+			return
+		}
 	}
 	log.Infof("【workflow callback】accepted | event_type=%s | process_instance_id=%s | task_id=%s | biz_id=%s",
 		strings.TrimSpace(payload.EventType),
@@ -1232,9 +1254,12 @@ func (m *DefaultModule) verifyCallbackSignature(headers http.Header, body []byte
 	return hmac.Equal([]byte(strings.ToLower(signature)), []byte(strings.ToLower(expected)))
 }
 
-func (m *DefaultModule) resolveFormRef(c *gin.Context, response *types.TaskContextResponse) *types.TaskFormReference {
+func (m *DefaultModule) resolveFormRef(c *gin.Context, response *types.TaskContextResponse) (*types.TaskFormReference, error) {
 	if m == nil || m.formref == nil || response == nil {
-		return response.FormRef
+		if response == nil {
+			return nil, nil
+		}
+		return response.FormRef, nil
 	}
 	formRef, err := m.formref.Resolve(c.Request.Context(), &formref.TaskFormLocator{
 		ProcessDefinitionID: response.Task.ProcessDefinitionID,
@@ -1245,9 +1270,12 @@ func (m *DefaultModule) resolveFormRef(c *gin.Context, response *types.TaskConte
 		TenantID:            response.Task.TenantID,
 	})
 	if err != nil {
-		return response.FormRef
+		if formref.DBFallbackEnabled() {
+			return response.FormRef, nil
+		}
+		return nil, err
 	}
-	return formRef
+	return formRef, nil
 }
 
 func firstNonBlank(values ...string) string {
@@ -1425,7 +1453,7 @@ func logStartupSummary(module *DefaultModule, provider, assignmentProvider strin
 		callbackMode = "standard"
 	}
 	formRefMode := "rest-only"
-	if formRefDBInstance != "" {
+	if formref.DBFallbackEnabled() && formRefDBInstance != "" {
 		formRefMode = "rest+db-fallback"
 	}
 	recordsMode := "default-db"
@@ -1474,8 +1502,8 @@ func logStartupSummary(module *DefaultModule, provider, assignmentProvider strin
 	if userIDStrategy == "raw" {
 		log.Warn("【workflow】user_id_strategy=raw，请确认业务登录态中的 UserID 与 Flowable assignee/candidateUser 完全一致")
 	}
-	if formRefDBInstance == "" {
-		log.Infof("【workflow】workflow.formref.db_instance 未配置，当前按 REST-only 模式解析任务表单引用")
+	if formRefMode == "rest-only" {
+		log.Infof("【workflow】表单数据库兜底未启用，当前按 REST-only 模式解析任务表单引用；不影响 databases 中已声明实例的初始化")
 	}
 }
 

@@ -239,6 +239,56 @@ func TestTaskCCLifecycleWithFlowableMockAndSQLite(t *testing.T) {
 	}
 }
 
+func TestUpdateCCRecordsByTaskIDMarksCompleted(t *testing.T) {
+	const dbInstance = "workflow_cc_status_test"
+	originalInstance := orm.RelationalMap[dbInstance]
+	originalCCDB := viper.Get(configCCDBInstance)
+	t.Cleanup(func() {
+		if originalInstance != nil {
+			orm.RelationalMap[dbInstance] = originalInstance
+		} else {
+			delete(orm.RelationalMap, dbInstance)
+		}
+		viper.Set(configCCDBInstance, originalCCDB)
+		ccMigrateMu.Lock()
+		delete(ccMigrated, dbInstance)
+		ccMigrateMu.Unlock()
+	})
+
+	testDB := orm.NewOrm(filepath.Join(t.TempDir(), "workflow_cc_status_test.sqlite"), utils.DBTypeSQLite, 1)
+	if testDB == nil || testDB.GetDB() == nil {
+		t.Fatalf("NewOrm() returned nil")
+	}
+	orm.RelationalMap[dbInstance] = testDB
+	viper.Set(configCCDBInstance, dbInstance)
+	if err := ensureCCTables(); err != nil {
+		t.Fatalf("ensureCCTables() error=%v", err)
+	}
+	records := []workflowCCRecordModel{
+		{TaskID: "task-complete", ProcessInstanceID: "proc-1", RelationStatus: types.TaskCCRelationStatusActive, TaskStatus: types.TaskCCTaskStatusRunning},
+		{TaskID: "task-other", ProcessInstanceID: "proc-1", RelationStatus: types.TaskCCRelationStatusActive, TaskStatus: types.TaskCCTaskStatusRunning},
+	}
+	if err := testDB.GetDB().Create(&records).Error; err != nil {
+		t.Fatalf("create cc records error=%v", err)
+	}
+
+	(&RESTClient{}).updateCCRecordsByTaskID(context.Background(), "task-complete", types.TaskCCTaskStatusCompleted)
+
+	var updated, untouched workflowCCRecordModel
+	if err := testDB.GetDB().Where("task_id = ?", "task-complete").First(&updated).Error; err != nil {
+		t.Fatalf("load updated record error=%v", err)
+	}
+	if err := testDB.GetDB().Where("task_id = ?", "task-other").First(&untouched).Error; err != nil {
+		t.Fatalf("load untouched record error=%v", err)
+	}
+	if updated.TaskStatus != types.TaskCCTaskStatusCompleted {
+		t.Fatalf("updated task status=%q, want %q", updated.TaskStatus, types.TaskCCTaskStatusCompleted)
+	}
+	if untouched.TaskStatus != types.TaskCCTaskStatusRunning {
+		t.Fatalf("untouched task status=%q, want %q", untouched.TaskStatus, types.TaskCCTaskStatusRunning)
+	}
+}
+
 func BenchmarkListCCSQLite(b *testing.B) {
 	const dbInstance = "workflow_cc_benchmark_test"
 	originalDB := orm.DB

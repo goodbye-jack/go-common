@@ -11,10 +11,13 @@ import (
 
 func TestResolveReturnsNotConfiguredWhenDBFallbackNotConfigured(t *testing.T) {
 	originalDBInstance := viper.Get(configFormRefDBInstance)
+	originalFallbackEnabled := viper.Get(configFormRefDBFallbackEnabled)
 	t.Cleanup(func() {
 		viper.Set(configFormRefDBInstance, originalDBInstance)
+		viper.Set(configFormRefDBFallbackEnabled, originalFallbackEnabled)
 	})
 	viper.Set(configFormRefDBInstance, "")
+	viper.Set(configFormRefDBFallbackEnabled, false)
 
 	service := &FlowableService{}
 	ref, err := service.Resolve(context.Background(), &TaskFormLocator{
@@ -32,6 +35,37 @@ func TestResolveReturnsNotConfiguredWhenDBFallbackNotConfigured(t *testing.T) {
 	}
 	if ref.Resolved {
 		t.Fatalf("ref.Resolved=%v, want false", ref.Resolved)
+	}
+}
+
+func TestResolveDisablesDBFallbackExplicitly(t *testing.T) {
+	originalDBInstance := viper.Get(configFormRefDBInstance)
+	originalFallbackEnabled := viper.Get(configFormRefDBFallbackEnabled)
+	originalORM := orm.RelationalMap["flowable_meta_disabled_test"]
+	t.Cleanup(func() {
+		viper.Set(configFormRefDBInstance, originalDBInstance)
+		viper.Set(configFormRefDBFallbackEnabled, originalFallbackEnabled)
+		if originalORM != nil {
+			orm.RelationalMap["flowable_meta_disabled_test"] = originalORM
+		} else {
+			delete(orm.RelationalMap, "flowable_meta_disabled_test")
+		}
+	})
+
+	viper.Set(configFormRefDBInstance, "flowable_meta_disabled_test")
+	viper.Set(configFormRefDBFallbackEnabled, false)
+	orm.RelationalMap["flowable_meta_disabled_test"] = orm.NewOrm("file::memory:?cache=shared", utils.DBTypeSQLite, 1)
+
+	service := &FlowableService{}
+	ref, err := service.Resolve(context.Background(), &TaskFormLocator{
+		TaskID:  "task-disabled-fallback",
+		FormKey: "preservation_alarm_form",
+	})
+	if err != nil {
+		t.Fatalf("Resolve() error=%v, want nil", err)
+	}
+	if ref == nil || ref.Resolved {
+		t.Fatalf("Resolve() ref=%+v, want unresolved REST-only result", ref)
 	}
 }
 

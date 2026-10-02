@@ -3,7 +3,9 @@ package formref
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/goodbye-jack/go-common/config"
@@ -13,6 +15,7 @@ import (
 )
 
 const configFormRefDBInstance = "workflow.formref.db_instance"
+const configFormRefDBFallbackEnabled = "workflow.formref.db_fallback_enabled"
 
 type FlowableService struct {
 	client *flowable.RESTClient
@@ -35,7 +38,7 @@ func (s *FlowableService) Resolve(ctx context.Context, locator *TaskFormLocator)
 		return notConfigured(), nil
 	}
 	if s.client == nil {
-		if fallback := s.resolveFromDBFallback(locator.FormKey, locator.TenantID); fallback != nil {
+		if fallback := s.resolveFromDBFallbackIfEnabled(locator.FormKey, locator.TenantID); fallback != nil {
 			return fallback, nil
 		}
 		return notConfigured(), nil
@@ -43,8 +46,30 @@ func (s *FlowableService) Resolve(ctx context.Context, locator *TaskFormLocator)
 
 	formData, err := s.client.GetTaskFormData(ctx, locator.TaskID)
 	if err != nil {
-		if fallback := s.resolveFromDBFallback(locator.FormKey, locator.TenantID); fallback != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if !DBFallbackEnabled() {
+			var statusErr *flowable.TaskFormDataError
+			if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusNotFound {
+				return nil, fmt.Errorf("任务表单信息查询失败，请检查 Flowable 连接、认证及响应")
+			}
+		}
+		modelRef, modelErr := s.resolveTaskFormModel(ctx, locator.TaskID)
+		if modelRef != nil {
+			return modelRef, nil
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if fallback := s.resolveFromDBFallbackIfEnabled(locator.FormKey, locator.TenantID); fallback != nil {
 			return fallback, nil
+		}
+		if modelErr != nil && !DBFallbackEnabled() {
+			return nil, modelErr
+		}
+		if !DBFallbackEnabled() && strings.TrimSpace(locator.FormKey) != "" {
+			return &types.TaskFormReference{Configured: true, Resolved: false, Source: "form-key", FormKey: locator.FormKey}, nil
 		}
 		return notConfigured(), nil
 	}
@@ -82,8 +107,18 @@ func (s *FlowableService) Resolve(ctx context.Context, locator *TaskFormLocator)
 			Outcomes:     []types.TaskFormOutcomeReference{},
 		}, nil
 	}
-	if fallback := s.resolveFromDBFallback(formKey, locator.TenantID); fallback != nil {
+	modelRef, modelErr := s.resolveTaskFormModel(ctx, locator.TaskID)
+	if modelRef != nil {
+		return modelRef, nil
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if fallback := s.resolveFromDBFallbackIfEnabled(formKey, locator.TenantID); fallback != nil {
 		return fallback, nil
+	}
+	if modelErr != nil && !DBFallbackEnabled() {
+		return nil, modelErr
 	}
 
 	return &types.TaskFormReference{
@@ -96,6 +131,29 @@ func (s *FlowableService) Resolve(ctx context.Context, locator *TaskFormLocator)
 		Fields:       []types.TaskFormFieldReference{},
 		Outcomes:     []types.TaskFormOutcomeReference{},
 	}, nil
+}
+
+func (s *FlowableService) resolveTaskFormModel(ctx context.Context, taskID string) (*types.TaskFormReference, error) {
+	model, err := s.client.GetTaskFormModel(ctx, taskID)
+	if err != nil || model == nil {
+		return nil, err
+	}
+	return buildFormModelReference(stringValue(model["key"]), "", "", model), nil
+}
+
+func (s *FlowableService) resolveFromDBFallbackIfEnabled(formKey, tenantID string) *types.TaskFormReference {
+	if !DBFallbackEnabled() {
+		return nil
+	}
+	return s.resolveFromDBFallback(formKey, tenantID)
+}
+
+// DBFallbackEnabled 返回表单数据库兜底开关；未配置时保留旧行为。
+func DBFallbackEnabled() bool {
+	if strings.TrimSpace(config.GetConfigString(configFormRefDBFallbackEnabled)) == "" {
+		return true
+	}
+	return config.GetConfigBool(configFormRefDBFallbackEnabled)
 }
 
 func (s *FlowableService) findFormResource(ctx context.Context, deploymentID, formKey string) (*flowable.DeploymentResource, error) {
