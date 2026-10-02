@@ -16,6 +16,8 @@ import (
 	workflowcontext "github.com/goodbye-jack/go-common/workflow/context"
 	"github.com/goodbye-jack/go-common/workflow/types"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 const (
@@ -108,11 +110,29 @@ func ensureCCTables() error {
 	if ccMigrated[key] {
 		return nil
 	}
-	if err := db.GetDB().AutoMigrate(&workflowCCRecordModel{}, &workflowCCReadStateModel{}); err != nil {
-		return err
+	models := make([]interface{}, 0, 2)
+	if !ccTableExists(db.GetDB(), "workflow_cc_records") {
+		models = append(models, &workflowCCRecordModel{})
+	}
+	if !ccTableExists(db.GetDB(), "workflow_cc_read_states") {
+		models = append(models, &workflowCCReadStateModel{})
+	}
+	if len(models) > 0 {
+		if err := db.GetDB().AutoMigrate(models...); err != nil {
+			return err
+		}
 	}
 	ccMigrated[key] = true
 	return nil
+}
+
+func ccTableExists(db *gorm.DB, table string) bool {
+	if db == nil {
+		return false
+	}
+	var probe int
+	probeDB := db.Session(&gorm.Session{Logger: gormlogger.Discard})
+	return probeDB.Raw("SELECT 1 FROM "+ccTable(db, table)+" WHERE 1 = 0").Scan(&probe).Error == nil
 }
 
 func ccEnabled() bool {
@@ -132,6 +152,28 @@ func ccNotifyStatus(notify bool) string {
 		return types.TaskCCNotifyStatusPending
 	}
 	return types.TaskCCNotifyStatusSkipped
+}
+
+func ccTable(db *gorm.DB, table string) string {
+	if db == nil || db.Statement == nil {
+		return table
+	}
+	return db.Statement.Quote(clause.Table{Name: table})
+}
+
+func ccColumn(db *gorm.DB, table, column string) string {
+	if db == nil || db.Statement == nil {
+		if table == "" {
+			return column
+		}
+		return table + "." + column
+	}
+	return db.Statement.Quote(clause.Column{Table: table, Name: column})
+}
+
+func ccScopeCondition(db *gorm.DB, table, column string) string {
+	quoted := ccColumn(db, table, column)
+	return fmt.Sprintf("(%s = ? OR %s IS NULL OR %s = '')", quoted, quoted, quoted)
 }
 
 func (c *RESTClient) AddTaskCC(ctx stdcontext.Context, taskID string, req *types.TaskCCRequest, user *workflowcontext.UserContext) (*types.TaskCCResponse, error) {
@@ -164,11 +206,11 @@ func (c *RESTClient) ListTaskCC(ctx stdcontext.Context, taskID string, user *wor
 		return nil, err
 	}
 	rows := make([]workflowCCRecordModel, 0)
-	query := db.GetDB().WithContext(ctx).Where("task_id = ? AND relation_status = ?", strings.TrimSpace(taskID), types.TaskCCRelationStatusActive)
+	query := db.GetDB().WithContext(ctx).Where(fmt.Sprintf("%s = ? AND %s = ?", ccColumn(db.GetDB(), "", "task_id"), ccColumn(db.GetDB(), "", "relation_status")), strings.TrimSpace(taskID), types.TaskCCRelationStatusActive)
 	if user != nil && strings.TrimSpace(user.TenantID) != "" {
-		query = query.Where("(tenant_id = ? OR tenant_id = '')", strings.TrimSpace(user.TenantID))
+		query = query.Where(ccScopeCondition(db.GetDB(), "", "tenant_id"), strings.TrimSpace(user.TenantID))
 	}
-	if err := query.Order("id ASC").Find(&rows).Error; err != nil {
+	if err := query.Order(ccColumn(db.GetDB(), "", "id") + " ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	return buildTaskCCResponse(strings.TrimSpace(taskID), rows), nil
@@ -204,7 +246,7 @@ func (c *RESTClient) revokeTaskCC(ctx stdcontext.Context, taskID, identityType, 
 		updates["revoked_by"] = strings.TrimSpace(user.UserID)
 	}
 	query := db.GetDB().WithContext(ctx).Model(&workflowCCRecordModel{}).
-		Where("task_id = ? AND identity_type = ? AND identity_id = ? AND relation_status = ?", taskID, identityType, identityID, types.TaskCCRelationStatusActive)
+		Where(fmt.Sprintf("%s = ? AND %s = ? AND %s = ? AND %s = ?", ccColumn(db.GetDB(), "", "task_id"), ccColumn(db.GetDB(), "", "identity_type"), ccColumn(db.GetDB(), "", "identity_id"), ccColumn(db.GetDB(), "", "relation_status")), taskID, identityType, identityID, types.TaskCCRelationStatusActive)
 	if err := query.Updates(updates).Error; err != nil {
 		return nil, err
 	}
@@ -232,7 +274,7 @@ func (c *RESTClient) ListCC(ctx stdcontext.Context, user *workflowcontext.UserCo
 		return nil, err
 	}
 	rows := make([]workflowCCRecordModel, 0, query.Size)
-	if err := base.Order("workflow_cc_records.created_at DESC").Order("workflow_cc_records.id DESC").Offset(query.Start).Limit(query.Size).Find(&rows).Error; err != nil {
+	if err := base.Order(ccColumn(db.GetDB(), "workflow_cc_records", "created_at") + " DESC").Order(ccColumn(db.GetDB(), "workflow_cc_records", "id") + " DESC").Offset(query.Start).Limit(query.Size).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	readStates, err := loadCCReadStates(ctx, db.GetDB(), user.UserID, rows)
@@ -271,18 +313,18 @@ func (c *RESTClient) CountCC(ctx stdcontext.Context, user *workflowcontext.UserC
 	}
 	var active int64
 	if err := applyCCReadStatusFilter(applyCCQueryFilters(c.ccUserScopeQuery(db.GetDB().WithContext(ctx), user), query), user, query).
-		Where("workflow_cc_records.relation_status = ?", types.TaskCCRelationStatusActive).Count(&active).Error; err != nil {
+		Where(fmt.Sprintf("%s = ?", ccColumn(db.GetDB(), "workflow_cc_records", "relation_status")), types.TaskCCRelationStatusActive).Count(&active).Error; err != nil {
 		return nil, err
 	}
 	var revoked int64
 	if err := applyCCReadStatusFilter(applyCCQueryFilters(c.ccUserScopeQuery(db.GetDB().WithContext(ctx), user), query), user, query).
-		Where("workflow_cc_records.relation_status = ?", types.TaskCCRelationStatusRevoked).Count(&revoked).Error; err != nil {
+		Where(fmt.Sprintf("%s = ?", ccColumn(db.GetDB(), "workflow_cc_records", "relation_status")), types.TaskCCRelationStatusRevoked).Count(&revoked).Error; err != nil {
 		return nil, err
 	}
 	var unread int64
 	unreadQuery := applyCCUnreadFilter(applyCCQueryFilters(c.ccUserScopeQuery(db.GetDB().WithContext(ctx), user), query), user).
-		Where("workflow_cc_records.relation_status = ?", types.TaskCCRelationStatusActive).
-		Where("workflow_cc_read_states.id IS NULL OR workflow_cc_read_states.read_status <> ?", types.TaskCCReadStatusRead)
+		Where(fmt.Sprintf("%s = ?", ccColumn(db.GetDB(), "workflow_cc_records", "relation_status")), types.TaskCCRelationStatusActive).
+		Where(fmt.Sprintf("%s IS NULL OR %s <> ?", ccColumn(db.GetDB(), "workflow_cc_read_states", "id"), ccColumn(db.GetDB(), "workflow_cc_read_states", "read_status")), types.TaskCCReadStatusRead)
 	if err := unreadQuery.Count(&unread).Error; err != nil {
 		return nil, err
 	}
@@ -305,10 +347,10 @@ func (c *RESTClient) MarkCCRead(ctx stdcontext.Context, user *workflowcontext.Us
 	}
 	base := c.ccUserScopeQuery(db.GetDB().WithContext(ctx), user)
 	if len(req.CCIDs) > 0 {
-		base = base.Where("workflow_cc_records.id IN ?", req.CCIDs)
+		base = base.Where(fmt.Sprintf("%s IN ?", ccColumn(db.GetDB(), "workflow_cc_records", "id")), req.CCIDs)
 	}
 	if len(req.TaskIDs) > 0 {
-		base = base.Where("task_id IN ?", trimmedStrings(req.TaskIDs))
+		base = base.Where(fmt.Sprintf("%s IN ?", ccColumn(db.GetDB(), "", "task_id")), trimmedStrings(req.TaskIDs))
 	}
 	rows := make([]workflowCCRecordModel, 0)
 	if err := base.Find(&rows).Error; err != nil {
@@ -331,7 +373,7 @@ func (c *RESTClient) MarkAllCCRead(ctx stdcontext.Context, user *workflowcontext
 	}
 	rows := make([]workflowCCRecordModel, 0)
 	if err := applyCCQueryFilters(c.ccUserScopeQuery(db.GetDB().WithContext(ctx), user), query).
-		Where("relation_status = ?", types.TaskCCRelationStatusActive).Find(&rows).Error; err != nil {
+		Where(fmt.Sprintf("%s = ?", ccColumn(db.GetDB(), "", "relation_status")), types.TaskCCRelationStatusActive).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	return markCCRowsRead(ctx, db.GetDB(), user, rows)
@@ -452,7 +494,7 @@ func (c *RESTClient) applyCCVariablesToTask(ctx stdcontext.Context, task runtime
 
 func (c *RESTClient) upsertCCRecord(ctx stdcontext.Context, db *gorm.DB, task runtimeTaskRecord, variables map[string]interface{}, identityType, identityID, linkType, taskStatus, source, eventKey string, req *types.TaskCCRequest, createdBy, createdByName string) workflowCCRecordModel {
 	row := workflowCCRecordModel{}
-	query := db.WithContext(ctx).Where("task_id = ? AND identity_type = ? AND identity_id = ? AND relation_status = ?", strings.TrimSpace(task.ID), identityType, identityID, types.TaskCCRelationStatusActive)
+	query := db.WithContext(ctx).Where(fmt.Sprintf("%s = ? AND %s = ? AND %s = ? AND %s = ?", ccColumn(db, "", "task_id"), ccColumn(db, "", "identity_type"), ccColumn(db, "", "identity_id"), ccColumn(db, "", "relation_status")), strings.TrimSpace(task.ID), identityType, identityID, types.TaskCCRelationStatusActive)
 	if err := query.First(&row).Error; err == nil {
 		return row
 	}
@@ -540,17 +582,19 @@ func (c *RESTClient) deleteTaskIdentityLink(ctx stdcontext.Context, taskID, iden
 
 func (c *RESTClient) ccUserScopeQuery(db *gorm.DB, user *workflowcontext.UserContext) *gorm.DB {
 	groups := candidateGroups(user, c.groupPrefix, c.rolePrefix)
-	query := db.Model(&workflowCCRecordModel{}).Where("workflow_cc_records.relation_status <> ?", types.TaskCCRelationStatusDeleted)
+	query := db.Model(&workflowCCRecordModel{}).Where(fmt.Sprintf("%s <> ?", ccColumn(db, "workflow_cc_records", "relation_status")), types.TaskCCRelationStatusDeleted)
 	if strings.TrimSpace(user.TenantID) != "" {
-		query = query.Where("(workflow_cc_records.tenant_id = ? OR workflow_cc_records.tenant_id = '')", strings.TrimSpace(user.TenantID))
+		query = query.Where(ccScopeCondition(db, "workflow_cc_records", "tenant_id"), strings.TrimSpace(user.TenantID))
 	}
 	if strings.TrimSpace(user.SystemCode) != "" {
-		query = query.Where("(workflow_cc_records.system_code = ? OR workflow_cc_records.system_code = '')", strings.TrimSpace(user.SystemCode))
+		query = query.Where(ccScopeCondition(db, "workflow_cc_records", "system_code"), strings.TrimSpace(user.SystemCode))
 	}
 	if len(groups) > 0 {
-		return query.Where("(workflow_cc_records.identity_type = ? AND workflow_cc_records.identity_id = ?) OR (workflow_cc_records.identity_type = ? AND workflow_cc_records.identity_id IN ?)", types.TaskCCIdentityTypeUser, strings.TrimSpace(user.UserID), types.TaskCCIdentityTypeGroup, groups)
+		identityType := ccColumn(db, "workflow_cc_records", "identity_type")
+		identityID := ccColumn(db, "workflow_cc_records", "identity_id")
+		return query.Where(fmt.Sprintf("(%s = ? AND %s = ?) OR (%s = ? AND %s IN ?)", identityType, identityID, identityType, identityID), types.TaskCCIdentityTypeUser, strings.TrimSpace(user.UserID), types.TaskCCIdentityTypeGroup, groups)
 	}
-	return query.Where("workflow_cc_records.identity_type = ? AND workflow_cc_records.identity_id = ?", types.TaskCCIdentityTypeUser, strings.TrimSpace(user.UserID))
+	return query.Where(fmt.Sprintf("%s = ? AND %s = ?", ccColumn(db, "workflow_cc_records", "identity_type"), ccColumn(db, "workflow_cc_records", "identity_id")), types.TaskCCIdentityTypeUser, strings.TrimSpace(user.UserID))
 }
 
 func (c *RESTClient) buildTaskAccessInfo(ctx stdcontext.Context, task runtimeTaskRecord, user *workflowcontext.UserContext) *types.TaskAccessInfo {
@@ -591,7 +635,7 @@ func (c *RESTClient) isTaskCCVisibleToUser(ctx stdcontext.Context, taskID string
 	}
 	var count int64
 	query := c.ccUserScopeQuery(db.GetDB().WithContext(ctx), user).
-		Where("task_id = ? AND relation_status = ?", strings.TrimSpace(taskID), types.TaskCCRelationStatusActive)
+		Where(fmt.Sprintf("%s = ? AND %s = ?", ccColumn(db.GetDB(), "", "task_id"), ccColumn(db.GetDB(), "", "relation_status")), strings.TrimSpace(taskID), types.TaskCCRelationStatusActive)
 	if err := query.Count(&count).Error; err != nil {
 		return false
 	}
@@ -603,7 +647,7 @@ func (c *RESTClient) updateCCRecordsByTaskID(ctx stdcontext.Context, taskID, tas
 	if taskID == "" {
 		return
 	}
-	c.updateCCRecords(ctx, "task_id = ?", taskID, taskStatus)
+	c.updateCCRecords(ctx, "task_id", taskID, taskStatus)
 }
 
 func (c *RESTClient) updateCCRecordsByProcessInstanceID(ctx stdcontext.Context, processInstanceID, taskStatus string) {
@@ -611,10 +655,10 @@ func (c *RESTClient) updateCCRecordsByProcessInstanceID(ctx stdcontext.Context, 
 	if processInstanceID == "" {
 		return
 	}
-	c.updateCCRecords(ctx, "process_instance_id = ?", processInstanceID, taskStatus)
+	c.updateCCRecords(ctx, "process_instance_id", processInstanceID, taskStatus)
 }
 
-func (c *RESTClient) updateCCRecords(ctx stdcontext.Context, condition string, value interface{}, taskStatus string) {
+func (c *RESTClient) updateCCRecords(ctx stdcontext.Context, column string, value interface{}, taskStatus string) {
 	db := ccDB()
 	if db == nil || db.GetDB() == nil {
 		return
@@ -624,9 +668,9 @@ func (c *RESTClient) updateCCRecords(ctx stdcontext.Context, condition string, v
 		return
 	}
 	if err := db.GetDB().WithContext(ctx).Model(&workflowCCRecordModel{}).
-		Where(condition, value).
-		Where("relation_status = ?", types.TaskCCRelationStatusActive).
-		Update("task_status", strings.TrimSpace(taskStatus)).Error; err != nil {
+		Where(fmt.Sprintf("%s = ?", ccColumn(db.GetDB(), "", column)), value).
+		Where(fmt.Sprintf("%s = ?", ccColumn(db.GetDB(), "", "relation_status")), types.TaskCCRelationStatusActive).
+		Update("TaskStatus", strings.TrimSpace(taskStatus)).Error; err != nil {
 		log.Warnf("【workflow】抄送任务状态更新失败: err=%v", err)
 	}
 }
@@ -636,35 +680,35 @@ func applyCCQueryFilters(db *gorm.DB, query *types.TaskQuery) *gorm.DB {
 		return db
 	}
 	if strings.TrimSpace(query.Title) != "" {
-		db = db.Where("workflow_cc_records.title LIKE ?", "%"+strings.TrimSpace(query.Title)+"%")
+		db = db.Where(fmt.Sprintf("%s LIKE ?", ccColumn(db, "workflow_cc_records", "title")), "%"+strings.TrimSpace(query.Title)+"%")
 	}
 	if strings.TrimSpace(query.BizType) != "" {
-		db = db.Where("workflow_cc_records.biz_type = ?", strings.TrimSpace(query.BizType))
+		db = db.Where(fmt.Sprintf("%s = ?", ccColumn(db, "workflow_cc_records", "biz_type")), strings.TrimSpace(query.BizType))
 	}
 	if strings.TrimSpace(query.ProcessDefinitionKey) != "" {
-		db = db.Where("workflow_cc_records.process_definition_key = ?", strings.TrimSpace(query.ProcessDefinitionKey))
+		db = db.Where(fmt.Sprintf("%s = ?", ccColumn(db, "workflow_cc_records", "process_definition_key")), strings.TrimSpace(query.ProcessDefinitionKey))
 	}
 	if strings.TrimSpace(query.ActivityID) != "" {
-		db = db.Where("workflow_cc_records.activity_id = ?", strings.TrimSpace(query.ActivityID))
+		db = db.Where(fmt.Sprintf("%s = ?", ccColumn(db, "workflow_cc_records", "activity_id")), strings.TrimSpace(query.ActivityID))
 	}
 	if after := parseTime(query.CreatedAfter); !after.IsZero() {
-		db = db.Where("workflow_cc_records.created_at >= ?", after)
+		db = db.Where(fmt.Sprintf("%s >= ?", ccColumn(db, "workflow_cc_records", "created_at")), after)
 	}
 	if before := parseTime(query.CreatedBefore); !before.IsZero() {
-		db = db.Where("workflow_cc_records.created_at <= ?", before)
+		db = db.Where(fmt.Sprintf("%s <= ?", ccColumn(db, "workflow_cc_records", "created_at")), before)
 	}
 	if after := parseTime(query.CompletedAfter); !after.IsZero() {
-		db = db.Where("workflow_cc_records.revoked_at >= ?", after)
+		db = db.Where(fmt.Sprintf("%s >= ?", ccColumn(db, "workflow_cc_records", "revoked_at")), after)
 	}
 	if before := parseTime(query.CompletedBefore); !before.IsZero() {
-		db = db.Where("workflow_cc_records.revoked_at <= ?", before)
+		db = db.Where(fmt.Sprintf("%s <= ?", ccColumn(db, "workflow_cc_records", "revoked_at")), before)
 	}
 	status := strings.ToLower(strings.TrimSpace(query.Status))
 	switch status {
 	case types.TaskCCRelationStatusActive, types.TaskCCRelationStatusRevoked, types.TaskCCRelationStatusDeleted:
-		db = db.Where("workflow_cc_records.relation_status = ?", status)
+		db = db.Where(fmt.Sprintf("%s = ?", ccColumn(db, "workflow_cc_records", "relation_status")), status)
 	case types.TaskCCTaskStatusRunning, types.TaskCCTaskStatusCompleted, types.TaskCCTaskStatusCanceled, types.TaskCCTaskStatusTerminated:
-		db = db.Where("workflow_cc_records.task_status = ?", status)
+		db = db.Where(fmt.Sprintf("%s = ?", ccColumn(db, "workflow_cc_records", "task_status")), status)
 	case types.TaskCCReadStatusUnread:
 		// 未读是用户维度状态，由 applyCCReadStatusFilter 统一追加关联查询。
 	case types.TaskCCReadStatusRead:
@@ -683,7 +727,7 @@ func applyCCReadStatusFilter(db *gorm.DB, user *workflowcontext.UserContext, que
 		if user == nil {
 			return db.Where("1 = 0")
 		}
-		return db.Joins("INNER JOIN workflow_cc_read_states ON workflow_cc_read_states.cc_record_id = workflow_cc_records.id AND workflow_cc_read_states.user_id = ? AND workflow_cc_read_states.read_status = ?", strings.TrimSpace(user.UserID), types.TaskCCReadStatusRead)
+		return db.Joins(fmt.Sprintf("INNER JOIN %s ON %s = %s AND %s = ? AND %s = ?", ccTable(db, "workflow_cc_read_states"), ccColumn(db, "workflow_cc_read_states", "cc_record_id"), ccColumn(db, "workflow_cc_records", "id"), ccColumn(db, "workflow_cc_read_states", "user_id"), ccColumn(db, "workflow_cc_read_states", "read_status")), strings.TrimSpace(user.UserID), types.TaskCCReadStatusRead)
 	default:
 		return db
 	}
@@ -693,7 +737,7 @@ func applyCCUnreadFilter(db *gorm.DB, user *workflowcontext.UserContext) *gorm.D
 	if user == nil {
 		return db.Where("1 = 0")
 	}
-	return db.Joins("LEFT JOIN workflow_cc_read_states ON workflow_cc_read_states.cc_record_id = workflow_cc_records.id AND workflow_cc_read_states.user_id = ?", strings.TrimSpace(user.UserID))
+	return db.Joins(fmt.Sprintf("LEFT JOIN %s ON %s = %s AND %s = ?", ccTable(db, "workflow_cc_read_states"), ccColumn(db, "workflow_cc_read_states", "cc_record_id"), ccColumn(db, "workflow_cc_records", "id"), ccColumn(db, "workflow_cc_read_states", "user_id")), strings.TrimSpace(user.UserID))
 }
 
 func loadCCReadStates(ctx stdcontext.Context, db *gorm.DB, userID string, rows []workflowCCRecordModel) (map[uint]workflowCCReadStateModel, error) {
@@ -706,7 +750,7 @@ func loadCCReadStates(ctx stdcontext.Context, db *gorm.DB, userID string, rows [
 		return result, nil
 	}
 	states := make([]workflowCCReadStateModel, 0, len(ids))
-	if err := db.WithContext(ctx).Where("cc_record_id IN ? AND user_id = ?", ids, strings.TrimSpace(userID)).Find(&states).Error; err != nil {
+	if err := db.WithContext(ctx).Where(fmt.Sprintf("%s IN ? AND %s = ?", ccColumn(db, "", "cc_record_id"), ccColumn(db, "", "user_id")), ids, strings.TrimSpace(userID)).Find(&states).Error; err != nil {
 		return nil, err
 	}
 	for _, state := range states {
@@ -720,12 +764,14 @@ func markCCRowsRead(ctx stdcontext.Context, db *gorm.DB, user *workflowcontext.U
 	now := time.Now().UTC()
 	for _, row := range rows {
 		state := workflowCCReadStateModel{}
-		err := db.WithContext(ctx).Where("cc_record_id = ? AND user_id = ?", row.ID, strings.TrimSpace(user.UserID)).First(&state).Error
+		err := db.WithContext(ctx).Where(fmt.Sprintf("%s = ? AND %s = ?", ccColumn(db, "", "cc_record_id"), ccColumn(db, "", "user_id")), row.ID, strings.TrimSpace(user.UserID)).First(&state).Error
 		if err == nil {
 			if state.ReadStatus == types.TaskCCReadStatusRead {
 				continue
 			}
-			if err := db.WithContext(ctx).Model(&state).Updates(map[string]interface{}{"read_status": types.TaskCCReadStatusRead, "read_at": now}).Error; err != nil {
+			state.ReadStatus = types.TaskCCReadStatusRead
+			state.ReadAt = now
+			if err := db.WithContext(ctx).Model(&state).Select("ReadStatus", "ReadAt").Updates(&state).Error; err != nil {
 				return nil, err
 			}
 			updated++
